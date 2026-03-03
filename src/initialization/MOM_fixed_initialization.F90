@@ -43,6 +43,8 @@ use shelfwave_initialization, only : shelfwave_initialize_topography
 use Phillips_initialization, only : Phillips_initialize_topography
 use dense_water_initialization, only : dense_water_initialize_topography
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MOM_initialize_fixed, MOM_initialize_rotation, MOM_initialize_topography
@@ -208,13 +210,13 @@ end subroutine MOM_initialize_fixed
 !> MOM_initialize_topography makes the appropriate call to set up the bathymetry in units of [Z ~> m].
 subroutine MOM_initialize_topography(D, max_depth, G, PF, US, meanSL)
   type(dyn_horgrid_type),           intent(in)  :: G  !< The dynamic horizontal grid type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                                     intent(out) :: D  !< Ocean bottom depth [Z ~> m]
   type(param_file_type),            intent(in)  :: PF !< Parameter file structure
-  real,                             intent(out) :: max_depth !< Maximum depth or geometric thickness,
+  real(wp),                             intent(out) :: max_depth !< Maximum depth or geometric thickness,
                                                              !! with meanSL present, of model [Z ~> m]
   type(unit_scale_type),            intent(in)  :: US !< A dimensional unit scaling type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                           optional, intent(in)  :: meanSL !< Mean sea level [Z ~> m]
 
   ! This subroutine makes the appropriate call to set up the bottom depth.
@@ -222,10 +224,10 @@ subroutine MOM_initialize_topography(D, max_depth, G, PF, US, meanSL)
   ! the ice-sheet code or other components.
 
   ! Local variables
-  real :: max_depth_default = -1.e9 ! Default value of MAXIMUM_DEPTH parameter [m]
+  real(wp) :: max_depth_default = -1.e9_wp ! Default value of MAXIMUM_DEPTH parameter [m]
   character(len=40)  :: mdl = "MOM_initialize_topography" ! This subroutine's name.
   character(len=200) :: config
-  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: D_meanSL ! depth (positive below meanSL) referenced
+  real(wp), dimension(G%isd:G%ied, G%jsd:G%jed) :: D_meanSL ! depth (positive below meanSL) referenced
                                         ! to meanSL. A temporary field used to diagnose maximum
                                         ! static column thickness. D_meanSL = D + meanSL [Z ~> m].
   integer :: i, j
@@ -291,7 +293,7 @@ subroutine MOM_initialize_topography(D, max_depth, G, PF, US, meanSL)
     endif
   else
     if (present(meanSL)) then
-      D_meanSL(:,:) = 0.0
+      D_meanSL(:,:) = 0.0_wp
       do j=G%jsc,G%jec ; do i=G%isc,G%iec ; D_meanSL(i,j) = D(i,j) + meanSL(i,j) ; enddo ; enddo
       max_depth = diagnoseMaximumDepth(D_meanSL, G)
     else

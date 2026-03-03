@@ -24,6 +24,8 @@ use MOM_tracer_registry,    only : tracer_type
 use MOM_tracer_registry,    only : tracer_name_lookup
 use MOM_tracer_advect_schemes, only : set_tracer_advect_scheme, TracerAdvectionSchemeDoc
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -38,7 +40,7 @@ type, public :: dyed_obc_tracer_CS ; private
   character(len=200) :: tracer_IC_file !< The full path to the IC file, or " " to initialize internally.
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:) => NULL()   !< The array of tracers used in this subroutine in [conc]
+  real(wp), pointer :: tr(:,:,:,:) => NULL()   !< The array of tracers used in this subroutine in [conc]
 
   logical :: tracers_may_reinit  !< If true, these tracers be set up via the initialization code if
                                  !! they are not found in the restart files.
@@ -73,7 +75,7 @@ function register_dyed_obc_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
   character(len=200) :: inputdir
   character(len=48)  :: flux_units ! The units for tracer fluxes, usually
                             ! kg(tracer) kg(water)-1 m3 s-1 or kg(tracer) s-1.
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [conc]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [conc]
   logical :: register_dyed_obc_tracer
   integer :: isd, ied, jsd, jed, nz, m
   integer :: n_dye           ! Number of regionsl dye tracers
@@ -131,7 +133,7 @@ function register_dyed_obc_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
         trim(TracerAdvectionSchemeDoc)//&
         "\n Set to blank (the default) to use TRACER_ADVECTION_SCHEME.", default="")
 
-  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0)
+  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0_wp)
 
   do m=1,CS%ntr
     write(name,'("dye_",I2.2)') m+n_dye  !after regional dye tracers
@@ -172,7 +174,7 @@ subroutine initialize_dyed_obc_tracer(restart, day, G, GV, h, diag, OBC, CS)
   logical,                               intent(in) :: restart !< .true. if the fields have already
                                                                !! been read from a restart file.
   type(time_type), target,               intent(in) :: day     !< Time of the start of the run.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_ctrl), target,               intent(in) :: diag    !< Structure used to regulate diagnostic output.
   type(ocean_OBC_type),                  pointer    :: OBC     !< Structure specifying open boundary options.
   type(dyed_obc_tracer_CS),              pointer    :: CS      !< The control structure returned by a previous
@@ -180,7 +182,7 @@ subroutine initialize_dyed_obc_tracer(restart, day, G, GV, h, diag, OBC, CS)
 
 ! Local variables
   character(len=24) :: name     ! A variable's name in a NetCDF file.
-  real :: h_neglect         ! A thickness that is so small it is usually lost
+  real(wp) :: h_neglect         ! A thickness that is so small it is usually lost
                             ! in roundoff and can be neglected [H ~> m or kg m-2].
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz, m
   integer :: IsdB, IedB, JsdB, JedB
@@ -207,7 +209,7 @@ subroutine initialize_dyed_obc_tracer(restart, day, G, GV, h, diag, OBC, CS)
         call MOM_read_data(CS%tracer_IC_file, trim(name), CS%tr(:,:,:,m), G%Domain)
       else
         do k=1,nz ; do j=js,je ; do i=is,ie
-          CS%tr(i,j,k,m) = 0.0
+          CS%tr(i,j,k,m) = 0.0_wp
         enddo ; enddo ; enddo
       endif
       call set_initialized(CS%tr(:,:,:,m), name, CS%restart_CSp)
@@ -226,31 +228,31 @@ subroutine dyed_obc_tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, dt, G,
               evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea   !< an array to which the amount of fluid entrained
                                               !! from the layer above during this call will be
                                               !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb   !< an array to which the amount of fluid entrained
                                               !! from the layer below during this call will be
                                               !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
   type(dyed_obc_tracer_CS), pointer   :: CS   !< The control structure returned by a previous
                                               !! call to dyed_obc_register_tracer.
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                               !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                               !! fluxes can be applied [H ~> m or kg m-2]
 
 ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz, m
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 

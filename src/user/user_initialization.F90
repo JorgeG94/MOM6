@@ -17,6 +17,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -39,8 +41,8 @@ contains
 !> Set vertical coordinates.
 subroutine USER_set_coord(Rlay, g_prime, GV, US, param_file)
   type(verticalGrid_type),  intent(in)  :: GV      !< The ocean's vertical grid structure
-  real, dimension(GV%ke),   intent(out) :: Rlay    !< Layer potential density [R ~> kg m-3].
-  real, dimension(GV%ke+1), intent(out) :: g_prime !< The reduced gravity at each
+  real(wp), dimension(GV%ke),   intent(out) :: Rlay    !< Layer potential density [R ~> kg m-3].
+  real(wp), dimension(GV%ke+1), intent(out) :: g_prime !< The reduced gravity at each
                                                    !! interface [L2 Z-1 T-2 ~> m s-2].
   type(unit_scale_type),    intent(in)  :: US      !< A dimensional unit scaling type
   type(param_file_type),    intent(in)  :: param_file !< A structure indicating the
@@ -50,8 +52,8 @@ subroutine USER_set_coord(Rlay, g_prime, GV, US, param_file)
   call MOM_error(FATAL, &
     "USER_initialization.F90, USER_set_coord: " // &
     "Unmodified user routine called - you must edit the routine to use it")
-  Rlay(:) = 0.0
-  g_prime(:) = 0.0
+  Rlay(:) = 0.0_wp
+  g_prime(:) = 0.0_wp
 
   if (first_call) call write_user_log(param_file)
 
@@ -60,17 +62,17 @@ end subroutine USER_set_coord
 !> Initialize topography.
 subroutine USER_initialize_topography(D, G, param_file, max_depth, US)
   type(dyn_horgrid_type),          intent(in)  :: G !< The dynamic horizontal grid type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                                    intent(out) :: D !< Ocean bottom depth [Z ~> m]
   type(param_file_type),           intent(in)  :: param_file !< Parameter file structure
-  real,                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
+  real(wp),                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
   type(unit_scale_type),           intent(in)  :: US !< A dimensional unit scaling type
 
   call MOM_error(FATAL, &
     "USER_initialization.F90, USER_initialize_topography: " // &
     "Unmodified user routine called - you must edit the routine to use it")
 
-  D(:,:) = 0.0
+  D(:,:) = 0.0_wp
 
   if (first_call) call write_user_log(param_file)
 
@@ -80,7 +82,7 @@ end subroutine USER_initialize_topography
 subroutine USER_initialize_thickness(h, G, GV, param_file, just_read)
   type(ocean_grid_type),   intent(in)  :: G  !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: h  !< The thicknesses being initialized [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file !< A structure indicating the open
                                              !! file to parse for model parameter values.
@@ -93,7 +95,7 @@ subroutine USER_initialize_thickness(h, G, GV, param_file, just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  h(:,:,1:GV%ke) = 0.0 ! h should be set in [Z ~> m].  It will be converted to thickness units
+  h(:,:,1:GV%ke) = 0.0_wp ! h should be set in [Z ~> m].  It will be converted to thickness units
                        ! [H ~> m or kg m-2] once the temperatures and salinities are known.
 
   if (first_call) call write_user_log(param_file)
@@ -104,8 +106,8 @@ end subroutine USER_initialize_thickness
 subroutine USER_initialize_velocity(u, v, G, GV, US, param_file, just_read)
   type(ocean_grid_type),                       intent(in)  :: G !< Ocean grid structure.
   type(verticalGrid_type),                     intent(in)  :: GV !< The ocean's vertical grid structure.
-  real, dimension(SZIB_(G), SZJ_(G),SZK_(GV)), intent(out) :: u !< i-component of velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G), SZJB_(G),SZK_(GV)), intent(out) :: v !< j-component of velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZIB_(G), SZJ_(G),SZK_(GV)), intent(out) :: u !< i-component of velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G), SZJB_(G),SZK_(GV)), intent(out) :: v !< j-component of velocity [L T-1 ~> m s-1]
   type(unit_scale_type),                       intent(in)  :: US !< A dimensional unit scaling type
   type(param_file_type),                       intent(in)  :: param_file !< A structure indicating the
                                                             !! open file to parse for model
@@ -119,8 +121,8 @@ subroutine USER_initialize_velocity(u, v, G, GV, US, param_file, just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  u(:,:,1) = 0.0
-  v(:,:,1) = 0.0
+  u(:,:,1) = 0.0_wp
+  v(:,:,1) = 0.0_wp
 
   if (first_call) call write_user_log(param_file)
 
@@ -131,8 +133,8 @@ end subroutine USER_initialize_velocity
 subroutine USER_init_temperature_salinity(T, S, G, GV, param_file, just_read)
   type(ocean_grid_type),                     intent(in)  :: G !< Ocean grid structure.
   type(verticalGrid_type),                   intent(in)  :: GV !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T !< Potential temperature [C ~> degC].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S !< Salinity [S ~> ppt].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T !< Potential temperature [C ~> degC].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S !< Salinity [S ~> ppt].
   type(param_file_type),                     intent(in)  :: param_file !< A structure indicating the
                                                             !! open file to parse for model
                                                             !! parameter values.
@@ -145,8 +147,8 @@ subroutine USER_init_temperature_salinity(T, S, G, GV, param_file, just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  T(:,:,1) = 0.0
-  S(:,:,1) = 0.0
+  T(:,:,1) = 0.0_wp
+  S(:,:,1) = 0.0_wp
 
   if (first_call) call write_user_log(param_file)
 
@@ -166,7 +168,7 @@ subroutine USER_initialize_sponges(G, GV, use_temp, tv, param_file, CSp, h)
                                                        !! open file to parse for model
                                                        !! parameter values.
   type(sponge_CS),         pointer    :: CSp           !< A pointer to the sponge control structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h             !< Layer thicknesses [H ~> m or kg m-2].
   call MOM_error(FATAL, &
     "USER_initialization.F90, USER_initialize_sponges: " // &

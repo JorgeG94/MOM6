@@ -5,6 +5,8 @@ module MOM_string_functions
 
 use iso_fortran_env, only : stdout=>output_unit, stderr=>error_unit
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public lowercase, uppercase
@@ -88,12 +90,12 @@ end function left_ints
 
 !> Returns a left-justified string with a real formatted like '(G)'
 function left_real(val)
-  real, intent(in)  :: val !< The real variable to convert to a string, in arbitrary units [A]
+  real(wp), intent(in)  :: val !< The real variable to convert to a string, in arbitrary units [A]
   character(len=32) :: left_real !< The output string
 
   integer :: l, ind
 
-  if ((abs(val) < 1.0e4) .and. (abs(val) >= 1.0e-3)) then
+  if ((abs(val) < 1.0e4_wp) .and. (abs(val) >= 1.0e-3_wp)) then
     write(left_real, '(F30.11)') val
     if (.not.isFormattedFloatEqualTo(left_real,val)) then
       write(left_real, '(F30.12)') val
@@ -116,10 +118,10 @@ function left_real(val)
           (left_real(l:l) /= "0")) exit
       left_real(l:l) = " "
     enddo
-  elseif (val == 0.) then
+  elseif (val == 0._wp) then
     left_real = "0.0"
   else
-    if ((abs(val) <= 1.0e-100) .or. (abs(val) >= 1.0e100)) then
+    if ((abs(val) <= 1.0e-100_wp) .or. (abs(val) >= 1.0e100_wp)) then
       write(left_real(1:32), '(ES24.14E3)') val
       if (.not.isFormattedFloatEqualTo(left_real,val)) &
         write(left_real(1:32), '(ES24.15E3)') val
@@ -141,7 +143,7 @@ end function left_real
 !> Returns a character string of a comma-separated, compact formatted, reals
 !! e.g. "1., 2., 5*3., 5.E2"
 function left_reals(r,sep)
-  real, intent(in) :: r(:) !< The array of real variables to convert to a string, in arbitrary units [A]
+  real(wp), intent(in) :: r(:) !< The array of real variables to convert to a string, in arbitrary units [A]
   character(len=*), optional, intent(in) :: sep !< The separator between
                                     !! successive values, by default it is ', '.
   character(len=:), allocatable :: left_reals !< The output string
@@ -181,10 +183,10 @@ end function left_reals
 !> Returns True if the string can be read/parsed to give the exact value of "val"
 function isFormattedFloatEqualTo(str, val)
   character(len=*), intent(in) :: str !< The string to parse
-  real,             intent(in) :: val !< The real value to compare with, in arbitrary units [A]
+  real(wp),             intent(in) :: val !< The real value to compare with, in arbitrary units [A]
   logical                      :: isFormattedFloatEqualTo
   ! Local variables
-  real :: scannedVal ! The value extraced from str, in arbitrary units [A]
+  real(wp) :: scannedVal ! The value extraced from str, in arbitrary units [A]
 
   isFormattedFloatEqualTo=.false.
   read(str(1:),*,err=987) scannedVal
@@ -266,11 +268,11 @@ integer function extract_integer(string, separators, n, missing_value)
 end function extract_integer
 
 !> Returns the real corresponding to the nth word in the argument, in arbitrary units [A].
-real function extract_real(string, separators, n, missing_value)
+real(wp) function extract_real(string, separators, n, missing_value)
   character(len=*), intent(in) :: string     !< String to scan
   character(len=*), intent(in) :: separators !< Characters to use for delineation
   integer,          intent(in) :: n          !< Number of word to extract
-  real, optional,   intent(in) :: missing_value !< Value to assign if word is missing, in arbitrary units [A]
+  real(wp), optional,   intent(in) :: missing_value !< Value to assign if word is missing, in arbitrary units [A]
   ! Local variables
   character(len=20) :: word
 
@@ -317,14 +319,14 @@ logical function string_functions_unit_tests(verbose)
   ! Local variables
   integer :: i(5) = (/ -1, 1, 3, 3, 0 /)
   ! This is an array of real test values, in arbitrary units [A]
-  real :: r(8) = (/ 0., 1., -2., 1.3, 3.E-11, 3.E-11, 3.E-11, -5.1E12 /)
+  real(wp) :: r(8) = (/ 0._wp, 1._wp, -2._wp, 1.3_wp, 3.E-11_wp, 3.E-11_wp, 3.E-11_wp, -5.1E12_wp /)
   logical :: fail, v
   fail = .false.
   v = verbose
   write(stdout,*) '==== MOM_string_functions: string_functions_unit_tests ==='
   fail = fail .or. localTestS(v,left_int(-1),'-1')
   fail = fail .or. localTestS(v,left_ints(i(:)),'-1, 1, 3, 3, 0')
-  fail = fail .or. localTestS(v,left_real(0.),'0.0')
+  fail = fail .or. localTestS(v,left_real(0._wp),'0.0')
   fail = fail .or. localTestS(v,left_reals(r(:)),'0.0, 1.0, -2.0, 1.3, 3*3.0E-11, -5.1E+12')
   fail = fail .or. localTestS(v,left_reals(r(:),sep=' '),'0.0 1.0 -2.0 1.3 3*3.0E-11 -5.1E+12')
   fail = fail .or. localTestS(v,left_reals(r(:),sep=','),'0.0,1.0,-2.0,1.3,3*3.0E-11,-5.1E+12')
@@ -350,11 +352,11 @@ logical function string_functions_unit_tests(verbose)
   fail = fail .or. localTestI(v,extract_integer("1,2",",",2),2)
   fail = fail .or. localTestI(v,extract_integer("1,2",",",3),0)
   fail = fail .or. localTestI(v,extract_integer("1,2",",",4,4),4)
-  fail = fail .or. localTestR(v,extract_real("1.","",1),1.)
-  fail = fail .or. localTestR(v,extract_real("1.,2.,3.",",",1),1.)
-  fail = fail .or. localTestR(v,extract_real("1.,2.",",",2),2.)
-  fail = fail .or. localTestR(v,extract_real("1.,2.",",",3),0.)
-  fail = fail .or. localTestR(v,extract_real("1.,2.",",",4,4.),4.)
+  fail = fail .or. localTestR(v,extract_real("1.","",1),1._wp)
+  fail = fail .or. localTestR(v,extract_real("1.,2.,3.",",",1),1._wp)
+  fail = fail .or. localTestR(v,extract_real("1.,2.",",",2),2._wp)
+  fail = fail .or. localTestR(v,extract_real("1.,2.",",",3),0._wp)
+  fail = fail .or. localTestR(v,extract_real("1.,2.",",",4,4._wp),4._wp)
   if (.not. fail) write(stdout,*) 'Pass'
   string_functions_unit_tests = fail
 end function string_functions_unit_tests
@@ -394,8 +396,8 @@ end function localTestI
 !> True if r1 is not equal to r2. False otherwise.
 logical function localTestR(verbose,r1,r2)
   logical, intent(in) :: verbose !< If true, write results to stdout
-  real, intent(in) :: r1 !< The first value to compare, in arbitrary units [A]
-  real, intent(in) :: r2 !< The first value to compare, in arbitrary units [A]
+  real(wp), intent(in) :: r1 !< The first value to compare, in arbitrary units [A]
+  real(wp), intent(in) :: r2 !< The first value to compare, in arbitrary units [A]
   localTestR=.false.
   if (r1/=r2) localTestR=.true.
   if (localTestR .or. verbose) then

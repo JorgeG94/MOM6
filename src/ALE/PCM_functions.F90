@@ -3,6 +3,7 @@ module PCM_functions
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public PCM_reconstruction
@@ -17,10 +18,10 @@ contains
 !! defining 'grid' and 'ppoly'. No consistency check is performed.
 subroutine PCM_reconstruction( N, u, edge_values, ppoly_coef )
   integer,              intent(in)    :: N !< Number of cells
-  real, dimension(:),   intent(in)    :: u !< cell averages in arbitrary units [A]
-  real, dimension(:,:), intent(inout) :: edge_values !< Edge value of polynomial,
+  real(wp), dimension(:),   intent(in)    :: u !< cell averages in arbitrary units [A]
+  real(wp), dimension(:,:), intent(inout) :: edge_values !< Edge value of polynomial,
                                            !! with the same units as u [A].
-  real, dimension(:,:), intent(inout) :: ppoly_coef !< Coefficients of polynomial,
+  real(wp), dimension(:,:), intent(inout) :: ppoly_coef !< Coefficients of polynomial,
                                            !! with the same units as u [A].
 
   ! Local variables

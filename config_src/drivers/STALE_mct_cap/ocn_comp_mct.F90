@@ -58,6 +58,8 @@ use ocn_cpl_indices,   only : cpl_indices_type, cpl_indices_init
 use MOM_coupler_types,   only : coupler_type_spawn
 use MOM_coupler_types,   only : coupler_type_initialized, coupler_type_copy_data
 
+use MOM_datatypes, only : wp
+
 ! By default make data private
 implicit none; private
 
@@ -85,7 +87,7 @@ type MCT_MOM_Data
   type(seq_infodata_type), pointer :: infodata             !< The input info type
   type(cpl_indices_type)           :: ind                  !< Variable IDs
   logical                          :: sw_decomp            !< Controls whether shortwave is decomposed into 4 components
-  real                             :: c1, c2, c3, c4       !< Coeffs. used in the shortwave decomposition  i/o
+  real(wp)                             :: c1, c2, c3, c4       !< Coeffs. used in the shortwave decomposition  i/o
   character(len=384)               :: pointer_filename     !< Name of the ascii file that contains the path
                                                            !! and filename of the latest restart file.
 end type MCT_MOM_Data
@@ -145,10 +147,10 @@ subroutine ocn_init_mct( EClock, cdata_o, x2o_o, o2x_o, NLFilename )
   integer                   :: ocn_cpl_dt   !< one ocn coupling interval in seconds. (to be received from cesm)
   real (kind=8)             :: mom_cpl_dt   !< one ocn coupling interval in seconds. (internal)
   real (kind=8), parameter  ::        &
-      seconds_in_minute =    60.0d0, &
-      seconds_in_hour   =  3600.0d0, &
-      seconds_in_day    = 86400.0d0, &
-      minutes_in_hour   =    60.0d0
+      seconds_in_minute =    60.0e0_wp, &
+      seconds_in_hour   =  3600.0e0_wp, &
+      seconds_in_day    = 86400.0e0_wp, &
+      minutes_in_hour   =    60.0e0_wp
 
   character(len=99) :: ocn_modelio_name !< ocn model input namelist filename
   integer           :: shrlogunit       !< original log file unit
@@ -264,21 +266,21 @@ subroutine ocn_init_mct( EClock, cdata_o, x2o_o, o2x_o, NLFilename )
   if (glb%sw_decomp) then
     call get_param(param_file, mdl, "SW_c1", glb%c1, &
                   "Coeff. used to convert net shortwave rad. into "//&
-                  "visible, direct shortwave.", units="nondim", default=0.285)
+                  "visible, direct shortwave.", units="nondim", default=0.285_wp)
 
     call get_param(param_file, mdl, "SW_c2", glb%c2, &
                   "Coeff. used to convert net shortwave rad. into "//&
-                  "visible, diffuse shortwave.", units="nondim", default=0.285)
+                  "visible, diffuse shortwave.", units="nondim", default=0.285_wp)
 
     call get_param(param_file, mdl, "SW_c3", glb%c3, &
                   "Coeff. used to convert net shortwave rad. into "//&
-                  "near-IR, direct shortwave.", units="nondim", default=0.215)
+                  "near-IR, direct shortwave.", units="nondim", default=0.215_wp)
 
     call get_param(param_file, mdl, "SW_c4", glb%c4, &
                   "Coeff. used to convert net shortwave rad. into "//&
-                  "near-IR, diffuse shortwave.", units="nondim", default=0.215)
+                  "near-IR, diffuse shortwave.", units="nondim", default=0.215_wp)
   else
-    glb%c1 = 0.0; glb%c2 = 0.0; glb%c3 = 0.0; glb%c4 = 0.0
+    glb%c1 = 0.0_wp; glb%c2 = 0.0_wp; glb%c3 = 0.0_wp; glb%c4 = 0.0_wp
   endif
 
   ! Close param file before it gets opened by ocean_model_init again.
@@ -440,7 +442,7 @@ subroutine ocn_run_mct( EClock, cdata_o, x2o_o, o2x_o)
   integer            :: shrlogunit ! original log file unit
   integer            :: shrloglev  ! original log level
   logical, save      :: firstCall = .true.
-  real (kind=8), parameter  ::  seconds_in_day = 86400.0 !< number of seconds in one day
+  real (kind=8), parameter  ::  seconds_in_day = 86400.0_wp !< number of seconds in one day
   integer                   :: ocn_cpl_dt   !< one ocn coupling interval in seconds. (to be received from cesm)
   real (kind=8)             :: mom_cpl_dt   !< one ocn coupling interval in seconds. (internal)
   integer                   :: ncouple_per_day !< number of ocean coupled call in one day (non-dim)
@@ -689,12 +691,12 @@ subroutine ocn_domain_mct( lsize, gsMap_ocn, dom_ocn)
   call mct_gGrid_importIAttr(dom_ocn,'GlobGridNum',idata,lsize)
 
   !initialization
-  data(:) = -9999.0
+  data(:) = -9999.0_wp
   call mct_gGrid_importRAttr(dom_ocn,"lat"  ,data,lsize)
   call mct_gGrid_importRAttr(dom_ocn,"lon"  ,data,lsize)
   call mct_gGrid_importRAttr(dom_ocn,"area" ,data,lsize)
   call mct_gGrid_importRAttr(dom_ocn,"aream",data,lsize)
-  data(:) = 0.0
+  data(:) = 0.0_wp
   call mct_gGrid_importRAttr(dom_ocn,"mask",data,lsize)
   call mct_gGrid_importRAttr(dom_ocn,"frac",data,lsize)
 
@@ -717,7 +719,7 @@ subroutine ocn_domain_mct( lsize, gsMap_ocn, dom_ocn)
   call mct_gGrid_importRattr(dom_ocn,"lat",data,lsize)
 
   k = 0
-  L2_to_rad2 = 1.0 / grid%Rad_Earth_L**2
+  L2_to_rad2 = 1.0_wp / grid%Rad_Earth_L**2
   do j = grid%jsc, grid%jec
     do i = grid%isc, grid%iec
       k = k + 1 ! Increment position within gindex
@@ -877,30 +879,30 @@ subroutine IOB_allocate(IOB, isc, iec, jsc, jec)
              IOB% mi (isc:iec,jsc:jec),              &
              IOB% p (isc:iec,jsc:jec))
 
-  IOB%rofl_flux        = 0.0
-  IOB%rofi_flux        = 0.0
-  IOB%u_flux           = 0.0
-  IOB%v_flux           = 0.0
-  IOB%t_flux           = 0.0
-  IOB%seaice_melt_heat = 0.0
-  IOB%seaice_melt      = 0.0
-  IOB%q_flux           = 0.0
-  IOB%salt_flux        = 0.0
-  IOB%lw_flux          = 0.0
-  IOB%sw_flux_vis_dir  = 0.0
-  IOB%sw_flux_vis_dif  = 0.0
-  IOB%sw_flux_nir_dir  = 0.0
-  IOB%sw_flux_nir_dif  = 0.0
-  IOB%lprec            = 0.0
-  IOB%fprec            = 0.0
-  IOB%ustar_berg       = 0.0
-  IOB%area_berg        = 0.0
-  IOB%mass_berg        = 0.0
-  IOB%calving          = 0.0
-  IOB%runoff_hflx      = 0.0
-  IOB%calving_hflx     = 0.0
-  IOB%mi               = 0.0
-  IOB%p                = 0.0
+  IOB%rofl_flux        = 0.0_wp
+  IOB%rofi_flux        = 0.0_wp
+  IOB%u_flux           = 0.0_wp
+  IOB%v_flux           = 0.0_wp
+  IOB%t_flux           = 0.0_wp
+  IOB%seaice_melt_heat = 0.0_wp
+  IOB%seaice_melt      = 0.0_wp
+  IOB%q_flux           = 0.0_wp
+  IOB%salt_flux        = 0.0_wp
+  IOB%lw_flux          = 0.0_wp
+  IOB%sw_flux_vis_dir  = 0.0_wp
+  IOB%sw_flux_vis_dif  = 0.0_wp
+  IOB%sw_flux_nir_dir  = 0.0_wp
+  IOB%sw_flux_nir_dif  = 0.0_wp
+  IOB%lprec            = 0.0_wp
+  IOB%fprec            = 0.0_wp
+  IOB%ustar_berg       = 0.0_wp
+  IOB%area_berg        = 0.0_wp
+  IOB%mass_berg        = 0.0_wp
+  IOB%calving          = 0.0_wp
+  IOB%runoff_hflx      = 0.0_wp
+  IOB%calving_hflx     = 0.0_wp
+  IOB%mi               = 0.0_wp
+  IOB%p                = 0.0_wp
 
 end subroutine IOB_allocate
 

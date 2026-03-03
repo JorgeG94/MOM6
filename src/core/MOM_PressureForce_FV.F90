@@ -24,6 +24,8 @@ use MOM_density_integrals, only : int_density_dz_generic_pcm, int_spec_vol_dp_ge
 use MOM_density_integrals, only : diagnose_mass_weight_Z, diagnose_mass_weight_p
 use MOM_ALE, only : TS_PLM_edge_values, TS_PPM_edge_values, TS_PLM_WLS_edge_values, ALE_CS
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -43,10 +45,10 @@ type, public :: PressureForce_FV_CS ; private
   logical :: sal_use_bpa = .false. !< If true, use bottom pressure anomaly instead of SSH
                                    !! to calculate SAL.
   logical :: tides = .false.       !< If true, apply tidal momentum forcing.
-  real    :: rho_ref        !< The reference density that is subtracted off when calculating pressure
+  real(wp)    :: rho_ref        !< The reference density that is subtracted off when calculating pressure
                             !! gradient forces [R ~> kg m-3].
   logical :: rho_ref_bug    !< If true, recover a bug that mixes GV%Rho0 and CS%rho_ref in Boussinesq mode.
-  real    :: GFS_scale      !< A scaling of the surface pressure gradients to
+  real(wp)    :: GFS_scale      !< A scaling of the surface pressure gradients to
                             !! allow the use of a reduced gravity model [nondim].
   type(time_type), pointer :: Time !< A pointer to the ocean model's clock.
   type(diag_ctrl), pointer :: diag !< A structure that is used to regulate the
@@ -63,7 +65,7 @@ type, public :: PressureForce_FV_CS ; private
   logical :: MassWghtInterpVanOnly !< If true, don't do mass weighting of T/S interpolation unless vanished
   logical :: reset_intxpa_flattest !< If true, use flattest interface rather than top for reset integral
                                    !! in cases where no best nonvanished interface
-  real    :: h_nonvanished  !< A minimal layer thickness that indicates that a layer is thick enough
+  real(wp)    :: h_nonvanished  !< A minimal layer thickness that indicates that a layer is thick enough
                             !! to usefully reestimate the pressure integral across the interface
                             !! below it [H ~> m or kg m-2]
   logical :: use_inaccurate_pgf_rho_anom !< If true, uses the older and less accurate
@@ -121,38 +123,38 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
   type(ocean_grid_type),                      intent(in)  :: G   !< Ocean grid structure
   type(verticalGrid_type),                    intent(in)  :: GV  !< Vertical grid structure
   type(unit_scale_type),                      intent(in)  :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> kg m-2]
   type(thermo_var_ptrs),                      intent(in)  :: tv  !< Thermodynamic variables
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out) :: PFu !< Zonal acceleration [L T-2 ~> m s-2]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out) :: PFv !< Meridional acceleration [L T-2 ~> m s-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out) :: PFu !< Zonal acceleration [L T-2 ~> m s-2]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out) :: PFv !< Meridional acceleration [L T-2 ~> m s-2]
   type(PressureForce_FV_CS),                  intent(in)  :: CS  !< Finite volume PGF control structure
   type(ALE_CS),                               pointer     :: ALE_CSp !< ALE control structure
   type(accel_diag_ptrs),                      pointer     :: ADp !< Acceleration diagnostic pointers
-  real, dimension(:,:),                       pointer     :: p_atm !< The pressure at the ice-ocean
+  real(wp), dimension(:,:),                       pointer     :: p_atm !< The pressure at the ice-ocean
                                                            !! or atmosphere-ocean interface [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), optional, intent(out) :: pbce !< The baroclinic pressure
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), optional, intent(out) :: pbce !< The baroclinic pressure
                                                            !! anomaly in each layer due to eta anomalies
                                                            !! [L2 T-2 H-1 ~> m4 s-2 kg-1].
-  real, dimension(SZI_(G),SZJ_(G)),          optional, intent(out) :: eta !< The total column mass used to
+  real(wp), dimension(SZI_(G),SZJ_(G)),          optional, intent(out) :: eta !< The total column mass used to
                                                            !! calculate PFu and PFv [H ~> kg m-2].
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: p ! Interface pressure [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), target :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: p ! Interface pressure [R L2 T-2 ~> Pa].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), target :: &
     T_tmp, &    ! Temporary array of temperatures where layers that are lighter
                 ! than the mixed layer have the mixed layer's properties [C ~> degC].
     S_tmp       ! Temporary array of salinities where layers that are lighter
                 ! than the mixed layer have the mixed layer's properties [S ~> ppt].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
     S_t, S_b, & ! Top and bottom edge values for linear reconstructions
                 ! of salinity within each layer [S ~> ppt].
     T_t, T_b    ! Top and bottom edge values for linear reconstructions
                 ! of temperature within each layer [C ~> degC].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
     dza, &      ! The change in geopotential anomaly between the top and bottom
                 ! of a layer [L2 T-2 ~> m2 s-2].
     intp_dza    ! The vertical integral in depth of the pressure anomaly less
                 ! the pressure anomaly at the top of the layer [R L4 T-4 ~> Pa m2 s-2].
-  real, dimension(SZI_(G),SZJ_(G))  :: &
+  real(wp), dimension(SZI_(G),SZJ_(G))  :: &
     dp, &       ! The (positive) change in pressure across a layer [R L2 T-2 ~> Pa].
     SSH, &      ! Sea surfae height anomaly for self-attraction and loading. Used if
                 ! CALCULATE_SAL is True and SAL_USE_BPA is False [Z ~> m].
@@ -166,33 +168,33 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                   ! old answers only [Z ~> m].
     dM          ! The barotropic adjustment to the Montgomery potential to
                 ! account for a reduced gravity model [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
     za          ! The geopotential anomaly (i.e. g*e + alpha_0*pressure) at the
                 ! interfaces [L2 T-2 ~> m2 s-2].
 
-  real, dimension(SZI_(G)) :: Rho_cv_BL !  The coordinate potential density in the deepest variable
+  real(wp), dimension(SZI_(G)) :: Rho_cv_BL !  The coordinate potential density in the deepest variable
                 ! density near-surface layer [R ~> kg m-3].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: &
     intx_za     ! The zonal integral of the geopotential anomaly along the
                 ! interfaces, divided by the grid spacing [L2 T-2 ~> m2 s-2].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
     intx_dza    ! The change in intx_za through a layer [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: &
     inty_za     ! The meridional integral of the geopotential anomaly along the
                 ! interfaces, divided by the grid spacing [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
     inty_dza    ! The change in inty_za through a layer [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     T_top, &    ! Temperature of top layer used with correction_intxpa [C ~> degC]
     S_top       ! Salinity of top layer used with correction_intxpa [S ~> ppt]
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     intx_za_cor ! Correction for curvature in intx_za [L2 T-2 ~> m2 s-2]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     inty_za_cor ! Correction for curvature in inty_za [L2 T-2 ~> m2 s-2]
 
   ! These variables are used with reset_intxpa_integral.  The values are taken from different
   ! interfaces as a function of position.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     T_int_W, T_int_E, & ! Temperatures on the reference interface to the east and west of a u-point [C ~> degC]
     S_int_W, S_int_E, & ! Salinities on the reference interface to the east and west of a u-point [S ~> ppt]
     p_int_W, p_int_E, & ! Pressures on the reference interface to the east and west of a u-point [R L2 T-2 ~> Pa]
@@ -201,7 +203,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                         ! linearly with depth along that interface [R L2 T-2 ~> Pa].
     dp_int_x, &         ! The change in x in pressure along the reference interface [R L2 T-2 ~> Pa]
     intx_za_cor_ri      ! The correction to intx_za based on the reference interface calculations [L2 T-2 ~> m2 s-2]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     T_int_S, T_int_N, & ! Temperatures on the reference interface to the north and south of a v-point [C ~> degC]
     S_int_S, S_int_N, & ! Salinities on the reference interface to the north and south of a v-point [S ~> ppt]
     p_int_S, p_int_N, & ! Pressures on the reference interface to the north and south of a v-point [R L2 T-2 ~> Pa]
@@ -216,25 +218,25 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
   logical, dimension(SZI_(G),SZJB_(G)) :: &
     seek_y_cor          ! If true, try to find a v-point interface that would provide a better estimate
                         ! of the curvature terms in the inty_pa.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     delta_p_x           ! If using flattest interface for reset integral, store x interface
                         ! differences [R L2 T-2 ~> Pa]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     delta_p_y           ! If using flattest interface for reset integral, store y interface
                         ! differences [R L2 T-2 ~> Pa]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
     MassWt_u    ! The fractional mass weighting at a u-point [nondim].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
     MassWt_v    ! The fractional mass weighting at a v-point [nondim].
-  real :: p_ref(SZI_(G))     !   The pressure used to calculate the coordinate
+  real(wp) :: p_ref(SZI_(G))     !   The pressure used to calculate the coordinate
                              ! density, [R L2 T-2 ~> Pa] (usually 2e7 Pa = 2000 dbar).
-  real :: dp_sfc             ! The change in surface pressure between adjacent cells [R L2 T-2 ~> Pa]
+  real(wp) :: dp_sfc             ! The change in surface pressure between adjacent cells [R L2 T-2 ~> Pa]
 
-  real :: dp_neglect         ! A thickness that is so small it is usually lost
+  real(wp) :: dp_neglect         ! A thickness that is so small it is usually lost
                              ! in roundoff and can be neglected [R L2 T-2 ~> Pa].
-  real :: p_nonvanished      ! nonvanshed pressure [R L2 T-2 ~> Pa]
-  real :: I_gEarth           ! The inverse of GV%g_Earth [T2 Z L-2 ~> s2 m-1]
-  real :: alpha_anom         ! The in-situ specific volume, averaged over a
+  real(wp) :: p_nonvanished      ! nonvanshed pressure [R L2 T-2 ~> Pa]
+  real(wp) :: I_gEarth           ! The inverse of GV%g_Earth [T2 Z L-2 ~> s2 m-1]
+  real(wp) :: alpha_anom         ! The in-situ specific volume, averaged over a
                              ! layer, less alpha_ref [R-1 ~> m3 kg-1].
   logical :: use_p_atm       ! If true, use the atmospheric pressure.
   logical :: use_ALE         ! If true, use an ALE pressure reconstruction.
@@ -242,22 +244,22 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
   logical :: do_more_k       ! If true, there are still points where a flatter interface remains to be found.
   type(thermo_var_ptrs) :: tv_tmp! A structure of temporary T & S.
 
-  real :: alpha_ref     ! A reference specific volume [R-1 ~> m3 kg-1] that is used
+  real(wp) :: alpha_ref     ! A reference specific volume [R-1 ~> m3 kg-1] that is used
                         ! to reduce the impact of truncation errors.
-  real :: rho_in_situ(SZI_(G)) ! The in situ density [R ~> kg m-3].
-  real :: Pa_to_H       ! A factor to convert from Pa to the thickness units (H)
+  real(wp) :: rho_in_situ(SZI_(G)) ! The in situ density [R ~> kg m-3].
+  real(wp) :: Pa_to_H       ! A factor to convert from Pa to the thickness units (H)
                         ! [H T2 R-1 L-2 ~> m Pa-1 or kg m-2 Pa-1].
-  real :: H_to_RL2_T2   ! A factor to convert from thickness units (H) to pressure
+  real(wp) :: H_to_RL2_T2   ! A factor to convert from thickness units (H) to pressure
                         ! units [R L2 T-2 H-1 ~> Pa m-1 or Pa m2 kg-1].
-  real :: T5(5)         ! Temperatures and salinities at five quadrature points [C ~> degC]
-  real :: S5(5)         ! Salinities at five quadrature points [S ~> ppt]
-  real :: p5(5)         ! Pressures at five quadrature points for use with the equation of state [R L2 T-2 ~> Pa]
-  real :: SpV5(5)       ! Specific volume anomalies at five quadrature points [R-1 ~> m3 kg-1]
-  real :: wt_R          ! A weighting factor [nondim]
+  real(wp) :: T5(5)         ! Temperatures and salinities at five quadrature points [C ~> degC]
+  real(wp) :: S5(5)         ! Salinities at five quadrature points [S ~> ppt]
+  real(wp) :: p5(5)         ! Pressures at five quadrature points for use with the equation of state [R L2 T-2 ~> Pa]
+  real(wp) :: SpV5(5)       ! Specific volume anomalies at five quadrature points [R-1 ~> m3 kg-1]
+  real(wp) :: wt_R          ! A weighting factor [nondim]
 
   !  real :: oneatm       ! 1 standard atmosphere of pressure in [R L2 T-2 ~> Pa]
-  real, parameter :: C1_6 = 1.0/6.0  ! [nondim]
-  real, parameter :: C1_90 = 1.0/90.0  ! A rational constant [nondim]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp  ! [nondim]
+  real(wp), parameter :: C1_90 = 1.0_wp/90.0_wp  ! A rational constant [nondim]
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz, nkmb
   integer, dimension(2) :: EOSdom ! The i-computational domain for the equation of state
   integer, dimension(2) :: EOSdom_u ! The i-computational domain for the equation of state at u-velocity points
@@ -285,12 +287,12 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
 
   H_to_RL2_T2 = GV%g_Earth*GV%H_to_RZ
   dp_neglect = GV%g_Earth*GV%H_to_RZ * GV%H_subroundoff
-  alpha_ref = 1.0 / CS%rho_ref
-  I_gEarth = 1.0 / GV%g_Earth
+  alpha_ref = 1.0_wp / CS%rho_ref
+  I_gEarth = 1.0_wp / GV%g_Earth
   p_nonvanished = GV%g_Earth*GV%H_to_RZ*CS%h_nonvanished
 
   if ((CS%id_MassWt_u > 0) .or. (CS%id_MassWt_v > 0)) then
-    MassWt_u(:,:,:) = 0.0 ; MassWt_v(:,:,:) = 0.0
+    MassWt_u(:,:,:) = 0.0_wp ; MassWt_v(:,:,:) = 0.0_wp
   endif
 
   if (use_p_atm) then
@@ -302,7 +304,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
     ! oneatm = 101325.0 * US%Pa_to_RL2_T2 ! 1 atm scaled to [R L2 T-2 ~> Pa]
     !$OMP parallel do default(shared)
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-      p(i,j,1) = 0.0 ! or oneatm
+      p(i,j,1) = 0.0_wp ! or oneatm
     enddo ; enddo
   endif
   !$OMP parallel do default(shared)
@@ -389,17 +391,17 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                                     G%HI, MassWt_u(:,:,k), MassWt_v(:,:,k), &
                                     MassWghtInterpVanOnly=CS%MassWghtInterpVanOnly, p_nv=p_nonvanished)
     else
-      alpha_anom = 1.0 / GV%Rlay(k) - alpha_ref
+      alpha_anom = 1.0_wp / GV%Rlay(k) - alpha_ref
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
         dp(i,j) = H_to_RL2_T2 * h(i,j,k)
         dza(i,j,k) = alpha_anom * dp(i,j)
-        intp_dza(i,j,k) = 0.5 * alpha_anom * dp(i,j)**2
+        intp_dza(i,j,k) = 0.5_wp * alpha_anom * dp(i,j)**2
       enddo ; enddo
       do j=js,je ; do I=Isq,Ieq
-        intx_dza(i,j,k) = 0.5 * alpha_anom * (dp(i,j)+dp(i+1,j))
+        intx_dza(i,j,k) = 0.5_wp * alpha_anom * (dp(i,j)+dp(i+1,j))
       enddo ; enddo
       do J=Jsq,Jeq ; do i=is,ie
-        inty_dza(i,j,k) = 0.5 * alpha_anom * (dp(i,j)+dp(i,j+1))
+        inty_dza(i,j,k) = 0.5_wp * alpha_anom * (dp(i,j)+dp(i,j+1))
       enddo ; enddo
     endif
   enddo
@@ -435,7 +437,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
         SSH(i,j) = (za(i,j,1) - alpha_ref*p(i,j,1)) * I_gEarth - G%Z_ref
         ! Remove above sea level topography at floodable cells
-        SSH(i,j) = SSH(i,j) - max(-G%bathyT(i,j)-G%meanSL(i,j), 0.0)
+        SSH(i,j) = SSH(i,j) - max(-G%bathyT(i,j)-G%meanSL(i,j), 0.0_wp)
       enddo ; enddo
       call calc_SAL(SSH, e_sal, G, CS%SAL_CSp, tmp_scale=US%Z_to_m)
     endif
@@ -458,7 +460,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         za(i,j,1) = za(i,j,1) - GV%g_Earth * (e_tidal_eq(i,j) + e_tidal_sal(i,j))
       enddo ; enddo
     else  ! This block recreates older answers with tides.
-      if (.not.CS%calculate_SAL) e_sal(:,:) = 0.0
+      if (.not.CS%calculate_SAL) e_sal(:,:) = 0.0_wp
       call calc_tidal_forcing_legacy(CS%Time, e_sal, e_sal_and_tide, e_tidal_eq, e_tidal_sal, &
                                      G, US, CS%tides_CSp)
       !$OMP parallel do default(shared)
@@ -502,47 +504,47 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
     ! pressure under ice.
     !$OMP parallel do default(shared) private(dp_sfc,T5,S5,p5,wt_R,SpV5)
     do j=js,je ; do I=Isq,Ieq
-      intx_za_cor(I,j) = 0.0
+      intx_za_cor(I,j) = 0.0_wp
       dp_sfc = (p(i+1,j,1) - p(i,j,1))
       ! If the changes in pressure and height anomaly were explicable by just a hydrostatic balance,
       ! the implied specific volume would be   SpV_implied = alpha_ref - (dza_x / dp_x)
-      if (dp_sfc * (alpha_ref*dp_sfc - (za(i+1,j,1)-za(i,j,1))) > 0.0) then
+      if (dp_sfc * (alpha_ref*dp_sfc - (za(i+1,j,1)-za(i,j,1))) > 0.0_wp) then
         T5(1) = T_top(i,j) ; T5(5) = T_top(i+1,j)
         S5(1) = S_top(i,j) ; S5(5) = S_top(i+1,j)
         p5(1) = p(i,j,1)   ; p5(5) = p(i+1,j,1)
         do m=2,4
-          wt_R =  0.25*real(m-1)
+          wt_R =  0.25_wp*real(m-1, wp)
           T5(m) = T5(1) + (T5(5)-T5(1))*wt_R
           S5(m) = S5(1) + (S5(5)-S5(1))*wt_R
           p5(m) = p5(1) + (p5(5)-p5(1))*wt_R
         enddo !m
         call calculate_spec_vol(T5, S5, p5, SpV5, tv%eqn_of_state, spv_ref=alpha_ref)
         ! See the Boussinesq calculation of inty_pa_cor for the derivation of the following expression.
-        intx_za_cor(I,j) = C1_90 * (4.75*(SpV5(5)-SpV5(1)) + 5.5*(SpV5(4)-SpV5(2))) * dp_sfc
+        intx_za_cor(I,j) = C1_90 * (4.75_wp*(SpV5(5)-SpV5(1)) + 5.5_wp*(SpV5(4)-SpV5(2))) * dp_sfc
         ! Note the consistency with the linear form below because (4.75 + 5.5/2) / 90 = 1/12
       endif
-      intx_za(I,j,1) = 0.5*(za(i,j,1) + za(i+1,j,1)) + intx_za_cor(I,j)
+      intx_za(I,j,1) = 0.5_wp*(za(i,j,1) + za(i+1,j,1)) + intx_za_cor(I,j)
     enddo ; enddo
     !$OMP parallel do default(shared) private(dp_sfc,T5,S5,p5,wt_R,SpV5)
     do J=Jsq,Jeq ; do i=is,ie
-      inty_za_cor(i,J) = 0.0
+      inty_za_cor(i,J) = 0.0_wp
       dp_sfc = (p(i,j+1,1) - p(i,j,1))
-      if (dp_sfc * (alpha_ref*dp_sfc - (za(i,j+1,1)-za(i,j,1))) > 0.0) then
+      if (dp_sfc * (alpha_ref*dp_sfc - (za(i,j+1,1)-za(i,j,1))) > 0.0_wp) then
         ! The pressure/depth relationship has a positive implied specific volume.
         T5(1) = T_top(i,j) ; T5(5) = T_top(i,j+1)
         S5(1) = S_top(i,j) ; S5(5) = S_top(i,j+1)
         p5(1) = p(i,j,1)   ; p5(5) = p(i,j+1,1)
         do m=2,4
-          wt_R =  0.25*real(m-1)
+          wt_R =  0.25_wp*real(m-1, wp)
           T5(m) = T5(1) + (T5(5)-T5(1))*wt_R
           S5(m) = S5(1) + (S5(5)-S5(1))*wt_R
           p5(m) = p5(1) + (p5(5)-p5(1))*wt_R
         enddo !m
         call calculate_spec_vol(T5, S5, p5, SpV5, tv%eqn_of_state, spv_ref=alpha_ref)
         ! See the Boussinesq calculation of inty_pa_cor for the derivation of the following expression.
-        inty_za_cor(i,J) = C1_90 * (4.75*(SpV5(5)-SpV5(1)) + 5.5*(SpV5(4)-SpV5(2))) * dp_sfc
+        inty_za_cor(i,J) = C1_90 * (4.75_wp*(SpV5(5)-SpV5(1)) + 5.5_wp*(SpV5(4)-SpV5(2))) * dp_sfc
       endif
-      inty_za(i,J,1) = 0.5*(za(i,j,1) + za(i,j+1,1)) + inty_za_cor(i,J)
+      inty_za(i,J,1) = 0.5_wp*(za(i,j,1) + za(i,j+1,1)) + inty_za_cor(i,J)
     enddo ; enddo
   else
     !   This order of integrating upward and then downward again is necessary with
@@ -552,11 +554,11 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
     ! with flat isopycnals, even with a nonlinear equation of state.
     !$OMP parallel do default(shared)
     do j=js,je ; do I=Isq,Ieq
-      intx_za(I,j,1) = 0.5*(za(i,j,1) + za(i+1,j,1))
+      intx_za(I,j,1) = 0.5_wp*(za(i,j,1) + za(i+1,j,1))
     enddo ; enddo
     !$OMP parallel do default(shared)
     do J=Jsq,Jeq ; do i=is,ie
-      inty_za(i,J,1) = 0.5*(za(i,j,1) + za(i,j+1,1))
+      inty_za(i,J,1) = 0.5_wp*(za(i,j,1) + za(i,j+1,1))
     enddo ; enddo
   endif
 
@@ -585,12 +587,12 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
     ! reset intx_za there, then adjust intx_za throughout the water column.
 
     ! Zero out the 2-d arrays that will be set from various reference interfaces.
-    T_int_W(:,:) = 0.0 ; S_int_W(:,:) = 0.0 ; p_int_W(:,:) = 0.0
-    T_int_E(:,:) = 0.0 ; S_int_E(:,:) = 0.0 ; p_int_E(:,:) = 0.0
-    intx_za_nonlin(:,:) = 0.0 ; intx_za_cor_ri(:,:) = 0.0 ; dp_int_x(:,:) = 0.0
+    T_int_W(:,:) = 0.0_wp ; S_int_W(:,:) = 0.0_wp ; p_int_W(:,:) = 0.0_wp
+    T_int_E(:,:) = 0.0_wp ; S_int_E(:,:) = 0.0_wp ; p_int_E(:,:) = 0.0_wp
+    intx_za_nonlin(:,:) = 0.0_wp ; intx_za_cor_ri(:,:) = 0.0_wp ; dp_int_x(:,:) = 0.0_wp
     do j=js,je ; do I=Isq,Ieq
-      seek_x_cor(I,j) = (G%mask2dCu(I,j) > 0.)
-      delta_p_x(I,j)  = 0.0
+      seek_x_cor(I,j) = (G%mask2dCu(I,j) > 0._wp)
+      delta_p_x(I,j)  = 0.0_wp
     enddo ; enddo
 
     do j=js,je ; do I=Isq,Ieq ; if (seek_x_cor(I,j)) then
@@ -599,7 +601,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         T_int_W(I,j) = T_top(i,j) ; T_int_E(I,j) = T_top(i+1,j)
         S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
         p_int_W(I,j) = p(i,j,1) ; p_int_E(I,j) = p(i+1,j,1)
-        intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5*(za(i,j,1) + za(i+1,j,1))
+        intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5_wp*(za(i,j,1) + za(i+1,j,1))
         dp_int_x(I,j) = p(i+1,j,1)-p(i,j,1)
         seek_x_cor(I,j) = .false.
       endif
@@ -611,14 +613,14 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         ! Find the topmost layer for which both sides are nonvanished and mass-weighting is not
         ! activated in the subgrid interpolation.
         if (((h(i,j,k) > CS%h_nonvanished) .and. (h(i+1,j,k) > CS%h_nonvanished)) .and. &
-            (max(0., p(i,j,1)-p(i+1,j,K+1), p(i+1,j,1)-p(i,j,K+1)) <= 0.0)) then
+            (max(0._wp, p(i,j,1)-p(i+1,j,K+1), p(i+1,j,1)-p(i,j,K+1)) <= 0.0_wp)) then
           ! Store properties at the bottom of this cell to get a "good estimate" for intxpa at
           ! the interface below this cell (it might have quadratic pressure dependence if sloped)
           T_int_W(I,j) = T_b(i,j,k) ; T_int_E(I,j) = T_b(i+1,j,k)
           S_int_W(I,j) = S_b(i,j,k) ; S_int_E(I,j) = S_b(i+1,j,k)
           p_int_W(I,j) = p(i,j,K+1) ; p_int_E(I,j) = p(i+1,j,K+1)
 
-          intx_za_nonlin(I,j) = intx_za(I,j,K+1) - 0.5*(za(i,j,K+1) + za(i+1,j,K+1))
+          intx_za_nonlin(I,j) = intx_za(I,j,K+1) - 0.5_wp*(za(i,j,K+1) + za(i+1,j,K+1))
           dp_int_x(I,j) = p(i+1,j,K+1)-p(i,j,K+1)
           seek_x_cor(I,j) = .false.
         else
@@ -636,7 +638,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
           T_int_W(I,j) = T_top(i,j) ; T_int_E(I,j) = T_top(i+1,j)
           S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
           p_int_W(I,j) = p(i,j,1) ; p_int_E(I,j) = p(i+1,j,1)
-          intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5*(za(i,j,1) + za(i+1,j,1))
+          intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5_wp*(za(i,j,1) + za(i+1,j,1))
           dp_int_x(I,j) = p(i+1,j,1)-p(i,j,1)
           delta_p_x(I,j) = abs(p(i+1,j,1)-p(i,j,1))
           do k=1,nz
@@ -646,7 +648,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
               T_int_W(I,j) = T_b(i,j,k) ; T_int_E(I,j) = T_b(i+1,j,k)
               S_int_W(I,j) = S_b(i,j,k) ; S_int_E(I,j) = S_b(i+1,j,k)
               p_int_W(I,j) = p(i,j,K+1) ; p_int_E(I,j) = p(i+1,j,K+1)
-              intx_za_nonlin(I,j) = intx_za(I,j,K+1) - 0.5*(za(i,j,K+1) + za(i+1,j,K+1))
+              intx_za_nonlin(I,j) = intx_za(I,j,K+1) - 0.5_wp*(za(i,j,K+1) + za(i+1,j,K+1))
               dp_int_x(I,j) = p(i+1,j,K+1)-p(i,j,K+1)
             endif
           enddo
@@ -658,7 +660,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
           T_int_W(I,j) = T_top(i,j) ; T_int_E(I,j) = T_top(i+1,j)
           S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
           p_int_W(I,j) = p(i,j,1) ; p_int_E(I,j) = p(i+1,j,1)
-          intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5*(za(i,j,1) + za(i+1,j,1))
+          intx_za_nonlin(I,j) = intx_za(I,j,1) - 0.5_wp*(za(i,j,1) + za(i+1,j,1))
           dp_int_x(I,j) = p(i+1,j,1)-p(i,j,1)
           seek_x_cor(I,j) = .false.
         endif ; enddo ; enddo
@@ -676,24 +678,24 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         ! This can be used without masking because dp_int_x and intx_za_nonlin are 0 over land.
         T5(1) = T_Int_W(I,j) ; S5(1) = S_Int_W(I,j) ; p5(1) = p_Int_W(I,j)
         T5(5) = T_Int_E(I,j) ; S5(5) = S_Int_E(I,j) ; p5(5) = p_Int_E(I,j)
-        T5(2) = 0.25*(3.0*T5(1) + T5(5)) ; T5(4) = 0.25*(3.0*T5(5) + T5(1)) ; T5(3) = 0.5*(T5(5) + T5(1))
-        S5(2) = 0.25*(3.0*S5(1) + S5(5)) ; S5(4) = 0.25*(3.0*S5(5) + S5(1)) ; S5(3) = 0.5*(S5(5) + S5(1))
-        p5(2) = 0.25*(3.0*p5(1) + p5(5)) ; p5(4) = 0.25*(3.0*p5(5) + p5(1)) ; p5(3) = 0.5*(p5(5) + p5(1))
+        T5(2) = 0.25_wp*(3.0_wp*T5(1) + T5(5)) ; T5(4) = 0.25_wp*(3.0_wp*T5(5) + T5(1)) ; T5(3) = 0.5_wp*(T5(5) + T5(1))
+        S5(2) = 0.25_wp*(3.0_wp*S5(1) + S5(5)) ; S5(4) = 0.25_wp*(3.0_wp*S5(5) + S5(1)) ; S5(3) = 0.5_wp*(S5(5) + S5(1))
+        p5(2) = 0.25_wp*(3.0_wp*p5(1) + p5(5)) ; p5(4) = 0.25_wp*(3.0_wp*p5(5) + p5(1)) ; p5(3) = 0.5_wp*(p5(5) + p5(1))
         call calculate_spec_vol(T5, S5, p5, SpV5, tv%eqn_of_state, spv_ref=alpha_ref)
 
         ! Note the consistency with the linear form below because (4.75 + 5.5/2) / 90 = 1/12
-        intx_za_cor_ri(I,j) = C1_90 * (4.75*(SpV5(5)-SpV5(1)) + 5.5*(SpV5(4)-SpV5(2))) * &
+        intx_za_cor_ri(I,j) = C1_90 * (4.75_wp*(SpV5(5)-SpV5(1)) + 5.5_wp*(SpV5(4)-SpV5(2))) * &
                                       dp_int_x(I,j) - intx_za_nonlin(I,j)
       enddo
     enddo
 
     ! Repeat the calculations above for v-velocity points.
-    T_int_S(:,:) = 0.0 ; S_int_S(:,:) = 0.0 ; p_int_S(:,:) = 0.0
-    T_int_N(:,:) = 0.0 ; S_int_N(:,:) = 0.0 ; p_int_N(:,:) = 0.0
-    inty_za_nonlin(:,:) = 0.0 ; inty_za_cor_ri(:,:) = 0.0 ; dp_int_y(:,:) = 0.0
+    T_int_S(:,:) = 0.0_wp ; S_int_S(:,:) = 0.0_wp ; p_int_S(:,:) = 0.0_wp
+    T_int_N(:,:) = 0.0_wp ; S_int_N(:,:) = 0.0_wp ; p_int_N(:,:) = 0.0_wp
+    inty_za_nonlin(:,:) = 0.0_wp ; inty_za_cor_ri(:,:) = 0.0_wp ; dp_int_y(:,:) = 0.0_wp
     do J=Jsq,Jeq ; do i=is,ie
-      seek_y_cor(i,J) = (G%mask2dCv(i,J) > 0.)
-      delta_p_y(i,J) = 0.0
+      seek_y_cor(i,J) = (G%mask2dCv(i,J) > 0._wp)
+      delta_p_y(i,J) = 0.0_wp
     enddo ; enddo
 
     do J=Jsq,Jeq ; do i=is,ie ; if (seek_y_cor(i,J)) then
@@ -702,7 +704,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         T_int_S(i,J) = T_top(i,j) ; T_int_N(i,J) = T_top(i,j+1)
         S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
         p_int_S(i,J) = p(i,j,1) ; p_int_N(i,J) = p(i,j+1,1)
-        inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5*(za(i,j,1) + za(i,j+1,1))
+        inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5_wp*(za(i,j,1) + za(i,j+1,1))
         dp_int_y(i,J) = p(i,j+1,1) - p(i,j,1)
         seek_y_cor(i,J) = .false.
       endif
@@ -714,13 +716,13 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         ! Find the topmost layer for which both sides are nonvanished and mass-weighting is not
         ! activated in the subgrid interpolation.
         if (((h(i,j,k) > CS%h_nonvanished) .and. (h(i,j+1,k) > CS%h_nonvanished)) .and. &
-            (max(0., p(i,j,1)-p(i,j+1,K+1), p(i,j+1,1)-p(i,j,K+1)) <= 0.0)) then
+            (max(0._wp, p(i,j,1)-p(i,j+1,K+1), p(i,j+1,1)-p(i,j,K+1)) <= 0.0_wp)) then
           ! Store properties at the bottom of this cell to get a "good estimate" for intypa at
           ! the interface below this cell (it might have quadratic pressure dependence if sloped)
           T_int_S(i,J) = T_b(i,j,k) ; T_int_N(i,J) = T_b(i,j+1,k)
           S_int_S(i,J) = S_b(i,j,k) ; S_int_N(i,J) = S_b(i,j+1,k)
           p_int_S(i,J) = p(i,j,K+1) ; p_int_N(i,J) = p(i,j+1,K+1)
-          inty_za_nonlin(i,J) = inty_za(i,J,K+1) - 0.5*(za(i,j,K+1) + za(i,j+1,K+1))
+          inty_za_nonlin(i,J) = inty_za(i,J,K+1) - 0.5_wp*(za(i,j,K+1) + za(i,j+1,K+1))
           dp_int_y(i,J) = p(i,j+1,K+1) - p(i,j,K+1)
           seek_y_cor(i,J) = .false.
         else
@@ -738,7 +740,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
           T_int_S(i,J) = T_top(i,j) ; T_int_N(i,J) = T_top(i,j+1)
           S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
           p_int_S(i,J) = p(i,j,1) ; p_int_N(i,J) = p(i,j+1,1)
-          inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5*(za(i,j,1) + za(i,j+1,1))
+          inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5_wp*(za(i,j,1) + za(i,j+1,1))
           dp_int_y(i,J) = p(i,j+1,1) - p(i,j,1)
           delta_p_y(i,J) = abs(p(i,j+1,1)-p(i,j,1))
           do k=1,nz
@@ -748,7 +750,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
               T_int_S(i,J) = T_b(i,j,k) ; T_int_N(i,J) = T_b(i,j+1,k)
               S_int_S(i,J) = S_b(i,j,k) ; S_int_N(i,J) = S_b(i,j+1,k)
               p_int_S(i,J) = p(i,j,K+1) ; p_int_N(i,J) = p(i,j+1,K+1)
-              inty_za_nonlin(i,J) = inty_za(i,J,K+1) - 0.5*(za(i,j,K+1) + za(i,j+1,K+1))
+              inty_za_nonlin(i,J) = inty_za(i,J,K+1) - 0.5_wp*(za(i,j,K+1) + za(i,j+1,K+1))
               dp_int_y(i,J) = p(i,j+1,K+1) - p(i,j,K+1)
             endif
           enddo
@@ -760,7 +762,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
           T_int_S(i,J) = T_top(i,j) ; T_int_N(i,J) = T_top(i,j+1)
           S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
           p_int_S(i,J) = p(i,j,1) ; p_int_N(i,J) = p(i,j+1,1)
-          inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5*(za(i,j,1) + za(i,j+1,1))
+          inty_za_nonlin(i,J) = inty_za(i,J,1) - 0.5_wp*(za(i,j,1) + za(i,j+1,1))
           dp_int_y(i,J) = p(i,j+1,1) - p(i,j,1)
           seek_y_cor(i,J) = .false.
         endif ; enddo ; enddo
@@ -778,13 +780,13 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
         ! This can be used without masking because dp_int_x and intx_za_nonlin are 0 over land.
         T5(1) = T_Int_S(i,J) ; S5(1) = S_Int_S(i,J) ; p5(1) = p_Int_S(i,J)
         T5(5) = T_Int_N(i,J) ; S5(5) = S_Int_N(i,J) ; p5(5) = p_Int_N(i,J)
-        T5(2) = 0.25*(3.0*T5(1) + T5(5)) ; T5(4) = 0.25*(3.0*T5(5) + T5(1)) ; T5(3) = 0.5*(T5(5) + T5(1))
-        S5(2) = 0.25*(3.0*S5(1) + S5(5)) ; S5(4) = 0.25*(3.0*S5(5) + S5(1)) ; S5(3) = 0.5*(S5(5) + S5(1))
-        p5(2) = 0.25*(3.0*p5(1) + p5(5)) ; p5(4) = 0.25*(3.0*p5(5) + p5(1)) ; p5(3) = 0.5*(p5(5) + p5(1))
+        T5(2) = 0.25_wp*(3.0_wp*T5(1) + T5(5)) ; T5(4) = 0.25_wp*(3.0_wp*T5(5) + T5(1)) ; T5(3) = 0.5_wp*(T5(5) + T5(1))
+        S5(2) = 0.25_wp*(3.0_wp*S5(1) + S5(5)) ; S5(4) = 0.25_wp*(3.0_wp*S5(5) + S5(1)) ; S5(3) = 0.5_wp*(S5(5) + S5(1))
+        p5(2) = 0.25_wp*(3.0_wp*p5(1) + p5(5)) ; p5(4) = 0.25_wp*(3.0_wp*p5(5) + p5(1)) ; p5(3) = 0.5_wp*(p5(5) + p5(1))
         call calculate_spec_vol(T5, S5, p5, SpV5, tv%eqn_of_state, spv_ref=alpha_ref)
 
         ! Note the consistency with the linear form below because (4.75 + 5.5/2) / 90 = 1/12
-        inty_za_cor_ri(i,J) = C1_90 * (4.75*(SpV5(5)-SpV5(1)) + 5.5*(SpV5(4)-SpV5(2))) * &
+        inty_za_cor_ri(i,J) = C1_90 * (4.75_wp*(SpV5(5)-SpV5(1)) + 5.5_wp*(SpV5(4)-SpV5(2))) * &
                                       dp_int_y(i,J) - inty_za_nonlin(i,J)
       enddo
     enddo
@@ -830,7 +832,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                       (za(i+1,j,K+1)*dp(i+1,j) + intp_dza(i+1,j,k))) + &
                      ((dp(i+1,j) - dp(i,j)) * intx_za(I,j,K+1) - &
                       (p(i+1,j,K) - p(i,j,K)) * intx_dza(I,j,k)) ) * &
-                   (2.0*G%IdxCu(I,j) / ((dp(i,j) + dp(i+1,j)) + dp_neglect))
+                   (2.0_wp*G%IdxCu(I,j) / ((dp(i,j) + dp(i+1,j)) + dp_neglect))
     enddo ; enddo
 
     do J=Jsq,Jeq ; do i=is,ie
@@ -838,11 +840,11 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                      (za(i,j+1,K+1)*dp(i,j+1) + intp_dza(i,j+1,k))) + &
                     ((dp(i,j+1) - dp(i,j)) * inty_za(i,J,K+1) - &
                      (p(i,j+1,K) - p(i,j,K)) * inty_dza(i,J,k))) * &
-                    (2.0*G%IdyCv(i,J) / ((dp(i,j) + dp(i,j+1)) + dp_neglect))
+                    (2.0_wp*G%IdyCv(i,J) / ((dp(i,j) + dp(i,j+1)) + dp_neglect))
     enddo ; enddo
   enddo
 
-  if (CS%GFS_scale < 1.0) then
+  if (CS%GFS_scale < 1.0_wp) then
     ! Adjust the Montgomery potential to make this a reduced gravity model.
     if (use_EOS) then
       !$OMP parallel do default(shared) private(rho_in_situ)
@@ -851,13 +853,13 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
                                tv%eqn_of_state, EOSdom)
 
         do i=Isq,Ieq+1
-          dM(i,j) = (CS%GFS_scale - 1.0) * (p(i,j,1)*(1.0/rho_in_situ(i) - alpha_ref) + za(i,j,1))
+          dM(i,j) = (CS%GFS_scale - 1.0_wp) * (p(i,j,1)*(1.0_wp/rho_in_situ(i) - alpha_ref) + za(i,j,1))
         enddo
       enddo
     else
       !$OMP parallel do default(shared)
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-        dM(i,j) = (CS%GFS_scale - 1.0) * (p(i,j,1)*(1.0/GV%Rlay(1) - alpha_ref) + za(i,j,1))
+        dM(i,j) = (CS%GFS_scale - 1.0_wp) * (p(i,j,1)*(1.0_wp/GV%Rlay(1) - alpha_ref) + za(i,j,1))
       enddo ; enddo
     endif
 
@@ -877,7 +879,7 @@ subroutine PressureForce_FV_nonBouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, AD
   endif
 
   if (present(eta)) then
-    Pa_to_H = 1.0 / (GV%g_Earth * GV%H_to_RZ)
+    Pa_to_H = 1.0_wp / (GV%g_Earth * GV%H_to_RZ)
     if (use_p_atm) then
       !$OMP parallel do default(shared)
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
@@ -946,24 +948,24 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
   type(ocean_grid_type),                      intent(in)  :: G   !< Ocean grid structure
   type(verticalGrid_type),                    intent(in)  :: GV  !< Vertical grid structure
   type(unit_scale_type),                      intent(in)  :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> m]
   type(thermo_var_ptrs),                      intent(in)  :: tv  !< Thermodynamic variables
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out) :: PFu !< Zonal acceleration [L T-2 ~> m s-2]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out) :: PFv !< Meridional acceleration [L T-2 ~> m s-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out) :: PFu !< Zonal acceleration [L T-2 ~> m s-2]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out) :: PFv !< Meridional acceleration [L T-2 ~> m s-2]
   type(PressureForce_FV_CS),                  intent(in)  :: CS  !< Finite volume PGF control structure
   type(ALE_CS),                               pointer     :: ALE_CSp !< ALE control structure
   type(accel_diag_ptrs),                      pointer     :: ADp !< Acceleration diagnostic pointers
-  real, dimension(:,:),                       pointer     :: p_atm !< The pressure at the ice-ocean
+  real(wp), dimension(:,:),                       pointer     :: p_atm !< The pressure at the ice-ocean
                                                          !! or atmosphere-ocean interface [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), optional, intent(out) :: pbce !< The baroclinic pressure
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), optional, intent(out) :: pbce !< The baroclinic pressure
                                                          !! anomaly in each layer due to eta anomalies
                                                          !! [L2 T-2 H-1 ~> m s-2].
-  real, dimension(SZI_(G),SZJ_(G)),          optional, intent(out) :: eta !< The sea-surface height used to
+  real(wp), dimension(SZI_(G),SZJ_(G)),          optional, intent(out) :: eta !< The sea-surface height used to
                                                          !! calculate PFu and PFv [H ~> m], with any
                                                          !! tidal contributions.
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: e ! Interface height in depth units [Z ~> m].
-  real, dimension(SZI_(G),SZJ_(G))  :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: e ! Interface height in depth units [Z ~> m].
+  real(wp), dimension(SZI_(G),SZJ_(G))  :: &
     e_sal_and_tide, & ! The summation of self-attraction and loading and tidal forcing [Z ~> m].
     e_sal, &      ! The bottom geopotential anomaly due to self-attraction and loading [Z ~> m].
     e_tidal_eq,  & ! The bottom geopotential anomaly due to tidal forces from astronomical sources
@@ -977,37 +979,37 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                 ! CALCULATE_SAL is True and SAL_USE_BPA is True [R L2 T-2 ~> Pa].
     dM          ! The barotropic adjustment to the Montgomery potential to
                 ! account for a reduced gravity model [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G)) :: &
+  real(wp), dimension(SZI_(G)) :: &
     Rho_cv_BL   ! The coordinate potential density in the deepest variable
                 ! density near-surface layer [R ~> kg m-3].
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     dz_geo      ! The change in geopotential thickness through a layer [L2 T-2 ~> m2 s-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
     pa          ! The pressure anomaly (i.e. pressure + g*RHO_0*e) at the
                 ! the interface atop a layer [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
     dpa, &      ! The change in pressure anomaly between the top and bottom
                 ! of a layer [R L2 T-2 ~> Pa].
     intz_dpa    ! The vertical integral in depth of the pressure anomaly less the
                 ! pressure anomaly at the top of the layer [H R L2 T-2 ~> m Pa].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: &
     intx_pa     ! The zonal integral of the pressure anomaly along the interface
                 ! atop a layer, divided by the grid spacing [R L2 T-2 ~> Pa].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
     intx_dpa    ! The change in intx_pa through a layer [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: &
     inty_pa     ! The meridional integral of the pressure anomaly along the
                 ! interface atop a layer, divided by the grid spacing [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
     inty_dpa    ! The change in inty_pa through a layer [R L2 T-2 ~> Pa].
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     intx_pa_cor ! Correction for curvature in intx_pa [R L2 T-2 ~> Pa]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     inty_pa_cor ! Correction for curvature in inty_pa [R L2 T-2 ~> Pa]
 
   ! These variables are used with reset_intxpa_integral.  The values are taken from different
   ! interfaces as a function of position.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     T_int_W, T_int_E, & ! Temperatures on the reference interface to the east and west of a u-point [C ~> degC]
     S_int_W, S_int_E, & ! Salinities on the reference interface to the east and west of a u-point [S ~> ppt]
     p_int_W, p_int_E, & ! Pressures on the reference interface to the east and west of a u-point [R L2 T-2 ~> Pa]
@@ -1016,7 +1018,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                         ! linearly with depth along that interface [R L2 T-2 ~> Pa].
     dgeo_x, &           ! The change in x in geopotenial height along the reference interface [L2 T-2 ~> m2 s-2]
     intx_pa_cor_ri      ! The correction to intx_pa based on the reference interface calculations [R L2 T-2 ~> Pa]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     T_int_S, T_int_N, & ! Temperatures on the reference interface to the north and south of a v-point [C ~> degC]
     S_int_S, S_int_N, & ! Salinities on the reference interface to the north and south of a v-point [S ~> ppt]
     p_int_S, p_int_N, & ! Pressures on the reference interface to the north and south of a v-point [R L2 T-2 ~> Pa]
@@ -1031,64 +1033,64 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
   logical, dimension(SZI_(G),SZJB_(G)) :: &
     seek_y_cor          ! If true, try to find a v-point interface that would provide a better estimate
                         ! of the curvature terms in the inty_pa.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     delta_z_x           ! If using flattest interface for reset integral, store x interface differences [Z ~> m]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     delta_z_y           ! If using flattest interface for reset integral, store y interface differences [Z ~> m]
 
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), target :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), target :: &
     T_tmp, &    ! Temporary array of temperatures where layers that are lighter
                 ! than the mixed layer have the mixed layer's properties [C ~> degC].
     S_tmp       ! Temporary array of salinities where layers that are lighter
                 ! than the mixed layer have the mixed layer's properties [S ~> ppt].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
     S_t, S_b, & ! Top and bottom edge values for linear reconstructions
                 ! of salinity within each layer [S ~> ppt].
     T_t, T_b    ! Top and bottom edge values for linear reconstructions
                 ! of temperature within each layer [C ~> degC].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: &
     MassWt_u    ! The fractional mass weighting at a u-point [nondim].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
     MassWt_v    ! The fractional mass weighting at a v-point [nondim].
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     T_top, &    ! Temperature of top layer used with correction_intxpa [C ~> degC]
     S_top, &    ! Salinity of top layer used with correction_intxpa [S ~> ppt]
     rho_top     ! Density anomaly of top layer used in calculating intx_pa_cor and inty_pa_cor
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
     rho_pgf, rho_stanley_pgf ! Density [R ~> kg m-3] from EOS with and without SGS T variance
                              ! in Stanley parameterization.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
     p_stanley   ! Pressure [R L2 T-2 ~> Pa] estimated with Rho_0
-  real :: zeros(SZI_(G))     ! An array of zero values that can be used as an argument [various]
-  real :: rho_in_situ(SZI_(G)) ! The in situ density [R ~> kg m-3].
-  real :: p_ref(SZI_(G))     !   The pressure used to calculate the coordinate
+  real(wp) :: zeros(SZI_(G))     ! An array of zero values that can be used as an argument [various]
+  real(wp) :: rho_in_situ(SZI_(G)) ! The in situ density [R ~> kg m-3].
+  real(wp) :: p_ref(SZI_(G))     !   The pressure used to calculate the coordinate
                              ! density, [R L2 T-2 ~> Pa] (usually 2e7 Pa = 2000 dbar).
-  real :: p_surf_EOS(SZI_(G))  ! The pressure at the ocean surface determined from the surface height,
+  real(wp) :: p_surf_EOS(SZI_(G))  ! The pressure at the ocean surface determined from the surface height,
                              ! consistent with what is used in the density integral routines [R L2 T-2 ~> Pa]
-  real :: p0(SZI_(G))        ! An array of zeros to use for pressure [R L2 T-2 ~> Pa].
-  real :: dz_geo_sfc         ! The change in surface geopotential height between adjacent cells [L2 T-2 ~> m2 s-2]
-  real :: GxRho0             ! The gravitational acceleration times mean ocean density [R L2 Z-1 T-2 ~> Pa m-1]
-  real :: GxRho_ref          ! The gravitational acceleration times reference density [R L2 Z-1 T-2 ~> Pa m-1]
-  real :: rho0_int_density   ! Rho0 used in int_density_dz_* subroutines [R ~> kg m-3]
-  real :: rho0_set_pbce      ! Rho0 used in set_pbce_Bouss subroutine [R ~> kg m-3]
-  real :: h_neglect          ! A thickness that is so small it is usually lost
+  real(wp) :: p0(SZI_(G))        ! An array of zeros to use for pressure [R L2 T-2 ~> Pa].
+  real(wp) :: dz_geo_sfc         ! The change in surface geopotential height between adjacent cells [L2 T-2 ~> m2 s-2]
+  real(wp) :: GxRho0             ! The gravitational acceleration times mean ocean density [R L2 Z-1 T-2 ~> Pa m-1]
+  real(wp) :: GxRho_ref          ! The gravitational acceleration times reference density [R L2 Z-1 T-2 ~> Pa m-1]
+  real(wp) :: rho0_int_density   ! Rho0 used in int_density_dz_* subroutines [R ~> kg m-3]
+  real(wp) :: rho0_set_pbce      ! Rho0 used in set_pbce_Bouss subroutine [R ~> kg m-3]
+  real(wp) :: h_neglect          ! A thickness that is so small it is usually lost
                              ! in roundoff and can be neglected [H ~> m].
-  real :: I_Rho0             ! The inverse of the Boussinesq reference density [R-1 ~> m3 kg-1].
-  real :: G_Rho0             ! G_Earth / Rho_0 in [L2 Z-1 T-2 R-1 ~> m4 s-2 kg-1].
-  real :: I_g_rho            ! The inverse of the density times the gravitational acceleration [Z T2 L-2 R-1 ~> m Pa-1]
-  real :: rho_ref            ! The reference density [R ~> kg m-3].
-  real :: dz_neglect         ! A minimal thickness [Z ~> m], like e.
-  real :: dz_nonvanished     ! A small thickness considered to be vanished for mass weighting [Z ~> m]
-  real :: H_to_RL2_T2        ! A factor to convert from thickness units (H) to pressure
+  real(wp) :: I_Rho0             ! The inverse of the Boussinesq reference density [R-1 ~> m3 kg-1].
+  real(wp) :: G_Rho0             ! G_Earth / Rho_0 in [L2 Z-1 T-2 R-1 ~> m4 s-2 kg-1].
+  real(wp) :: I_g_rho            ! The inverse of the density times the gravitational acceleration [Z T2 L-2 R-1 ~> m Pa-1]
+  real(wp) :: rho_ref            ! The reference density [R ~> kg m-3].
+  real(wp) :: dz_neglect         ! A minimal thickness [Z ~> m], like e.
+  real(wp) :: dz_nonvanished     ! A small thickness considered to be vanished for mass weighting [Z ~> m]
+  real(wp) :: H_to_RL2_T2        ! A factor to convert from thickness units (H) to pressure
                              ! units [R L2 T-2 H-1 ~> Pa m-1 or Pa m2 kg-1].
-  real :: T5(5)         ! Temperatures and salinities at five quadrature points [C ~> degC]
-  real :: S5(5)         ! Salinities at five quadrature points [S ~> ppt]
-  real :: p5(5)         ! Full pressures at five quadrature points for use with the equation of state [R L2 T-2 ~> Pa]
-  real :: pa5(5)        ! The pressure anomaly (i.e. pressure + g*RHO_0*e) at five quadrature points [R L2 T-2 ~> Pa].
-  real :: r5(5)         ! Densities at five quadrature points [R ~> kg m-3]
-  real :: wt_R          ! A weighting factor [nondim]
-  real, parameter :: C1_6 = 1.0/6.0    ! A rational constant [nondim]
-  real, parameter :: C1_90 = 1.0/90.0  ! A rational constant [nondim]
+  real(wp) :: T5(5)         ! Temperatures and salinities at five quadrature points [C ~> degC]
+  real(wp) :: S5(5)         ! Salinities at five quadrature points [S ~> ppt]
+  real(wp) :: p5(5)         ! Full pressures at five quadrature points for use with the equation of state [R L2 T-2 ~> Pa]
+  real(wp) :: pa5(5)        ! The pressure anomaly (i.e. pressure + g*RHO_0*e) at five quadrature points [R L2 T-2 ~> Pa].
+  real(wp) :: r5(5)         ! Densities at five quadrature points [R ~> kg m-3]
+  real(wp) :: wt_R          ! A weighting factor [nondim]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp    ! A rational constant [nondim]
+  real(wp), parameter :: C1_90 = 1.0_wp/90.0_wp  ! A rational constant [nondim]
   logical :: use_p_atm       ! If true, use the atmospheric pressure.
   logical :: use_ALE         ! If true, use an ALE pressure reconstruction.
   logical :: use_EOS         ! If true, density is calculated from T & S using an equation of state.
@@ -1113,14 +1115,14 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
 
   use_p_atm = associated(p_atm)
   use_EOS = associated(tv%eqn_of_state)
-  do i=Isq,Ieq+1 ; p0(i) = 0.0 ; enddo
+  do i=Isq,Ieq+1 ; p0(i) = 0.0_wp ; enddo
   use_ALE = .false.
   if (associated(ALE_CSp)) use_ALE = CS%reconstruct .and. use_EOS
 
   h_neglect = GV%H_subroundoff
   dz_neglect = GV%dZ_subroundoff
   dz_nonvanished = GV%H_to_Z*CS%h_nonvanished
-  I_Rho0 = 1.0 / GV%Rho0
+  I_Rho0 = 1.0_wp / GV%Rho0
   G_Rho0 = GV%g_Earth / GV%Rho0
   GxRho0 = GV%g_Earth * GV%Rho0
   rho_ref = CS%rho_ref
@@ -1129,16 +1131,16 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     rho0_int_density = rho_ref
     rho0_set_pbce = rho_ref
     GxRho_ref = GxRho0
-    I_g_rho = 1.0 / (rho_ref * GV%g_Earth)
+    I_g_rho = 1.0_wp / (rho_ref * GV%g_Earth)
   else
     rho0_int_density = GV%Rho0
     rho0_set_pbce = GV%Rho0
     GxRho_ref = GV%g_Earth * rho_ref
-    I_g_rho = 1.0 / (GV%rho0 * GV%g_Earth)
+    I_g_rho = 1.0_wp / (GV%rho0 * GV%g_Earth)
   endif
 
   if ((CS%id_MassWt_u > 0) .or. (CS%id_MassWt_v > 0)) then
-    MassWt_u(:,:,:) = 0.0 ; MassWt_v(:,:,:) = 0.0
+    MassWt_u(:,:,:) = 0.0_wp ; MassWt_v(:,:,:) = 0.0_wp
   endif
 
   do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
@@ -1155,7 +1157,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     !$OMP parallel do default(shared)
     do j=Jsq,Jeq+1
       do i=Isq,Ieq+1
-        SSH(i,j) = min(-G%bathyT(i,j) - G%meanSL(i,j), 0.0)
+        SSH(i,j) = min(-G%bathyT(i,j) - G%meanSL(i,j), 0.0_wp)
       enddo
       do k=1,nz ; do i=Isq,Ieq+1
         SSH(i,j) = SSH(i,j) + h(i,j,k)*GV%H_to_Z
@@ -1180,7 +1182,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         e(i,j,nz+1) = e(i,j,nz+1) - (e_tidal_eq(i,j) + e_tidal_sal(i,j))
       enddo ; enddo
     else  ! answers_date before 20230701
-      if (.not.CS%calculate_SAL) e_sal(:,:) = 0.0
+      if (.not.CS%calculate_SAL) e_sal(:,:) = 0.0_wp
       call calc_tidal_forcing_legacy(CS%Time, e_sal, e_sal_and_tide, e_tidal_eq, e_tidal_sal, &
                                      G, US, CS%tides_CSp)
       !$OMP parallel do default(shared)
@@ -1304,7 +1306,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                   CS%MassWghtInterp, Z_0p=Z_0p, &
                   MassWghtInterpVanOnly=CS%MassWghtInterpVanOnly, h_nv=dz_nonvanished)
       endif
-      if (GV%Z_to_H /= 1.0) then
+      if (GV%Z_to_H /= 1.0_wp) then
         !$OMP parallel do default(shared)
         do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
           intz_dpa(i,j,k) = intz_dpa(i,j,k)*GV%Z_to_H
@@ -1319,15 +1321,15 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
         dz_geo(i,j) = GV%g_Earth * GV%H_to_Z*h(i,j,k)
         dpa(i,j,k) = (GV%Rlay(k) - rho_ref) * dz_geo(i,j)
-        intz_dpa(i,j,k) = 0.5*(GV%Rlay(k) - rho_ref) * dz_geo(i,j)*h(i,j,k)
+        intz_dpa(i,j,k) = 0.5_wp*(GV%Rlay(k) - rho_ref) * dz_geo(i,j)*h(i,j,k)
       enddo ; enddo
       !$OMP parallel do default(shared)
       do j=js,je ; do I=Isq,Ieq
-        intx_dpa(I,j,k) = 0.5*(GV%Rlay(k) - rho_ref) * (dz_geo(i,j) + dz_geo(i+1,j))
+        intx_dpa(I,j,k) = 0.5_wp*(GV%Rlay(k) - rho_ref) * (dz_geo(i,j) + dz_geo(i+1,j))
       enddo ; enddo
       !$OMP parallel do default(shared)
       do J=Jsq,Jeq ; do i=is,ie
-        inty_dpa(i,J,k) = 0.5*(GV%Rlay(k) - rho_ref) * (dz_geo(i,j) + dz_geo(i,j+1))
+        inty_dpa(i,J,k) = 0.5_wp*(GV%Rlay(k) - rho_ref) * (dz_geo(i,j) + dz_geo(i,j+1))
       enddo ; enddo
     endif
   enddo
@@ -1353,7 +1355,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
         SSH(i,j) = e(i,j,1) - G%Z_ref
         ! Remove above sea level topography at floodable cells
-        SSH(i,j) = SSH(i,j) - max(-G%bathyT(i,j)-G%meanSL(i,j), 0.0)
+        SSH(i,j) = SSH(i,j) - max(-G%bathyT(i,j)-G%meanSL(i,j), 0.0_wp)
       enddo ; enddo
       call calc_SAL(SSH, e_sal, G, CS%SAL_CSp, tmp_scale=US%Z_to_m)
     endif
@@ -1410,13 +1412,13 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     ! This version attempts to correct for hydrostatic variations in surface pressure under ice.
     !$OMP parallel do default(shared) private(dz_geo_sfc)
     do j=js,je ; do I=Isq,Ieq
-      intx_pa_cor(I,j) = 0.0
+      intx_pa_cor(I,j) = 0.0_wp
       dz_geo_sfc = GV%g_Earth * (e(i+1,j,1)-e(i,j,1))
-      if ((dz_geo_sfc * rho_ref - (pa(i+1,j,1)-pa(i,j,1)))*dz_geo_sfc > 0.0) then
+      if ((dz_geo_sfc * rho_ref - (pa(i+1,j,1)-pa(i,j,1)))*dz_geo_sfc > 0.0_wp) then
         ! The pressure/depth relationship has a positive implied density given by
         !   rho_implied = rho_ref - (pa(i+1,j,1)-pa(i,j,1)) / dz_geo_sfc
         if (-dz_geo_sfc * (pa(i+1,j,1)-pa(i,j,1)) > &
-            0.25*((rho_top(i+1,j)+rho_top(i,j))-2.0*rho_ref) * dz_geo_sfc**2) then
+            0.25_wp*((rho_top(i+1,j)+rho_top(i,j))-2.0_wp*rho_ref) * dz_geo_sfc**2) then
           ! The pressure difference is at least half the size of the difference expected by hydrostatic
           ! balance.  This test gets rid of pressure differences that are small, e.g. open ocean.
           ! Use 5 point quadrature to calculate intxpa
@@ -1427,7 +1429,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           p5(1) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
           p5(5) = -GxRho0*(e(i+1,j,1) - Z_0p(i,j))
           do m=2,4
-            wt_R =  0.25*real(m-1)
+            wt_R =  0.25_wp*real(m-1, wp)
             T5(m) = T5(1) + (T5(5)-T5(1))*wt_R
             S5(m) = S5(1) + (S5(5)-S5(1))*wt_R
             p5(m) = p5(1) + (p5(5)-p5(1))*wt_R
@@ -1438,20 +1440,20 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           ! anomalies at 5 equally spaced points along the interface, and then use Boole's rule
           ! quadrature to find the integrated correction to the integral of pressure along the interface.
           ! The derivation for this expression is shown below in the y-direction version.
-          intx_pa_cor(I,j) = C1_90 * (4.75*(r5(5)-r5(1)) + 5.5*(r5(4)-r5(2))) * dz_geo_sfc
+          intx_pa_cor(I,j) = C1_90 * (4.75_wp*(r5(5)-r5(1)) + 5.5_wp*(r5(4)-r5(2))) * dz_geo_sfc
           ! Note that (4.75 + 5.5/2) / 90 = 1/12, so this is consistent with the linear result below.
         endif
       endif
-      intx_pa(I,j,1) = 0.5*(pa(i,j,1) + pa(i+1,j,1)) + intx_pa_cor(I,j)
+      intx_pa(I,j,1) = 0.5_wp*(pa(i,j,1) + pa(i+1,j,1)) + intx_pa_cor(I,j)
     enddo ; enddo
     !$OMP parallel do default(shared) private(dz_geo_sfc)
     do J=Jsq,Jeq ; do i=is,ie
-      inty_pa_cor(i,J) = 0.0
+      inty_pa_cor(i,J) = 0.0_wp
       dz_geo_sfc = GV%g_Earth * (e(i,j+1,1)-e(i,j,1))
-      if ((dz_geo_sfc * rho_ref - (pa(i,j+1,1)-pa(i,j,1)))*dz_geo_sfc > 0.0) then
+      if ((dz_geo_sfc * rho_ref - (pa(i,j+1,1)-pa(i,j,1)))*dz_geo_sfc > 0.0_wp) then
         ! The pressure/depth relationship has a positive implied density
         if (-dz_geo_sfc * (pa(i,j+1,1)-pa(i,j,1)) > &
-            0.25*((rho_top(i,j+1)+rho_top(i,j))-2.0*rho_ref) * dz_geo_sfc**2) then
+            0.25_wp*((rho_top(i,j+1)+rho_top(i,j))-2.0_wp*rho_ref) * dz_geo_sfc**2) then
           ! The pressure difference is at least half the size of the difference expected by hydrostatic
           ! balance.  This test gets rid of pressure differences that are small, e.g. open ocean.
           ! Use 5 point quadrature to calculate intypa
@@ -1463,7 +1465,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           p5(5) = -GxRho0*(e(i,j+1,1) - Z_0p(i,j))
 
           do m=2,4
-            wt_R =  0.25*real(m-1)
+            wt_R =  0.25_wp*real(m-1, wp)
             T5(m) = T5(1) + (T5(5)-T5(1))*wt_R
             S5(m) = S5(1) + (S5(5)-S5(1))*wt_R
             p5(m) = p5(1) + (p5(5)-p5(1))*wt_R
@@ -1473,7 +1475,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           ! Use a trapezoidal rule integral of the hydrostatic equation to determine the pressure
           ! anomalies at 5 equally spaced points along the interface, and then use Boole's rule
           ! quadrature to find the integrated correction to the integral of pressure along the interface.
-          inty_pa_cor(i,J) = C1_90 * (4.75*(r5(5)-r5(1)) + 5.5*(r5(4)-r5(2))) * dz_geo_sfc
+          inty_pa_cor(i,J) = C1_90 * (4.75_wp*(r5(5)-r5(1)) + 5.5_wp*(r5(4)-r5(2))) * dz_geo_sfc
 
           ! The derivation of this correction follows:
 
@@ -1517,7 +1519,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           ! inty_pa_cor(i,J) = C1_90*d_geo_8 * ( 38.0*(r5(5)-r5(1)) + 44.0*(r5(4)-r5(2)) )
         endif
       endif
-      inty_pa(i,J,1) = 0.5*(pa(i,j,1) + pa(i,j+1,1)) + inty_pa_cor(i,J)
+      inty_pa(i,J,1) = 0.5_wp*(pa(i,j,1) + pa(i,j+1,1)) + inty_pa_cor(i,J)
     enddo ; enddo
 
     if (CS%debug) then
@@ -1534,11 +1536,11 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     ! to an interior interface.
     !$OMP parallel do default(shared)
     do j=js,je ; do I=Isq,Ieq
-      intx_pa(I,j,1) = 0.5*(pa(i,j,1) + pa(i+1,j,1))
+      intx_pa(I,j,1) = 0.5_wp*(pa(i,j,1) + pa(i+1,j,1))
     enddo ; enddo
     !$OMP parallel do default(shared)
     do J=Jsq,Jeq ; do i=is,ie
-      inty_pa(i,J,1) = 0.5*(pa(i,j,1) + pa(i,j+1,1))
+      inty_pa(i,J,1) = 0.5_wp*(pa(i,j,1) + pa(i,j+1,1))
     enddo ; enddo
   endif
 
@@ -1560,12 +1562,12 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     ! reset intxpa there, then adjust intxpa throughout the water column.
 
     ! Zero out the 2-d arrays that will be set from various reference interfaces.
-    T_int_W(:,:) = 0.0 ; S_int_W(:,:) = 0.0 ; p_int_W(:,:) = 0.0
-    T_int_E(:,:) = 0.0 ; S_int_E(:,:) = 0.0 ; p_int_E(:,:) = 0.0
-    intx_pa_nonlin(:,:) = 0.0 ; dgeo_x(:,:) = 0.0 ; intx_pa_cor_ri(:,:) = 0.0
+    T_int_W(:,:) = 0.0_wp ; S_int_W(:,:) = 0.0_wp ; p_int_W(:,:) = 0.0_wp
+    T_int_E(:,:) = 0.0_wp ; S_int_E(:,:) = 0.0_wp ; p_int_E(:,:) = 0.0_wp
+    intx_pa_nonlin(:,:) = 0.0_wp ; dgeo_x(:,:) = 0.0_wp ; intx_pa_cor_ri(:,:) = 0.0_wp
     do j=js,je ; do I=Isq,Ieq
-      seek_x_cor(I,j) = (G%mask2dCu(I,j) > 0.)
-      delta_z_x(I,j)  = 0.0
+      seek_x_cor(I,j) = (G%mask2dCu(I,j) > 0._wp)
+      delta_z_x(I,j)  = 0.0_wp
     enddo ; enddo
 
     do j=js,je ; do I=Isq,Ieq ; if (seek_x_cor(I,j)) then
@@ -1575,7 +1577,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
         p_int_W(I,j) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
         p_int_E(I,j) = -GxRho0*(e(i+1,j,1) - Z_0p(i,j))
-        intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5*(pa(i,j,1) + pa(i+1,j,1))
+        intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5_wp*(pa(i,j,1) + pa(i+1,j,1))
         dgeo_x(I,j) = GV%g_Earth * (e(i+1,j,1)-e(i,j,1))
         seek_x_cor(I,j) = .false.
       endif
@@ -1587,7 +1589,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         ! Find the topmost layer for which both sides are nonvanished and mass-weighting is not
         ! activated in the subgrid interpolation.
         if (((h(i,j,k) > CS%h_nonvanished) .and. (h(i+1,j,k) > CS%h_nonvanished)) .and. &
-            (max(0., e(i+1,j,K+1)-e(i,j,1), e(i,j,K+1)-e(i+1,j,1)) <= 0.0)) then
+            (max(0._wp, e(i+1,j,K+1)-e(i,j,1), e(i,j,K+1)-e(i+1,j,1)) <= 0.0_wp)) then
           ! Store properties at the bottom of this cell to get a "good estimate" for intxpa at
           ! the interface below this cell (it might have quadratic pressure dependence if sloped)
           T_int_W(I,j) = T_b(i,j,k) ; T_int_E(I,j) = T_b(i+1,j,k)
@@ -1597,7 +1599,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           p_int_W(I,j) = -GxRho0*(e(i,j,K+1) - Z_0p(i,j))
           p_int_E(I,j) = -GxRho0*(e(i+1,j,K+1) - Z_0p(i,j))
 
-          intx_pa_nonlin(I,j) = intx_pa(I,j,K+1) - 0.5*(pa(i,j,K+1) + pa(i+1,j,K+1))
+          intx_pa_nonlin(I,j) = intx_pa(I,j,K+1) - 0.5_wp*(pa(i,j,K+1) + pa(i+1,j,K+1))
           dgeo_x(I,j) = GV%g_Earth * (e(i+1,j,K+1)-e(i,j,K+1))
           seek_x_cor(I,j) = .false.
         else
@@ -1616,7 +1618,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
           p_int_W(I,j) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
           p_int_E(I,j) = -GxRho0*(e(i+1,j,1) - Z_0p(i,j))
-          intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5*(pa(i,j,1) + pa(i+1,j,1))
+          intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5_wp*(pa(i,j,1) + pa(i+1,j,1))
           dgeo_x(I,j) = GV%g_Earth * (e(i+1,j,1)-e(i,j,1))
           delta_z_x(I,j) = abs(e(i+1,j,1)-e(i,j,1))
           do k=1,nz
@@ -1627,7 +1629,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
               S_int_W(I,j) = S_b(i,j,k) ; S_int_E(I,j) = S_b(i+1,j,k)
               p_int_W(I,j) = -GxRho0*(e(i,j,K+1) - Z_0p(i,j))
               p_int_E(I,j) = -GxRho0*(e(i+1,j,K+1) - Z_0p(i,j))
-              intx_pa_nonlin(I,j) = intx_pa(I,j,K+1) - 0.5*(pa(i,j,K+1) + pa(i+1,j,K+1))
+              intx_pa_nonlin(I,j) = intx_pa(I,j,K+1) - 0.5_wp*(pa(i,j,K+1) + pa(i+1,j,K+1))
               dgeo_x(I,j) = GV%g_Earth * (e(i+1,j,K+1)-e(i,j,K+1))
             endif
           enddo
@@ -1640,7 +1642,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           S_int_W(I,j) = S_top(i,j) ; S_int_E(I,j) = S_top(i+1,j)
           p_int_W(I,j) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
           p_int_E(I,j) = -GxRho0*(e(i+1,j,1) - Z_0p(i,j))
-          intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5*(pa(i,j,1) + pa(i+1,j,1))
+          intx_pa_nonlin(I,j) = intx_pa(I,j,1) - 0.5_wp*(pa(i,j,1) + pa(i+1,j,1))
           dgeo_x(I,j) = GV%g_Earth * (e(i+1,j,1)-e(i,j,1))
           seek_x_cor(I,j) = .false.
         endif ; enddo ; enddo
@@ -1658,24 +1660,24 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         ! This can be used without masking because dgeo_x and intx_pa_nonlin are 0 over land.
         T5(1) = T_Int_W(I,j) ; S5(1) = S_Int_W(I,j) ; p5(1) = p_Int_W(I,j)
         T5(5) = T_Int_E(I,j) ; S5(5) = S_Int_E(I,j) ; p5(5) = p_Int_E(I,j)
-        T5(2) = 0.25*(3.0*T5(1) + T5(5)) ; T5(4) = 0.25*(3.0*T5(5) + T5(1)) ; T5(3) = 0.5*(T5(5) + T5(1))
-        S5(2) = 0.25*(3.0*S5(1) + S5(5)) ; S5(4) = 0.25*(3.0*S5(5) + S5(1)) ; S5(3) = 0.5*(S5(5) + S5(1))
-        p5(2) = 0.25*(3.0*p5(1) + p5(5)) ; p5(4) = 0.25*(3.0*p5(5) + p5(1)) ; p5(3) = 0.5*(p5(5) + p5(1))
+        T5(2) = 0.25_wp*(3.0_wp*T5(1) + T5(5)) ; T5(4) = 0.25_wp*(3.0_wp*T5(5) + T5(1)) ; T5(3) = 0.5_wp*(T5(5) + T5(1))
+        S5(2) = 0.25_wp*(3.0_wp*S5(1) + S5(5)) ; S5(4) = 0.25_wp*(3.0_wp*S5(5) + S5(1)) ; S5(3) = 0.5_wp*(S5(5) + S5(1))
+        p5(2) = 0.25_wp*(3.0_wp*p5(1) + p5(5)) ; p5(4) = 0.25_wp*(3.0_wp*p5(5) + p5(1)) ; p5(3) = 0.5_wp*(p5(5) + p5(1))
         call calculate_density(T5, S5, p5, r5, tv%eqn_of_state, rho_ref=rho_ref)
 
         ! Note the consistency with the linear form below because (4.75 + 5.5/2) / 90 = 1/12
-        intx_pa_cor_ri(I,j) = C1_90 * (4.75*(r5(5)-r5(1)) + 5.5*(r5(4)-r5(2))) * dgeo_x(I,j) - &
+        intx_pa_cor_ri(I,j) = C1_90 * (4.75_wp*(r5(5)-r5(1)) + 5.5_wp*(r5(4)-r5(2))) * dgeo_x(I,j) - &
                               intx_pa_nonlin(I,j)
       enddo
     enddo
 
     ! Repeat the calculations above for v-velocity points.
-    T_int_S(:,:) = 0.0 ; S_int_S(:,:) = 0.0 ; p_int_S(:,:) = 0.0
-    T_int_N(:,:) = 0.0 ; S_int_N(:,:) = 0.0 ; p_int_N(:,:) = 0.0
-    inty_pa_nonlin(:,:) = 0.0 ; dgeo_y(:,:) = 0.0 ; inty_pa_cor_ri(:,:) = 0.0
+    T_int_S(:,:) = 0.0_wp ; S_int_S(:,:) = 0.0_wp ; p_int_S(:,:) = 0.0_wp
+    T_int_N(:,:) = 0.0_wp ; S_int_N(:,:) = 0.0_wp ; p_int_N(:,:) = 0.0_wp
+    inty_pa_nonlin(:,:) = 0.0_wp ; dgeo_y(:,:) = 0.0_wp ; inty_pa_cor_ri(:,:) = 0.0_wp
     do J=Jsq,Jeq ; do i=is,ie
-      seek_y_cor(i,J) = (G%mask2dCv(i,J) > 0.)
-      delta_z_y(i,J)  = 0.0
+      seek_y_cor(i,J) = (G%mask2dCv(i,J) > 0._wp)
+      delta_z_y(i,J)  = 0.0_wp
     enddo ; enddo
 
     do J=Jsq,Jeq ; do i=is,ie ; if (seek_y_cor(i,J)) then
@@ -1685,7 +1687,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
         p_int_S(i,J) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
         p_int_N(i,J) = -GxRho0*(e(i,j+1,1) - Z_0p(i,j))
-        inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5*(pa(i,j,1) + pa(i,j+1,1))
+        inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5_wp*(pa(i,j,1) + pa(i,j+1,1))
         dgeo_y(i,J) = GV%g_Earth * (e(i,j+1,1)-e(i,j,1))
         seek_y_cor(i,J) = .false.
       endif
@@ -1697,7 +1699,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         ! Find the topmost layer for which both sides are nonvanished and mass-weighting is not
         ! activated in the subgrid interpolation.
         if (((h(i,j,k) > CS%h_nonvanished) .and. (h(i,j+1,k) > CS%h_nonvanished)) .and. &
-            (max(0., e(i,j+1,K+1)-e(i,j,1), e(i,j,K+1)-e(i,j+1,1)) <= 0.0)) then
+            (max(0._wp, e(i,j+1,K+1)-e(i,j,1), e(i,j,K+1)-e(i,j+1,1)) <= 0.0_wp)) then
           ! Store properties at the bottom of this cell to get a "good estimate" for intypa at
           ! the interface below this cell (it might have quadratic pressure dependence if sloped)
           T_int_S(i,J) = T_b(i,j,k) ; T_int_N(i,J) = T_b(i,j+1,k)
@@ -1706,7 +1708,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           ! height, consistent with the expressions in the int_density_dz routines.
           p_int_S(i,J) = -GxRho0*(e(i,j,K+1) - Z_0p(i,j))
           p_int_N(i,J) = -GxRho0*(e(i,j+1,K+1) - Z_0p(i,j))
-          inty_pa_nonlin(i,J) = inty_pa(i,J,K+1) - 0.5*(pa(i,j,K+1) + pa(i,j+1,K+1))
+          inty_pa_nonlin(i,J) = inty_pa(i,J,K+1) - 0.5_wp*(pa(i,j,K+1) + pa(i,j+1,K+1))
           dgeo_y(i,J) = GV%g_Earth * (e(i,j+1,K+1)-e(i,j,K+1))
           seek_y_cor(i,J) = .false.
         else
@@ -1725,7 +1727,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
           p_int_S(i,J) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
           p_int_N(i,J) = -GxRho0*(e(i,j+1,1) - Z_0p(i,j))
-          inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5*(pa(i,j,1) + pa(i,j+1,1))
+          inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5_wp*(pa(i,j,1) + pa(i,j+1,1))
           dgeo_y(i,J) = GV%g_Earth * (e(i,j+1,1)-e(i,j,1))
           delta_z_y(i,J) = abs(e(i,j+1,1)-e(i,j,1))
           do k=1,nz
@@ -1736,7 +1738,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
               S_int_S(i,J) = S_b(i,j,k) ; S_int_N(i,J) = S_b(i,j+1,k)
               p_int_S(i,J) = -GxRho0*(e(i,j,k+1) - Z_0p(i,j))
               p_int_N(i,J) = -GxRho0*(e(i,j+1,k+1) - Z_0p(i,j))
-              inty_pa_nonlin(i,J) = inty_pa(i,J,k+1) - 0.5*(pa(i,j,k+1) + pa(i,j+1,k+1))
+              inty_pa_nonlin(i,J) = inty_pa(i,J,k+1) - 0.5_wp*(pa(i,j,k+1) + pa(i,j+1,k+1))
               dgeo_y(i,J) = GV%g_Earth * (e(i,j+1,k+1)-e(i,j,k+1))
             endif
           enddo
@@ -1749,7 +1751,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
           S_int_S(i,J) = S_top(i,j) ; S_int_N(i,J) = S_top(i,j+1)
           p_int_S(i,J) = -GxRho0*(e(i,j,1) - Z_0p(i,j))
           p_int_N(i,J) = -GxRho0*(e(i,j+1,1) - Z_0p(i,j))
-          inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5*(pa(i,j,1) + pa(i,j+1,1))
+          inty_pa_nonlin(i,J) = inty_pa(i,J,1) - 0.5_wp*(pa(i,j,1) + pa(i,j+1,1))
           dgeo_y(i,J) = GV%g_Earth * (e(i,j+1,1)-e(i,j,1))
           seek_y_cor(i,J) = .false.
         endif ; enddo ; enddo
@@ -1767,13 +1769,13 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
         ! This can be used without masking because dgeo_y and inty_pa_nonlin are 0 over land.
         T5(1) = T_Int_S(i,J) ; S5(1) = S_Int_S(i,J) ; p5(1) = p_Int_S(i,J)
         T5(5) = T_Int_N(i,J) ; S5(5) = S_Int_N(i,J) ; p5(5) = p_Int_N(i,J)
-        T5(2) = 0.25*(3.0*T5(1) + T5(5)) ; T5(4) = 0.25*(3.0*T5(5) + T5(1)) ; T5(3) = 0.5*(T5(5) + T5(1))
-        S5(2) = 0.25*(3.0*S5(1) + S5(5)) ; S5(4) = 0.25*(3.0*S5(5) + S5(1)) ; S5(3) = 0.5*(S5(5) + S5(1))
-        p5(2) = 0.25*(3.0*p5(1) + p5(5)) ; p5(4) = 0.25*(3.0*p5(5) + p5(1)) ; p5(3) = 0.5*(p5(5) + p5(1))
+        T5(2) = 0.25_wp*(3.0_wp*T5(1) + T5(5)) ; T5(4) = 0.25_wp*(3.0_wp*T5(5) + T5(1)) ; T5(3) = 0.5_wp*(T5(5) + T5(1))
+        S5(2) = 0.25_wp*(3.0_wp*S5(1) + S5(5)) ; S5(4) = 0.25_wp*(3.0_wp*S5(5) + S5(1)) ; S5(3) = 0.5_wp*(S5(5) + S5(1))
+        p5(2) = 0.25_wp*(3.0_wp*p5(1) + p5(5)) ; p5(4) = 0.25_wp*(3.0_wp*p5(5) + p5(1)) ; p5(3) = 0.5_wp*(p5(5) + p5(1))
         call calculate_density(T5, S5, p5, r5, tv%eqn_of_state, rho_ref=rho_ref)
 
         ! Note the consistency with the linear form below because (4.75 + 5.5/2) / 90 = 1/12
-        inty_pa_cor_ri(i,J) = C1_90 * (4.75*(r5(5)-r5(1)) + 5.5*(r5(4)-r5(2))) * dgeo_y(i,J) - &
+        inty_pa_cor_ri(i,J) = C1_90 * (4.75_wp*(r5(5)-r5(1)) + 5.5_wp*(r5(4)-r5(2))) * dgeo_y(i,J) - &
                               inty_pa_nonlin(i,J)
       enddo
     enddo
@@ -1795,7 +1797,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                    (pa(i+1,j,K)*h(i+1,j,k) + intz_dpa(i+1,j,k))) + &
                   ((h(i+1,j,k) - h(i,j,k)) * intx_pa(I,j,K) - &
                    (e(i+1,j,K+1) - e(i,j,K+1)) * intx_dpa(I,j,k) * GV%Z_to_H)) * &
-                 ((2.0*I_Rho0*G%IdxCu(I,j)) / &
+                 ((2.0_wp*I_Rho0*G%IdxCu(I,j)) / &
                   ((h(i,j,k) + h(i+1,j,k)) + h_neglect))
   enddo ; enddo ; enddo
 
@@ -1806,7 +1808,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                    (pa(i,j+1,K)*h(i,j+1,k) + intz_dpa(i,j+1,k))) + &
                   ((h(i,j+1,k) - h(i,j,k)) * inty_pa(i,J,K) - &
                    (e(i,j+1,K+1) - e(i,j,K+1)) * inty_dpa(i,J,k) * GV%Z_to_H)) * &
-                 ((2.0*I_Rho0*G%IdyCv(i,J)) / &
+                 ((2.0_wp*I_Rho0*G%IdyCv(i,J)) / &
                   ((h(i,j,k) + h(i,j+1,k)) + h_neglect))
   enddo ; enddo ; enddo
 
@@ -1838,7 +1840,7 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
     enddo
   endif
 
-  if (CS%GFS_scale < 1.0) then
+  if (CS%GFS_scale < 1.0_wp) then
     ! Adjust the Montgomery potential to make this a reduced gravity model.
     if (use_EOS) then
       !$OMP parallel do default(shared)
@@ -1851,13 +1853,13 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
                                  tv%eqn_of_state, EOSdom)
         endif
         do i=Isq,Ieq+1
-          dM(i,j) = (CS%GFS_scale - 1.0) * (G_Rho0 * rho_in_situ(i)) * (e(i,j,1) - G%Z_ref)
+          dM(i,j) = (CS%GFS_scale - 1.0_wp) * (G_Rho0 * rho_in_situ(i)) * (e(i,j,1) - G%Z_ref)
         enddo
       enddo
     else
       !$OMP parallel do default(shared)
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-        dM(i,j) = (CS%GFS_scale - 1.0) * (G_Rho0 * GV%Rlay(1)) * (e(i,j,1) - G%Z_ref)
+        dM(i,j) = (CS%GFS_scale - 1.0_wp) * (G_Rho0 * GV%Rlay(1)) * (e(i,j,1) - G%Z_ref)
       enddo ; enddo
     endif
 
@@ -1906,22 +1908,22 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
 
   if (CS%use_stanley_pgf) then
     ! Calculated diagnostics related to the Stanley parameterization
-    zeros(:) = 0.0
+    zeros(:) = 0.0_wp
     EOSdom_h(:) = EOS_domain(G%HI)
     if ((CS%id_p_stanley>0) .or. (CS%id_rho_pgf>0) .or. (CS%id_rho_stanley_pgf>0)) then
       ! Find the pressure at the mid-point of each layer.
       H_to_RL2_T2 = GV%g_Earth*GV%H_to_RZ
       if (use_p_atm) then
         do j=js,je ; do i=is,ie
-          p_stanley(i,j,1) = 0.5*h(i,j,1) * H_to_RL2_T2 + p_atm(i,j)
+          p_stanley(i,j,1) = 0.5_wp*h(i,j,1) * H_to_RL2_T2 + p_atm(i,j)
         enddo ; enddo
       else
         do j=js,je ; do i=is,ie
-          p_stanley(i,j,1) = 0.5*h(i,j,1) * H_to_RL2_T2
+          p_stanley(i,j,1) = 0.5_wp*h(i,j,1) * H_to_RL2_T2
         enddo ; enddo
       endif
       do k=2,nz ; do j=js,je ; do i=is,ie
-        p_stanley(i,j,k) = p_stanley(i,j,k-1) + 0.5*(h(i,j,k-1) + h(i,j,k)) * H_to_RL2_T2
+        p_stanley(i,j,k) = p_stanley(i,j,k-1) + 0.5_wp*(h(i,j,k-1) + h(i,j,k)) * H_to_RL2_T2
       enddo ; enddo ; enddo
     endif
     if (CS%id_p_stanley>0) call post_data(CS%id_p_stanley, p_stanley, CS%diag)
@@ -1978,11 +1980,11 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
       ! sal_u = ( e(i+1) - e(i) ) * g / dx * (rho(k) / rho0)
       if (associated(ADp%sal_u)) then ; do k=1,nz ; do j=js,je ; do I=Isq,Ieq
         ADp%sal_u(I,j,k) = (e_sal(i+1,j) - e_sal(i,j)) * G%IdxCu(I,j) * I_Rho0 * &
-          (2.0 * intx_dpa(I,j,k) * GV%Z_to_H / ((h(i,j,k) + h(i+1,j,k)) + h_neglect) + GxRho_ref)
+          (2.0_wp * intx_dpa(I,j,k) * GV%Z_to_H / ((h(i,j,k) + h(i+1,j,k)) + h_neglect) + GxRho_ref)
       enddo ; enddo ; enddo ; endif
       if (associated(ADp%sal_v)) then ; do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
         ADp%sal_v(i,J,k) = (e_sal(i,j+1) - e_sal(i,j)) * G%IdyCv(i,J) * I_Rho0 * &
-          (2.0 * inty_dpa(i,J,k) * GV%Z_to_H / ((h(i,j,k) + h(i,j+1,k)) + h_neglect) + GxRho_ref)
+          (2.0_wp * inty_dpa(i,J,k) * GV%Z_to_H / ((h(i,j,k) + h(i,j+1,k)) + h_neglect) + GxRho_ref)
       enddo ; enddo ; enddo ; endif
     endif
     if (CS%id_sal_u>0) call post_data(CS%id_sal_u, ADp%sal_u, CS%diag)
@@ -2002,11 +2004,11 @@ subroutine PressureForce_FV_Bouss(h, tv, PFu, PFv, G, GV, US, CS, ALE_CSp, ADp, 
       ! tides_u = ( e(i+1) - e(i) ) * g / dx * (rho(k) / rho0)
       if (associated(ADp%tides_u)) then ; do k=1,nz ; do j=js,je ; do I=Isq,Ieq
         ADp%tides_u(I,j,k) = (e_tidal_eq(i+1,j) - e_tidal_eq(i,j)) * G%IdxCu(I,j) * I_Rho0 * &
-          (2.0 * intx_dpa(I,j,k) * GV%Z_to_H / ((h(i,j,k) + h(i+1,j,k)) + h_neglect) + GxRho_ref)
+          (2.0_wp * intx_dpa(I,j,k) * GV%Z_to_H / ((h(i,j,k) + h(i+1,j,k)) + h_neglect) + GxRho_ref)
       enddo ; enddo ; enddo ; endif
       if (associated(ADp%tides_v)) then ; do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
         ADp%tides_v(i,J,k) = (e_tidal_eq(i,j+1) - e_tidal_eq(i,j)) * G%IdyCv(i,J) * I_Rho0 * &
-          (2.0 * inty_dpa(i,J,k) * GV%Z_to_H / ((h(i,j,k) + h(i,j+1,k)) + h_neglect) + GxRho_ref)
+          (2.0_wp * inty_dpa(i,J,k) * GV%Z_to_H / ((h(i,j,k) + h(i,j+1,k)) + h_neglect) + GxRho_ref)
       enddo ; enddo ; enddo ; endif
     endif
     if (CS%id_tides_u>0) call post_data(CS%id_tides_u, ADp%tides_u, CS%diag)
@@ -2028,7 +2030,7 @@ subroutine PressureForce_FV_init(Time, G, GV, US, param_file, diag, CS, ADp, SAL
   type(tidal_forcing_CS), intent(in), target, optional :: tides_CSp !< Tides control structure
 
   ! Local variables
-  real :: Stanley_coeff    ! Coefficient relating the temperature gradient and sub-gridscale
+  real(wp) :: Stanley_coeff    ! Coefficient relating the temperature gradient and sub-gridscale
                            ! temperature variance [nondim]
   integer :: default_answer_date ! Global answer date
   logical :: use_temperature   ! If true, temperature and salinity are used as state variables.
@@ -2165,7 +2167,7 @@ subroutine PressureForce_FV_init(Time, G, GV, US, param_file, diag, CS, ADp, SAL
   call get_param(param_file, mdl, "RESET_INTXPA_H_NONVANISHED", CS%h_nonvanished, &
                  "A minimal layer thickness that indicates that a layer is thick enough to usefully "//&
                  "reestimate the pressure integral across the interface below.", &
-                 default=1.0e-6, units="m", scale=GV%m_to_H, do_not_log=.not.CS%reset_intxpa_integral)
+                 default=1.0e-6_wp, units="m", scale=GV%m_to_H, do_not_log=.not.CS%reset_intxpa_integral)
   call get_param(param_file, mdl, "USE_INACCURATE_PGF_RHO_ANOM", CS%use_inaccurate_pgf_rho_anom, &
                  "If true, use a form of the PGF that uses the reference density "//&
                  "in an inaccurate way. This is not recommended.", default=.false.)
@@ -2193,8 +2195,8 @@ subroutine PressureForce_FV_init(Time, G, GV, US, param_file, diag, CS, ADp, SAL
   if (CS%use_stanley_pgf) then
     call get_param(param_file, mdl, "STANLEY_COEFF", Stanley_coeff, &
                  "Coefficient correlating the temperature gradient and SGS T variance.", &
-                 units="nondim", default=-1.0, do_not_log=.true.)
-    if (Stanley_coeff < 0.0) call MOM_error(FATAL, &
+                 units="nondim", default=-1.0_wp, do_not_log=.true.)
+    if (Stanley_coeff < 0.0_wp) call MOM_error(FATAL, &
                  "STANLEY_COEFF must be set >= 0 if USE_STANLEY_PGF is true.")
 
     CS%id_rho_pgf = register_diag_field('ocean_model', 'rho_pgf', diag%axesTL, &
@@ -2238,7 +2240,7 @@ subroutine PressureForce_FV_init(Time, G, GV, US, param_file, diag, CS, ADp, SAL
   CS%id_MassWt_v = register_diag_field('ocean_model', 'MassWt_v', diag%axesCvL, Time, &
         'The fractional mass weighting at v-point PGF calculations', 'nondim')
 
-  CS%GFS_scale = 1.0
+  CS%GFS_scale = 1.0_wp
   if (GV%g_prime(1) /= GV%g_Earth) CS%GFS_scale = GV%g_prime(1) / GV%g_Earth
 
   call log_param(param_file, mdl, "GFS / G_EARTH", CS%GFS_scale, units="nondim")

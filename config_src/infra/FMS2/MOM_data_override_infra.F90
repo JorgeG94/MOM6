@@ -10,6 +10,8 @@ use data_override_mod, only : data_override_init
 use data_override_mod, only : data_override
 use data_override_mod, only : data_override_unset_domains
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: impose_data_init, impose_data, impose_data_unset_domains
@@ -40,9 +42,9 @@ end subroutine impose_data_init
 subroutine data_override_MD(domain, fieldname, data_2D, time, scale, override, is_ice)
   type(MOM_domain_type), intent(in)   :: domain   !< MOM domain from which to extract information
   character(len=*),     intent(in)    :: fieldname !< Name of the field to override
-  real, dimension(:,:), intent(inout) :: data_2D  !< Data that may be modified by this call.
+  real(wp), dimension(:,:), intent(inout) :: data_2D  !< Data that may be modified by this call.
   type(time_type),      intent(in)    :: time     !< The model time, and the time for the data
-  real,       optional, intent(in)    :: scale    !< A scaling factor that an overridden field is
+  real(wp),       optional, intent(in)    :: scale    !< A scaling factor that an overridden field is
                                                   !! multiplied by before it is returned.  However,
                                                   !! if there is no override, there is no rescaling.
   logical,    optional, intent(out)   :: override !< True if the field has been overridden successfully
@@ -59,7 +61,7 @@ subroutine data_override_MD(domain, fieldname, data_2D, time, scale, override, i
     call data_override('ICE', fieldname, data_2D, time, override=overridden)
   endif
 
-  if (overridden .and. present(scale)) then ; if (scale /= 1.0) then
+  if (overridden .and. present(scale)) then ; if (scale /= 1.0_wp) then
     ! Rescale data in the computational domain if the data override has occurred.
     call get_simple_array_i_ind(domain, size(data_2D,1), is, ie)
     call get_simple_array_j_ind(domain, size(data_2D,2), js, je)
@@ -78,7 +80,7 @@ subroutine data_override_2d(gridname, fieldname, data_2D, time, override)
   character(len=3),     intent(in)    :: gridname !< String identifying the model component, in MOM6
                                                   !! and SIS this may be either 'OCN' or 'ICE'
   character(len=*),     intent(in)    :: fieldname !< Name of the field to override
-  real, dimension(:,:), intent(inout) :: data_2D  !< Data that may be modified by this call
+  real(wp), dimension(:,:), intent(inout) :: data_2D  !< Data that may be modified by this call
   type(time_type),      intent(in)    :: time     !< The model time, and the time for the data
   logical,    optional, intent(out)   :: override !< True if the field has been overridden successfully
 

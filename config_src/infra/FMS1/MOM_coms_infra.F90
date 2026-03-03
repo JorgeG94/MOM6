@@ -3,7 +3,6 @@ module MOM_coms_infra
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
-use iso_fortran_env, only : int32, int64
 
 use mpp_mod, only : mpp_pe, mpp_root_pe, mpp_npes, mpp_set_root_pe
 use mpp_mod, only : mpp_set_current_pelist, mpp_get_current_pelist
@@ -11,6 +10,8 @@ use mpp_mod, only : mpp_broadcast, mpp_sync, mpp_sync_self, mpp_chksum
 use mpp_mod, only : mpp_sum, mpp_max, mpp_min
 use memutils_mod, only : print_memuse_stats
 use fms_mod, only : fms_end, fms_init
+
+use MOM_datatypes, only : int32, int64, wp
 
 implicit none ; private
 
@@ -200,7 +201,7 @@ end subroutine broadcast_int1D
 
 !> Communicate a real number from one PE to others
 subroutine broadcast_real0D(dat, from_PE, PElist, blocking)
-  real,                 intent(inout) :: dat       !< The data to communicate and destination
+  real(wp),                 intent(inout) :: dat       !< The data to communicate and destination
   integer,    optional, intent(in)    :: from_PE   !< The source PE, by default the root PE
   integer,    optional, intent(in)    :: PElist(:) !< The list of participating PEs, by default the
                                                    !! active PE set as previously set via Set_PElist.
@@ -220,7 +221,7 @@ end subroutine broadcast_real0D
 
 !> Communicate a 1-D array of reals from one PE to others
 subroutine broadcast_real1D(dat, length, from_PE, PElist, blocking)
-  real, dimension(:),   intent(inout) :: dat       !< The data to communicate and destination
+  real(wp), dimension(:),   intent(inout) :: dat       !< The data to communicate and destination
   integer,              intent(in)    :: length    !< The number of data elements
   integer,    optional, intent(in)    :: from_PE   !< The source PE, by default the root PE
   integer,    optional, intent(in)    :: PElist(:) !< The list of participating PEs, by default the
@@ -241,7 +242,7 @@ end subroutine broadcast_real1D
 
 !> Communicate a 2-D array of reals from one PE to others
 subroutine broadcast_real2D(dat, length, from_PE, PElist, blocking)
-  real, dimension(:,:), intent(inout) :: dat       !< The data to communicate and destination
+  real(wp), dimension(:,:), intent(inout) :: dat       !< The data to communicate and destination
   integer,              intent(in)    :: length    !< The total number of data elements
   integer,    optional, intent(in)    :: from_PE   !< The source PE, by default the root PE
   integer,    optional, intent(in)    :: PElist(:) !< The list of participating PEs, by default the
@@ -263,7 +264,7 @@ end subroutine broadcast_real2D
 
 !> Communicate a 3-D array of reals from one PE to others
 subroutine broadcast_real3D(dat, length, from_PE, PElist, blocking)
-  real, dimension(:,:,:), intent(inout) :: dat       !< The data to communicate and destination
+  real(wp), dimension(:,:,:), intent(inout) :: dat       !< The data to communicate and destination
   integer,              intent(in)      :: length    !< The total number of data elements
   integer,    optional, intent(in)      :: from_PE   !< The source PE, by default the root PE
   integer,    optional, intent(in)      :: PElist(:) !< The list of participating PEs, by default the
@@ -287,9 +288,9 @@ end subroutine broadcast_real3D
 !> Compute a checksum for a field distributed over a PE list.  If no PE list is
 !! provided, then the current active PE list is used.
 function field_chksum_real_0d(field, pelist, mask_val) result(chksum)
-  real,              intent(in) :: field      !< Input scalar
+  real(wp),              intent(in) :: field      !< Input scalar
   integer, optional, intent(in) :: pelist(:)  !< PE list of ranks to checksum
-  real,    optional, intent(in) :: mask_val   !< FMS mask value
+  real(wp),    optional, intent(in) :: mask_val   !< FMS mask value
   integer(kind=int64) :: chksum               !< checksum of array
 
   chksum = mpp_chksum(field, pelist, mask_val)
@@ -298,9 +299,9 @@ end function field_chksum_real_0d
 !> Compute a checksum for a field distributed over a PE list.  If no PE list is
 !! provided, then the current active PE list is used.
 function field_chksum_real_1d(field, pelist, mask_val) result(chksum)
-  real, dimension(:), intent(in) :: field     !< Input array
+  real(wp), dimension(:), intent(in) :: field     !< Input array
   integer,  optional, intent(in) :: pelist(:) !< PE list of ranks to checksum
-  real,     optional, intent(in) :: mask_val  !< FMS mask value
+  real(wp),     optional, intent(in) :: mask_val  !< FMS mask value
   integer(kind=int64) :: chksum               !< checksum of array
 
   chksum = mpp_chksum(field, pelist, mask_val)
@@ -309,9 +310,9 @@ end function field_chksum_real_1d
 !> Compute a checksum for a field distributed over a PE list.  If no PE list is
 !! provided, then the current active PE list is used.
 function field_chksum_real_2d(field, pelist, mask_val) result(chksum)
-  real, dimension(:,:), intent(in) :: field     !< Unrotated input field
+  real(wp), dimension(:,:), intent(in) :: field     !< Unrotated input field
   integer,    optional, intent(in) :: pelist(:) !< PE list of ranks to checksum
-  real,       optional, intent(in) :: mask_val  !< FMS mask value
+  real(wp),       optional, intent(in) :: mask_val  !< FMS mask value
   integer(kind=int64) :: chksum                 !< checksum of array
 
   chksum = mpp_chksum(field, pelist, mask_val)
@@ -320,9 +321,9 @@ end function field_chksum_real_2d
 !> Compute a checksum for a field distributed over a PE list.  If no PE list is
 !! provided, then the current active PE list is used.
 function field_chksum_real_3d(field, pelist, mask_val) result(chksum)
-  real, dimension(:,:,:), intent(in) :: field     !< Unrotated input field
+  real(wp), dimension(:,:,:), intent(in) :: field     !< Unrotated input field
   integer,      optional, intent(in) :: pelist(:) !< PE list of ranks to checksum
-  real,         optional, intent(in) :: mask_val  !< FMS mask value
+  real(wp),         optional, intent(in) :: mask_val  !< FMS mask value
   integer(kind=int64) :: chksum               !< checksum of array
 
   chksum = mpp_chksum(field, pelist, mask_val)
@@ -331,9 +332,9 @@ end function field_chksum_real_3d
 !> Compute a checksum for a field distributed over a PE list.  If no PE list is
 !! provided, then the current active PE list is used.
 function field_chksum_real_4d(field, pelist, mask_val) result(chksum)
-  real, dimension(:,:,:,:), intent(in) :: field     !< Unrotated input field
+  real(wp), dimension(:,:,:,:), intent(in) :: field     !< Unrotated input field
   integer,        optional, intent(in) :: pelist(:) !< PE list of ranks to checksum
-  real,           optional, intent(in) :: mask_val  !< FMS mask value
+  real(wp),           optional, intent(in) :: mask_val  !< FMS mask value
   integer(kind=int64) :: chksum               !< checksum of array
 
   chksum = mpp_chksum(field, pelist, mask_val)
@@ -388,7 +389,7 @@ end subroutine sum_across_PEs_int8_2d
 
 !> Find the sum of field across PEs, and return this sum in field.
 subroutine sum_across_PEs_real_0d(field, pelist)
-  real,              intent(inout) :: field     !< Value on this PE, and the sum across PEs upon return
+  real(wp),              intent(inout) :: field     !< Value on this PE, and the sum across PEs upon return
   integer, optional, intent(in)    :: pelist(:) !< List of PEs to work with
 
   call mpp_sum(field, pelist)
@@ -396,7 +397,7 @@ end subroutine sum_across_PEs_real_0d
 
 !> Find the sum of the values in corresponding positions of field across PEs, and return these sums in field.
 subroutine sum_across_PEs_real_1d(field, length, pelist)
-  real, dimension(:), intent(inout) :: field     !< The values to add, the sums upon return
+  real(wp), dimension(:), intent(inout) :: field     !< The values to add, the sums upon return
   integer,            intent(in)    :: length    !< Number of elements in field to add
   integer,  optional, intent(in)    :: pelist(:) !< List of PEs to work with
 
@@ -405,7 +406,7 @@ end subroutine sum_across_PEs_real_1d
 
 !> Find the sum of the values in corresponding positions of field across PEs, and return these sums in field.
 subroutine sum_across_PEs_real_2d(field, length, pelist)
-  real, dimension(:,:), intent(inout) :: field     !< The values to add, the sums upon return
+  real(wp), dimension(:,:), intent(inout) :: field     !< The values to add, the sums upon return
   integer,              intent(in)    :: length    !< The total number of positions to sum, usually
                                                    !! the product of the array sizes.
   integer,    optional, intent(in)    :: pelist(:) !< List of PEs to work with
@@ -425,7 +426,7 @@ end subroutine max_across_PEs_int_0d
 
 !> Find the maximum value of field across PEs, and store this maximum in field.
 subroutine max_across_PEs_real_0d(field, pelist)
-  real,              intent(inout) :: field     !< The values to compare, the maximum upon return
+  real(wp),              intent(inout) :: field     !< The values to compare, the maximum upon return
   integer, optional, intent(in)    :: pelist(:) !< List of PEs to work with
 
   call mpp_max(field, pelist)
@@ -433,7 +434,7 @@ end subroutine max_across_PEs_real_0d
 
 !> Find the maximum values in each position of field across PEs, and store these minima in field.
 subroutine max_across_PEs_real_1d(field, length, pelist)
-  real, dimension(:), intent(inout) :: field     !< The list of values being compared, with the
+  real(wp), dimension(:), intent(inout) :: field     !< The list of values being compared, with the
                                                  !! maxima in each position upon return
   integer,            intent(in)    :: length    !< Number of elements in field to compare
   integer,  optional, intent(in)    :: pelist(:) !< List of PEs to work with
@@ -453,14 +454,14 @@ end subroutine min_across_PEs_int_0d
 
 !> Find the minimum value of field across PEs, and store this minimum in field.
 subroutine min_across_PEs_real_0d(field, pelist)
-  real,              intent(inout) :: field     !< The values to compare, the minimum upon return
+  real(wp),              intent(inout) :: field     !< The values to compare, the minimum upon return
   integer, optional, intent(in)    :: pelist(:) !< List of PEs to work with
   call mpp_min(field, pelist)
 end subroutine min_across_PEs_real_0d
 
 !> Find the minimum values in each position of field across PEs, and store these minima in field.
 subroutine min_across_PEs_real_1d(field, length, pelist)
-  real, dimension(:), intent(inout) :: field     !< The list of values being compared, with the
+  real(wp), dimension(:), intent(inout) :: field     !< The list of values being compared, with the
                                                  !! minima in each position upon return
   integer,            intent(in)    :: length    !< Number of elements in field to compare
   integer,  optional, intent(in)    :: pelist(:) !< List of PEs to work with

@@ -15,6 +15,8 @@ use MOM_time_manager,  only : time_type, operator(+), operator(/), time_type_to_
 use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : thermo_var_ptrs, surface
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -36,13 +38,13 @@ type SCM_CVMix_tests_CS ; private
   logical :: UseHeatFlux    !< True to use heat flux
   logical :: UseEvaporation !< True to use evaporation
   logical :: UseDiurnalSW   !< True to use diurnal sw radiation
-  real :: tau_x !< (Constant) Wind stress, X [R L Z T-2 ~> Pa]
-  real :: tau_y !< (Constant) Wind stress, Y [R L Z T-2 ~> Pa]
-  real :: surf_HF !< (Constant) Heat flux [C Z T-1 ~> m degC s-1]
-  real :: surf_evap !< (Constant) Evaporation rate [Z T-1 ~> m s-1]
-  real :: Max_sw !< maximum of diurnal sw radiation [C Z T-1 ~> degC m s-1]
-  real :: Rho0 !< reference density [R ~> kg m-3]
-  real :: rho_restore !< The density that is used to convert piston velocities
+  real(wp) :: tau_x !< (Constant) Wind stress, X [R L Z T-2 ~> Pa]
+  real(wp) :: tau_y !< (Constant) Wind stress, Y [R L Z T-2 ~> Pa]
+  real(wp) :: surf_HF !< (Constant) Heat flux [C Z T-1 ~> m degC s-1]
+  real(wp) :: surf_evap !< (Constant) Evaporation rate [Z T-1 ~> m s-1]
+  real(wp) :: Max_sw !< maximum of diurnal sw radiation [C Z T-1 ~> degC m s-1]
+  real(wp) :: Rho0 !< reference density [R ~> kg m-3]
+  real(wp) :: rho_restore !< The density that is used to convert piston velocities
                       !! into salt or heat fluxes [R ~> kg m-3]
 end type
 
@@ -57,24 +59,24 @@ contains
 subroutine SCM_CVMix_tests_TS_init(T, S, h, G, GV, US, param_file, just_read)
   type(ocean_grid_type),                     intent(in)  :: G  !< Grid structure
   type(verticalGrid_type),                   intent(in)  :: GV !< Vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T  !< Potential temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S  !< Salinity [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h  !< Layer thickness [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T  !< Potential temperature [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S  !< Salinity [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h  !< Layer thickness [Z ~> m]
   type(unit_scale_type),                     intent(in)  :: US !< A dimensional unit scaling type
   type(param_file_type),                     intent(in)  :: param_file !< Input parameter structure
   logical,                                   intent(in)  :: just_read !< If present and true, this call
                                                                !! will only read parameters without changing T & S.
   ! Local variables
-  real :: UpperLayerTempMLD !< Upper layer Temp MLD thickness [Z ~> m].
-  real :: UpperLayerSaltMLD !< Upper layer Salt MLD thickness [Z ~> m].
-  real :: UpperLayerTemp !< Upper layer temperature (SST if thickness 0) [C ~> degC]
-  real :: UpperLayerSalt !< Upper layer salinity (SSS if thickness 0) [S ~> ppt]
-  real :: LowerLayerTemp !< Temp at top of lower layer [C ~> degC]
-  real :: LowerLayerSalt !< Salt at top of lower layer [S ~> ppt]
-  real :: LowerLayerdTdz !< Temp gradient in lower layer [C Z-1 ~> degC m-1].
-  real :: LowerLayerdSdz !< Salt gradient in lower layer [S Z-1 ~> ppt m-1].
-  real :: LowerLayerMinTemp !< Minimum temperature in lower layer [C ~> degC]
-  real :: zC, DZ, top, bottom ! Depths and thicknesses [Z ~> m].
+  real(wp) :: UpperLayerTempMLD !< Upper layer Temp MLD thickness [Z ~> m].
+  real(wp) :: UpperLayerSaltMLD !< Upper layer Salt MLD thickness [Z ~> m].
+  real(wp) :: UpperLayerTemp !< Upper layer temperature (SST if thickness 0) [C ~> degC]
+  real(wp) :: UpperLayerSalt !< Upper layer salinity (SSS if thickness 0) [S ~> ppt]
+  real(wp) :: LowerLayerTemp !< Temp at top of lower layer [C ~> degC]
+  real(wp) :: LowerLayerSalt !< Salt at top of lower layer [S ~> ppt]
+  real(wp) :: LowerLayerdTdz !< Temp gradient in lower layer [C Z-1 ~> degC m-1].
+  real(wp) :: LowerLayerdSdz !< Salt gradient in lower layer [S Z-1 ~> ppt m-1].
+  real(wp) :: LowerLayerMinTemp !< Minimum temperature in lower layer [C ~> degC]
+  real(wp) :: zC, DZ, top, bottom ! Depths and thicknesses [Z ~> m].
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -83,38 +85,38 @@ subroutine SCM_CVMix_tests_TS_init(T, S, h, G, GV, US, param_file, just_read)
   if (.not.just_read) call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "SCM_TEMP_MLD", UpperLayerTempMLD, &
                  'Initial temp mixed layer depth', &
-                 units='m', default=0.0, scale=US%m_to_Z, do_not_log=just_read)
+                 units='m', default=0.0_wp, scale=US%m_to_Z, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_SALT_MLD", UpperLayerSaltMLD, &
                  'Initial salt mixed layer depth', &
-                 units='m', default=0.0, scale=US%m_to_Z, do_not_log=just_read)
+                 units='m', default=0.0_wp, scale=US%m_to_Z, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L1_SALT", UpperLayerSalt, &
-                 'Layer 2 surface salinity', units="ppt", default=35.0, scale=US%ppt_to_S, do_not_log=just_read)
+                 'Layer 2 surface salinity', units="ppt", default=35.0_wp, scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L1_TEMP", UpperLayerTemp, &
-                 'Layer 1 surface temperature', units="degC", default=20.0, scale=US%degC_to_C, do_not_log=just_read)
+                 'Layer 1 surface temperature', units="degC", default=20.0_wp, scale=US%degC_to_C, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L2_SALT", LowerLayerSalt, &
-                 'Layer 2 surface salinity', units="ppt", default=35.0, scale=US%ppt_to_S, do_not_log=just_read)
+                 'Layer 2 surface salinity', units="ppt", default=35.0_wp, scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L2_TEMP", LowerLayerTemp, &
-                 'Layer 2 surface temperature', units="degC", default=20.0, scale=US%degC_to_C, do_not_log=just_read)
+                 'Layer 2 surface temperature', units="degC", default=20.0_wp, scale=US%degC_to_C, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L2_DTDZ", LowerLayerdTdZ,     &
                  'Initial temperature stratification in layer 2', &
-                 units='C/m', default=0.0, scale=US%degC_to_C*US%Z_to_m, do_not_log=just_read)
+                 units='C/m', default=0.0_wp, scale=US%degC_to_C*US%Z_to_m, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L2_DSDZ", LowerLayerdSdZ,  &
                  'Initial salinity stratification in layer 2', &
-                 units='PPT/m', default=0.0, scale=US%ppt_to_S*US%Z_to_m, do_not_log=just_read)
+                 units='PPT/m', default=0.0_wp, scale=US%ppt_to_S*US%Z_to_m, do_not_log=just_read)
   call get_param(param_file, mdl, "SCM_L2_MINTEMP",LowerLayerMinTemp, &
-                 'Layer 2 minimum temperature', units="degC", default=4.0, scale=US%degC_to_C, do_not_log=just_read)
+                 'Layer 2 minimum temperature', units="degC", default=4.0_wp, scale=US%degC_to_C, do_not_log=just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
   do j=js,je ; do i=is,ie
-    top = 0. ! Reference to surface
-    bottom = 0.
+    top = 0._wp ! Reference to surface
+    bottom = 0._wp
     do k=1,nz
       bottom = bottom - h(i,j,k)       ! Interface below layer [Z ~> m]
-      zC = 0.5*( top + bottom )        ! Z of middle of layer [Z ~> m]
-      DZ = min(0., zC + UpperLayerTempMLD)
+      zC = 0.5_wp*( top + bottom )        ! Z of middle of layer [Z ~> m]
+      DZ = min(0._wp, zC + UpperLayerTempMLD)
       T(i,j,k) = max(LowerLayerMinTemp,LowerLayerTemp + LowerLayerdTdZ * DZ)
-      DZ = min(0., zC + UpperLayerSaltMLD)
+      DZ = min(0._wp, zC + UpperLayerSaltMLD)
       S(i,j,k) = LowerLayerSalt + LowerLayerdSdZ * DZ
       top = bottom
     enddo ! k
@@ -185,7 +187,7 @@ subroutine SCM_CVMix_tests_surface_forcing_init(Time, G, param_file, CS)
                  "calculate accelerations and the mass for conservation "//&
                  "properties, or with BOUSSINSEQ false to convert some "//&
                  "parameters from vertical units of m to kg m-2.", &
-                 units="kg m-3", default=1035.0, scale=US%kg_m3_to_R)
+                 units="kg m-3", default=1035.0_wp, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "RESTORE_FLUX_RHO", CS%rho_restore, &
                  "The density that is used to convert piston velocities into salt or heat fluxes.", &
                  units="kg m-3", default=CS%Rho0*US%R_to_kg_m3, scale=US%kg_m3_to_R)
@@ -202,7 +204,7 @@ subroutine SCM_CVMix_tests_wind_forcing(sfc_state, forces, day, G, US, CS)
   ! Local variables
   integer :: i, j, is, ie, js, je, Isq, Ieq, Jsq, Jeq
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
-  real    :: mag_tau  ! The magnitude of the wind stress [R Z2 T-2 ~> Pa]
+  real(wp)    :: mag_tau  ! The magnitude of the wind stress [R Z2 T-2 ~> Pa]
   ! Bounds for loops and memory allocation
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -240,9 +242,9 @@ subroutine SCM_CVMix_tests_buoyancy_forcing(sfc_state, fluxes, day, G, US, CS)
   ! Local variables
   integer :: i, j, is, ie, js, je, Isq, Ieq, Jsq, Jeq
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
-  real :: PI  ! The ratio of the circumference of a circle to its diameter [nondim]
+  real(wp) :: PI  ! The ratio of the circumference of a circle to its diameter [nondim]
 
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
 
   ! Bounds for loops and memory allocation
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
@@ -273,7 +275,7 @@ subroutine SCM_CVMix_tests_buoyancy_forcing(sfc_state, fluxes, day, G, US, CS)
     ! Note CVMix test inputs give max sw rad in [Z C T-1 ~> m degC s-1]
     ! therefore must convert to [Q R Z T-1 ~> W m-2] by multiplying by Rho0*Cp
     ! Note diurnal cycle peaks at Noon.
-      fluxes%sw(i,J) = CS%Max_sw *  max(0.0, cos(2*PI*(time_type_to_real(DAY)/86400.0 - 0.5))) * &
+      fluxes%sw(i,J) = CS%Max_sw *  max(0.0_wp, cos(2*PI*(time_type_to_real(DAY)/86400.0_wp - 0.5_wp))) * &
                        CS%rho_restore * fluxes%C_p
     enddo ; enddo
   endif

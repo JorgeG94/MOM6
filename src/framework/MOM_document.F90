@@ -7,6 +7,8 @@ module MOM_document
 use MOM_time_manager,  only : time_type, operator(==), get_time, get_ticks_per_second
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public doc_param, doc_subroutine, doc_function, doc_module, doc_init, doc_end
@@ -279,8 +281,8 @@ subroutine doc_param_real(doc, varname, desc, units, val, default, debuggingPara
   character(len=*),  intent(in) :: varname !< The name of the parameter being documented
   character(len=*),  intent(in) :: desc    !< A description of the parameter being documented
   character(len=*),  intent(in) :: units   !< The units of the parameter being documented
-  real,              intent(in) :: val     !< The value of this parameter
-  real,    optional, intent(in) :: default !< The default value of this parameter
+  real(wp),              intent(in) :: val     !< The value of this parameter
+  real(wp),    optional, intent(in) :: default !< The default value of this parameter
   logical, optional, intent(in) :: debuggingParam !< If present and true, this is a debugging parameter.
   logical, optional, intent(in) :: like_default !< If present and true, log this parameter as though
                                            !! it has the default value, even if there is no default.
@@ -316,9 +318,9 @@ subroutine doc_param_real_array(doc, varname, desc, units, vals, default, defaul
   character(len=*),  intent(in) :: varname !< The name of the parameter being documented
   character(len=*),  intent(in) :: desc    !< A description of the parameter being documented
   character(len=*),  intent(in) :: units   !< The units of the parameter being documented
-  real,              intent(in) :: vals(:) !< The array of values to record
-  real,    optional, intent(in) :: default !< A uniform default value of this parameter
-  real,    optional, intent(in) :: defaults(:) !< The element-wise default values of this parameter
+  real(wp),              intent(in) :: vals(:) !< The array of values to record
+  real(wp),    optional, intent(in) :: default !< A uniform default value of this parameter
+  real(wp),    optional, intent(in) :: defaults(:) !< The element-wise default values of this parameter
   logical, optional, intent(in) :: debuggingParam !< If present and true, this is a debugging parameter.
   logical, optional, intent(in) :: like_default !< If present and true, log this parameter as though
                                            !! it has the default value, even if there is no default.
@@ -619,12 +621,12 @@ end function time_string
 
 !> This function returns a string with a real formatted like '(G)'
 function real_string(val)
-  real, intent(in)  :: val !< The value being written into a string
+  real(wp), intent(in)  :: val !< The value being written into a string
   character(len=32) :: real_string
 ! This function returns a string with a real formatted like '(G)'
   integer :: len, ind
 
-  if ((abs(val) < 1.0e4) .and. (abs(val) >= 1.0e-3)) then
+  if ((abs(val) < 1.0e4_wp) .and. (abs(val) >= 1.0e-3_wp)) then
     write(real_string, '(F30.11)') val
     if (.not.testFormattedFloatIsReal(real_string,val)) then
       write(real_string, '(F30.12)') val
@@ -647,10 +649,10 @@ function real_string(val)
           (real_string(len:len) /= "0")) exit
       real_string(len:len) = " "
     enddo
-  elseif (val == 0.) then
+  elseif (val == 0._wp) then
     real_string = "0.0"
   else
-    if ((abs(val) < 1.0e-99) .or. (abs(val) >= 1.0e100)) then
+    if ((abs(val) < 1.0e-99_wp) .or. (abs(val) >= 1.0e100_wp)) then
       write(real_string(1:32), '(ES24.14E4)') val
       if (scan(real_string, "eE") == 0) then  ! Fix a bug with a missing E in PGI formatting
         ind = scan(real_string, "-+", back=.true.)
@@ -687,7 +689,7 @@ end function real_string
 !> e.g. "1., 2., 5*3., 5.E2", that give the list of values.
 function real_array_string(vals, sep)
   character(len=:) ,allocatable :: real_array_string !< The output string listing vals
-  real,      intent(in)  :: vals(:) !< The array of values to record
+  real(wp),      intent(in)  :: vals(:) !< The array of values to record
   character(len=*), &
     optional, intent(in) :: sep     !< The separator between successive values,
                                     !! by default it is ', '.
@@ -777,10 +779,10 @@ end function int_array_string
 !> This function tests whether a real value is encoded in a string.
 function testFormattedFloatIsReal(str, val)
   character(len=*), intent(in) :: str !< The string that match val
-  real,             intent(in) :: val !< The value being tested
+  real(wp),             intent(in) :: val !< The value being tested
   logical                      :: testFormattedFloatIsReal
   ! Local variables
-  real :: scannedVal
+  real(wp) :: scannedVal
 
   read(str(1:),*) scannedVal
   if (scannedVal == val) then

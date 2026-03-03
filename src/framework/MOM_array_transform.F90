@@ -13,6 +13,7 @@
 
 module MOM_array_transform
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public rotate_array
@@ -71,9 +72,9 @@ contains
 
 !> Rotate the elements of a 2d real array along first and second axes.
 subroutine rotate_array_real_2d(A_in, turns, A)
-  real, intent(in) :: A_in(:,:) !< Unrotated array [arbitrary]
+  real(wp), intent(in) :: A_in(:,:) !< Unrotated array [arbitrary]
   integer, intent(in) :: turns  !< Number of quarter turns
-  real, intent(out) :: A(:,:)   !< Rotated array [arbitrary]
+  real(wp), intent(out) :: A(:,:)   !< Rotated array [arbitrary]
 
   integer :: m, n
 
@@ -96,9 +97,9 @@ end subroutine rotate_array_real_2d
 
 !> Rotate the elements of a 3d real array along first and second axes.
 subroutine rotate_array_real_3d(A_in, turns, A)
-  real, intent(in) :: A_in(:,:,:) !< Unrotated array [arbitrary]
+  real(wp), intent(in) :: A_in(:,:,:) !< Unrotated array [arbitrary]
   integer, intent(in) :: turns    !< Number of quarter turns
-  real, intent(out) :: A(:,:,:)   !< Rotated array [arbitrary]
+  real(wp), intent(out) :: A(:,:,:)   !< Rotated array [arbitrary]
 
   integer :: k
 
@@ -110,9 +111,9 @@ end subroutine rotate_array_real_3d
 
 !> Rotate the elements of a 4d real array along first and second axes.
 subroutine rotate_array_real_4d(A_in, turns, A)
-  real, intent(in) :: A_in(:,:,:,:) !< Unrotated array [arbitrary]
+  real(wp), intent(in) :: A_in(:,:,:,:) !< Unrotated array [arbitrary]
   integer, intent(in) :: turns      !< Number of quarter turns
-  real, intent(out) :: A(:,:,:,:)   !< Rotated array [arbitrary]
+  real(wp), intent(out) :: A(:,:,:,:)   !< Rotated array [arbitrary]
 
   integer :: n
 
@@ -174,11 +175,11 @@ end subroutine rotate_array_logical
 
 !> Rotate the elements of a 2d real array pair along first and second axes.
 subroutine rotate_array_pair_real_2d(A_in, B_in, turns, A, B)
-  real, intent(in) :: A_in(:,:)   !< Unrotated scalar array pair [arbitrary]
-  real, intent(in) :: B_in(:,:)   !< Unrotated scalar array pair [arbitrary]
+  real(wp), intent(in) :: A_in(:,:)   !< Unrotated scalar array pair [arbitrary]
+  real(wp), intent(in) :: B_in(:,:)   !< Unrotated scalar array pair [arbitrary]
   integer, intent(in) :: turns    !< Number of quarter turns
-  real, intent(out) :: A(:,:)     !< Rotated scalar array pair [arbitrary]
-  real, intent(out) :: B(:,:)     !< Rotated scalar array pair [arbitrary]
+  real(wp), intent(out) :: A(:,:)     !< Rotated scalar array pair [arbitrary]
+  real(wp), intent(out) :: B(:,:)     !< Rotated scalar array pair [arbitrary]
 
   if (modulo(turns, 2) /= 0) then
     call rotate_array(B_in, turns, A)
@@ -192,11 +193,11 @@ end subroutine rotate_array_pair_real_2d
 
 !> Rotate the elements of a 3d real array pair along first and second axes.
 subroutine rotate_array_pair_real_3d(A_in, B_in, turns, A, B)
-  real, intent(in) :: A_in(:,:,:)   !< Unrotated scalar array pair [arbitrary]
-  real, intent(in) :: B_in(:,:,:)   !< Unrotated scalar array pair [arbitrary]
+  real(wp), intent(in) :: A_in(:,:,:)   !< Unrotated scalar array pair [arbitrary]
+  real(wp), intent(in) :: B_in(:,:,:)   !< Unrotated scalar array pair [arbitrary]
   integer, intent(in) :: turns      !< Number of quarter turns
-  real, intent(out) :: A(:,:,:)     !< Rotated scalar array pair [arbitrary]
-  real, intent(out) :: B(:,:,:)     !< Rotated scalar array pair [arbitrary]
+  real(wp), intent(out) :: A(:,:,:)     !< Rotated scalar array pair [arbitrary]
+  real(wp), intent(out) :: B(:,:,:)     !< Rotated scalar array pair [arbitrary]
 
   integer :: k
 
@@ -227,11 +228,11 @@ end subroutine rotate_array_pair_integer
 
 !> Rotate the elements of a 2d real vector along first and second axes.
 subroutine rotate_vector_real_2d(A_in, B_in, turns, A, B)
-  real, intent(in) :: A_in(:,:) !< First component of unrotated vector [arbitrary]
-  real, intent(in) :: B_in(:,:) !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: A_in(:,:) !< First component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: B_in(:,:) !< Second component of unrotated vector [arbitrary]
   integer, intent(in) :: turns  !< Number of quarter turns
-  real, intent(out) :: A(:,:)   !< First component of rotated vector [arbitrary]
-  real, intent(out) :: B(:,:)   !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(out) :: A(:,:)   !< First component of rotated vector [arbitrary]
+  real(wp), intent(out) :: B(:,:)   !< Second component of unrotated vector [arbitrary]
 
   call rotate_array_pair(A_in, B_in, turns, A, B)
 
@@ -245,11 +246,11 @@ end subroutine rotate_vector_real_2d
 
 !> Rotate the elements of a 3d real vector along first and second axes.
 subroutine rotate_vector_real_3d(A_in, B_in, turns, A, B)
-  real, intent(in) :: A_in(:,:,:) !< First component of unrotated vector [arbitrary]
-  real, intent(in) :: B_in(:,:,:) !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: A_in(:,:,:) !< First component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: B_in(:,:,:) !< Second component of unrotated vector [arbitrary]
   integer, intent(in) :: turns    !< Number of quarter turns
-  real, intent(out) :: A(:,:,:)   !< First component of rotated vector [arbitrary]
-  real, intent(out) :: B(:,:,:)   !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(out) :: A(:,:,:)   !< First component of rotated vector [arbitrary]
+  real(wp), intent(out) :: B(:,:,:)   !< Second component of unrotated vector [arbitrary]
 
   integer :: k
 
@@ -261,11 +262,11 @@ end subroutine rotate_vector_real_3d
 
 !> Rotate the elements of a 4d real vector along first and second axes.
 subroutine rotate_vector_real_4d(A_in, B_in, turns, A, B)
-  real, intent(in) :: A_in(:,:,:,:) !< First component of unrotated vector [arbitrary]
-  real, intent(in) :: B_in(:,:,:,:) !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: A_in(:,:,:,:) !< First component of unrotated vector [arbitrary]
+  real(wp), intent(in) :: B_in(:,:,:,:) !< Second component of unrotated vector [arbitrary]
   integer, intent(in) :: turns      !< Number of quarter turns
-  real, intent(out) :: A(:,:,:,:)   !< First component of rotated vector [arbitrary]
-  real, intent(out) :: B(:,:,:,:)   !< Second component of unrotated vector [arbitrary]
+  real(wp), intent(out) :: A(:,:,:,:)   !< First component of rotated vector [arbitrary]
+  real(wp), intent(out) :: B(:,:,:,:)   !< Second component of unrotated vector [arbitrary]
 
   integer :: n
 
@@ -280,9 +281,9 @@ end subroutine rotate_vector_real_4d
 subroutine allocate_rotated_array_real_2d(A_in, lb, turns, A)
   ! NOTE: lb must be declared before A_in
   integer, intent(in) :: lb(2)                !< Lower index bounds of A_in
-  real, intent(in) :: A_in(lb(1):, lb(2):)    !< Reference array [arbitrary]
+  real(wp), intent(in) :: A_in(lb(1):, lb(2):)    !< Reference array [arbitrary]
   integer, intent(in) :: turns                !< Number of quarter turns
-  real, allocatable, intent(inout) :: A(:,:)  !< Array on rotated index [arbitrary]
+  real(wp), allocatable, intent(inout) :: A(:,:)  !< Array on rotated index [arbitrary]
 
   integer :: ub(2)
 
@@ -300,9 +301,9 @@ end subroutine allocate_rotated_array_real_2d
 subroutine allocate_rotated_array_real_3d(A_in, lb, turns, A)
   ! NOTE: lb must be declared before A_in
   integer, intent(in) :: lb(3)                    !< Lower index bounds of A_in
-  real, intent(in) :: A_in(lb(1):, lb(2):, lb(3):)  !< Reference array [arbitrary]
+  real(wp), intent(in) :: A_in(lb(1):, lb(2):, lb(3):)  !< Reference array [arbitrary]
   integer, intent(in) :: turns                    !< Number of quarter turns
-  real, allocatable, intent(inout) :: A(:,:,:)    !< Array on rotated index [arbitrary]
+  real(wp), allocatable, intent(inout) :: A(:,:,:)    !< Array on rotated index [arbitrary]
 
   integer :: ub(3)
 
@@ -320,9 +321,9 @@ end subroutine allocate_rotated_array_real_3d
 subroutine allocate_rotated_array_real_4d(A_in, lb, turns, A)
   ! NOTE: lb must be declared before A_in
   integer, intent(in) :: lb(4)                    !< Lower index bounds of A_in
-  real, intent(in) :: A_in(lb(1):,lb(2):,lb(3):,lb(4):) !< Reference array [arbitrary]
+  real(wp), intent(in) :: A_in(lb(1):,lb(2):,lb(3):,lb(4):) !< Reference array [arbitrary]
   integer, intent(in) :: turns                    !< Number of quarter turns
-  real, allocatable, intent(inout) :: A(:,:,:,:)  !< Array on rotated index [arbitrary]
+  real(wp), allocatable, intent(inout) :: A(:,:,:,:)  !< Array on rotated index [arbitrary]
 
   integer:: ub(4)
 

@@ -15,13 +15,15 @@ use MOM_get_input, only : directories, Get_MOM_input
 use MOM_coms, only : reproducing_sum
 use MOM_checksums, only : hchksum, qchksum, chksum, uchksum, vchksum, uvchksum
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public ice_shelf_state_end, ice_shelf_state_init
 
 !> Structure that describes the ice shelf state
 type, public :: ice_shelf_state
-  real, pointer, dimension(:,:) :: &
+  real(wp), pointer, dimension(:,:) :: &
     mass_shelf => NULL(), &    !< The mass per unit area of the ice shelf or sheet [R Z ~> kg m-2].
     area_shelf_h => NULL(), &  !< The area per cell covered by the ice shelf [L2 ~> m2].
     melt_mask => NULL(), &     !< Mask is > 0 where melting is allowed [nondim]
@@ -73,21 +75,21 @@ subroutine ice_shelf_state_init(ISS, G)
   endif
   allocate(ISS)
 
-  allocate(ISS%mass_shelf(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%area_shelf_h(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%melt_mask(isd:ied,jsd:jed), source=1.0 )
-  allocate(ISS%h_shelf(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%dhdt_shelf(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%hmask(isd:ied,jsd:jed), source=-2.0 )
+  allocate(ISS%mass_shelf(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%area_shelf_h(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%melt_mask(isd:ied,jsd:jed), source=1.0_wp )
+  allocate(ISS%h_shelf(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%dhdt_shelf(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%hmask(isd:ied,jsd:jed), source=-2.0_wp )
 
-  allocate(ISS%tflux_ocn(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%water_flux(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%salt_flux(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%tflux_shelf(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%tfreeze(isd:ied,jsd:jed), source=0.0 )
+  allocate(ISS%tflux_ocn(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%water_flux(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%salt_flux(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%tflux_shelf(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%tfreeze(isd:ied,jsd:jed), source=0.0_wp )
 
-  allocate(ISS%calving(isd:ied,jsd:jed), source=0.0 )
-  allocate(ISS%calving_hflx(isd:ied,jsd:jed), source=0.0 )
+  allocate(ISS%calving(isd:ied,jsd:jed), source=0.0_wp )
+  allocate(ISS%calving_hflx(isd:ied,jsd:jed), source=0.0_wp )
 end subroutine ice_shelf_state_init
 
 

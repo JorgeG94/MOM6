@@ -22,6 +22,7 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 use MOM_EOS, only : calculate_density, EOS_domain
+use MOM_datatypes, only : wp
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -46,11 +47,11 @@ subroutine RGC_initialize_sponges(G, GV, US, tv, u, v, depth_tot, PF, use_ALE, C
                                             !! fields, potential temperature and
                                             !! salinity or mixed layer density.
                                             !! Absent fields have NULL pointers.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                  target, intent(in) :: u    !< Array with the u velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                  target, intent(in) :: v    !< Array with the v velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                          intent(in) :: depth_tot  !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type), intent(in) :: PF   !< A structure to parse for model parameter values.
   logical,               intent(in) :: use_ALE !< If true, indicates model is in ALE mode
@@ -58,21 +59,21 @@ subroutine RGC_initialize_sponges(G, GV, US, tv, u, v, depth_tot, PF, use_ALE, C
   type(ALE_sponge_CS),   pointer    :: ACSp !< ALE-mode sponge structure
 
   ! Local variables
-  real :: T(SZI_(G),SZJ_(G),SZK_(GV)) ! A temporary array for temperature [C ~> degC]
-  real :: S(SZI_(G),SZJ_(G),SZK_(GV)) ! A temporary array for salinity [S ~> ppt]
-  real :: U1(SZIB_(G),SZJ_(G),SZK_(GV)) ! A temporary array for u [L T-1 ~> m s-1]
-  real :: V1(SZI_(G),SZJB_(G),SZK_(GV)) ! A temporary array for v [L T-1 ~> m s-1]
-  real :: rho(SZI_(G),SZJ_(G))      ! A temporary array for mixed layer density [R ~> kg m-3].
-  real :: dz(SZI_(G),SZJ_(G),SZK_(GV)) ! Sponge layer thicknesses in height units [Z ~> m]
-  real :: Idamp(SZI_(G),SZJ_(G))    ! The sponge damping rate at h points [T-1 ~> s-1]
-  real :: TNUDG                     ! Nudging time scale [T ~> s]
-  real :: pres(SZI_(G))             ! An array of the reference pressure [R L2 T-2 ~> Pa]
-  real :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! A temporary array for eta, positive upward [Z ~> m]
+  real(wp) :: T(SZI_(G),SZJ_(G),SZK_(GV)) ! A temporary array for temperature [C ~> degC]
+  real(wp) :: S(SZI_(G),SZJ_(G),SZK_(GV)) ! A temporary array for salinity [S ~> ppt]
+  real(wp) :: U1(SZIB_(G),SZJ_(G),SZK_(GV)) ! A temporary array for u [L T-1 ~> m s-1]
+  real(wp) :: V1(SZI_(G),SZJB_(G),SZK_(GV)) ! A temporary array for v [L T-1 ~> m s-1]
+  real(wp) :: rho(SZI_(G),SZJ_(G))      ! A temporary array for mixed layer density [R ~> kg m-3].
+  real(wp) :: dz(SZI_(G),SZJ_(G),SZK_(GV)) ! Sponge layer thicknesses in height units [Z ~> m]
+  real(wp) :: Idamp(SZI_(G),SZJ_(G))    ! The sponge damping rate at h points [T-1 ~> s-1]
+  real(wp) :: TNUDG                     ! Nudging time scale [T ~> s]
+  real(wp) :: pres(SZI_(G))             ! An array of the reference pressure [R L2 T-2 ~> Pa]
+  real(wp) :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! A temporary array for eta, positive upward [Z ~> m]
   logical :: sponge_uv              ! Nudge velocities (u and v) towards zero
-  real :: min_depth                 ! The minimum depth of the ocean [Z ~> m]
-  real :: dummy1                    ! The position relative to the sponge width [nondim]
-  real :: min_thickness             ! A minimum layer thickness [H ~> m or kg m-2] (unused)
-  real :: lensponge                 ! The width of the sponge in axis units, [km] or [m]
+  real(wp) :: min_depth                 ! The minimum depth of the ocean [Z ~> m]
+  real(wp) :: dummy1                    ! The position relative to the sponge width [nondim]
+  real(wp) :: min_thickness             ! A minimum layer thickness [H ~> m or kg m-2] (unused)
+  real(wp) :: lensponge                 ! The width of the sponge in axis units, [km] or [m]
   character(len=40) :: filename, state_file
   character(len=40) :: temp_var, salt_var, eta_var, inputdir, h_var
 
@@ -86,23 +87,23 @@ subroutine RGC_initialize_sponges(G, GV, US, tv, u, v, depth_tot, PF, use_ALE, C
 
   ! The variable min_thickness is unused, and can probably be eliminated.
   call get_param(PF, mdl, "MIN_THICKNESS", min_thickness, 'Minimum layer thickness', &
-                 units='m', default=1.e-3, scale=GV%m_to_H)
+                 units='m', default=1.e-3_wp, scale=GV%m_to_H)
 
   call get_param(PF, mdl, "RGC_TNUDG", TNUDG, 'Nudging time scale for sponge layers', &
-                 units='days', default=0.0, scale=86400.0*US%s_to_T)
+                 units='days', default=0.0_wp, scale=86400.0_wp*US%s_to_T)
 
   call get_param(PF, mdl, "LENSPONGE", lensponge, &
                  "The length of the sponge layer.", &
-                 units=G%x_ax_unit_short, default=10.0)
+                 units=G%x_ax_unit_short, default=10.0_wp)
 
   call get_param(PF, mdl, "SPONGE_UV", sponge_uv, &
                  "Nudge velocities (u and v) towards zero in the sponge layer.", &
                  default=.false., do_not_log=.true.)
 
-  T(:,:,:) = 0.0 ; S(:,:,:) = 0.0 ; Idamp(:,:) = 0.0
+  T(:,:,:) = 0.0_wp ; S(:,:,:) = 0.0_wp ; Idamp(:,:) = 0.0_wp
 
   call get_param(PF, mdl, "MINIMUM_DEPTH", min_depth, &
-                 "The minimum depth of the ocean.", units="m", default=0.0, scale=US%m_to_Z)
+                 "The minimum depth of the ocean.", units="m", default=0.0_wp, scale=US%m_to_Z)
 
   if (associated(CSp)) call MOM_error(FATAL, &
           "RGC_initialize_sponges called with an associated control structure.")
@@ -116,12 +117,12 @@ subroutine RGC_initialize_sponges(G, GV, US, tv, u, v, depth_tot, PF, use_ALE, C
 
   do j=js,je ; do i=is,ie
     if ((depth_tot(i,j) <= min_depth) .or. (G%geoLonT(i,j) <= lensponge)) then
-      Idamp(i,j) = 0.0
+      Idamp(i,j) = 0.0_wp
     elseif (G%geoLonT(i,j) >= (G%len_lon - lensponge) .AND. G%geoLonT(i,j) <= G%len_lon) then
       dummy1 = (G%geoLonT(i,j)-(G%len_lon - lensponge))/(lensponge)
-      Idamp(i,j) = (1.0/TNUDG) * max(0.0,dummy1)
+      Idamp(i,j) = (1.0_wp/TNUDG) * max(0.0_wp,dummy1)
     else
-      Idamp(i,j) = 0.0
+      Idamp(i,j) = 0.0_wp
     endif
   enddo ; enddo
 
@@ -165,7 +166,7 @@ subroutine RGC_initialize_sponges(G, GV, US, tv, u, v, depth_tot, PF, use_ALE, C
         sp_long_name='salinity', sp_unit='g kg-1 s-1')
 
     if (sponge_uv) then
-      U1(:,:,:) = 0.0 ; V1(:,:,:) = 0.0
+      U1(:,:,:) = 0.0_wp ; V1(:,:,:) = 0.0_wp
       call set_up_ALE_sponge_vel_field(U1, V1, G, GV, u, v, ACSp)
     endif
 

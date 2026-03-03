@@ -13,6 +13,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -27,17 +29,17 @@ subroutine lock_exchange_initialize_thickness(h, G, GV, US, param_file, just_rea
   type(ocean_grid_type),   intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: h           !< The thickness that is being initialized [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   logical,                 intent(in)  :: just_read   !< If true, this call will only read
                                                       !! parameters without changing h.
 
-  real :: eta1D(SZK_(GV)+1)! Interface height relative to the sea surface
+  real(wp) :: eta1D(SZK_(GV)+1)! Interface height relative to the sea surface
                            ! positive upward [Z ~> m].
-  real :: front_displacement ! Vertical displacement across front [Z ~> m]
-  real :: thermocline_thickness ! Thickness of stratified region [Z ~> m]
+  real(wp) :: front_displacement ! Vertical displacement across front [Z ~> m]
+  real(wp) :: thermocline_thickness ! Thickness of stratified region [Z ~> m]
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=40)  :: mdl = "lock_exchange_initialize_thickness" ! This subroutine's name.
@@ -57,25 +59,25 @@ subroutine lock_exchange_initialize_thickness(h, G, GV, US, param_file, just_rea
                  "The thickness of the thermocline in the lock exchange "//&
                  "experiment.  A value of zero creates a two layer system "//&
                  "with vanished layers in between the two inflated layers.", &
-                 default=0., units="m", do_not_log=just_read, scale=US%m_to_Z)
+                 default=0._wp, units="m", do_not_log=just_read, scale=US%m_to_Z)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     do k=2,nz
-      eta1D(K) = -0.5 * G%max_depth & ! Middle of column
-              - thermocline_thickness * ( (real(k-1))/real(nz) -0.5 ) ! Stratification
-      if (G%geoLonT(i,j)-G%west_lon < 0.5 * G%len_lon) then
-        eta1D(K) = eta1D(K) + 0.5 * front_displacement
-      elseif (G%geoLonT(i,j)-G%west_lon > 0.5 * G%len_lon) then
-        eta1D(K) = eta1D(K) - 0.5 * front_displacement
+      eta1D(K) = -0.5_wp * G%max_depth & ! Middle of column
+              - thermocline_thickness * ( (real(k-1, wp))/real(nz, wp) -0.5_wp ) ! Stratification
+      if (G%geoLonT(i,j)-G%west_lon < 0.5_wp * G%len_lon) then
+        eta1D(K) = eta1D(K) + 0.5_wp * front_displacement
+      elseif (G%geoLonT(i,j)-G%west_lon > 0.5_wp * G%len_lon) then
+        eta1D(K) = eta1D(K) - 0.5_wp * front_displacement
       endif
     enddo
     eta1D(nz+1) = -G%max_depth ! Force bottom interface to bottom
     do k=nz,2,-1 ! Make sure interfaces increase upwards
       eta1D(K) = max( eta1D(K), eta1D(K+1) + GV%Angstrom_Z )
     enddo
-    eta1D(1) = 0. ! Force bottom interface to bottom
+    eta1D(1) = 0._wp ! Force bottom interface to bottom
     do k=2,nz ! Make sure interfaces decrease downwards
       eta1D(K) = min( eta1D(K), eta1D(K-1) - GV%Angstrom_Z )
     enddo

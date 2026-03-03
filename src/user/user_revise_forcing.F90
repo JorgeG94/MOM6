@@ -15,13 +15,15 @@ use MOM_tracer_flow_control, only : call_tracer_set_forcing
 use MOM_tracer_flow_control, only : tracer_flow_control_CS
 use MOM_variables, only : surface
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public user_alter_forcing, user_revise_forcing_init
 
 !> Control structure for user_revise_forcing
 type, public :: user_revise_forcing_CS ; private
-  real :: cdrag  !< The quadratic bottom drag coefficient [nondim]
+  real(wp) :: cdrag  !< The quadratic bottom drag coefficient [nondim]
 end type user_revise_forcing_CS
 
 contains

@@ -96,25 +96,27 @@ use MOM_verticalGrid, only : verticalGrid_type, get_thickness_units
 use MOM_verticalGrid, only : get_flux_units, get_tr_flux_units
 use MOM_wave_interface, only: wave_parameters_CS
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
 
 !> MOM_dynamics_unsplit module control structure
 type, public :: MOM_dyn_unsplit_CS ; private
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_,NKMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_,NKMEM_) :: &
     CAu, &    !< CAu = f*v - u.grad(u) [L T-2 ~> m s-2].
     PFu, &    !< PFu = -dM/dx [L T-2 ~> m s-2].
     diffu     !< Zonal acceleration due to convergence of the along-isopycnal stress tensor [L T-2 ~> m s-2].
 
-  real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_,NKMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_,NKMEM_) :: &
     CAv, &    !< CAv = -f*u - u.grad(v) [L T-2 ~> m s-2].
     PFv, &    !< PFv = -dM/dy [L T-2 ~> m s-2].
     diffv     !< Meridional acceleration due to convergence of the along-isopycnal stress tensor [L T-2 ~> m s-2].
 
-  real, pointer, dimension(:,:) :: taux_bot => NULL() !< frictional x-bottom stress from the ocean
+  real(wp), pointer, dimension(:,:) :: taux_bot => NULL() !< frictional x-bottom stress from the ocean
                                                       !! to the seafloor [R L Z T-2 ~> Pa]
-  real, pointer, dimension(:,:) :: tauy_bot => NULL() !< frictional y-bottom stress from the ocean
+  real(wp), pointer, dimension(:,:) :: tauy_bot => NULL() !< frictional y-bottom stress from the ocean
                                                       !! to the seafloor [R L Z T-2 ~> Pa]
 
   logical :: dt_visc_bug    !< If false, use the correct timestep in viscous terms applied in the
@@ -194,30 +196,30 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   type(ocean_grid_type),   intent(inout) :: G      !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)    :: GV     !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)    :: US     !< A dimensional unit scaling type
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: u !< The zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: v !< The meridional velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: h !< Layer thicknesses [H ~> m or kg m-2].
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: u !< The zonal velocity [L T-1 ~> m s-1].
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: v !< The meridional velocity [L T-1 ~> m s-1].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: h !< Layer thicknesses [H ~> m or kg m-2].
   type(thermo_var_ptrs),   intent(in)    :: tv     !< A structure pointing to various
                                                    !! thermodynamic variables.
   type(vertvisc_type),     intent(inout) :: visc   !< A structure containing vertical
                                  !! viscosities, bottom drag viscosities, and related fields.
   type(time_type),         intent(in)    :: Time_local   !< The model time at the end
                                                          !! of the time step.
-  real,                    intent(in)    :: dt     !< The dynamics time step [T ~> s].
+  real(wp),                    intent(in)    :: dt     !< The dynamics time step [T ~> s].
   type(mech_forcing),      intent(in)    :: forces !< A structure with the driving mechanical forces
-  real, dimension(:,:),    pointer       :: p_surf_begin !< A pointer (perhaps NULL) to the surface
+  real(wp), dimension(:,:),    pointer       :: p_surf_begin !< A pointer (perhaps NULL) to the surface
                                                    !! pressure at the start of this dynamic step [R L2 T-2 ~> Pa].
-  real, dimension(:,:),    pointer       :: p_surf_end   !< A pointer (perhaps NULL) to the surface
+  real(wp), dimension(:,:),    pointer       :: p_surf_end   !< A pointer (perhaps NULL) to the surface
                                                    !! pressure at the end of this dynamic step [R L2 T-2 ~> Pa].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uh !< The zonal volume or mass transport
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uh !< The zonal volume or mass transport
                                                    !! [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vh !< The meridional volume or mass
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vh !< The meridional volume or mass
                                                    !! transport [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uhtr !< The accumulated zonal volume or mass
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uhtr !< The accumulated zonal volume or mass
                                                    !! transport since the last tracer advection [H L2 ~> m3 or kg].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vhtr !< The accumulated meridional volume or mass
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vhtr !< The accumulated meridional volume or mass
                                                    !! transport since the last tracer advection [H L2 ~> m3 or kg].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: eta_av !< The time-mean free surface height or
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: eta_av !< The time-mean free surface height or
                                                    !! column mass [H ~> m or kg m-2].
   type(MOM_dyn_unsplit_CS), pointer      :: CS     !< The control structure set up by
                                                    !! initialize_dyn_unsplit.
@@ -229,21 +231,21 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
                                  !! fields related to the surface wave conditions
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_av, hp ! Predicted or averaged layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz       ! Distance between the interfaces around a layer [Z ~> m]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: up, upp ! Predicted zonal velocities [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vp, vpp ! Predicted meridional velocities [L T-1 ~> m s-1]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: ueffA   ! Effective Area of U-Faces [H L ~> m2]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: veffA   ! Effective Area of V-Faces [H L ~> m2]
-  real, dimension(:,:), pointer :: p_surf => NULL()     ! A pointer to the surface pressure [R L2 T-2 ~> Pa]
-  real :: dt_pred   ! The time step for the predictor part of the baroclinic time stepping [T ~> s].
-  real :: dt_visc   ! The time step for a part of the update due to viscosity [T ~> s].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_av, hp ! Predicted or averaged layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz       ! Distance between the interfaces around a layer [Z ~> m]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: up, upp ! Predicted zonal velocities [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vp, vpp ! Predicted meridional velocities [L T-1 ~> m s-1]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: ueffA   ! Effective Area of U-Faces [H L ~> m2]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: veffA   ! Effective Area of V-Faces [H L ~> m2]
+  real(wp), dimension(:,:), pointer :: p_surf => NULL()     ! A pointer to the surface pressure [R L2 T-2 ~> Pa]
+  real(wp) :: dt_pred   ! The time step for the predictor part of the baroclinic time stepping [T ~> s].
+  real(wp) :: dt_visc   ! The time step for a part of the update due to viscosity [T ~> s].
   logical :: dyn_p_surf
   integer :: i, j, k, is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz
   integer :: cor_stencil  ! Stencil size for Coriolis schemes [nondim]
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
-  dt_pred = dt / 3.0
+  dt_pred = dt / 3.0_wp
   cor_stencil = CoriolisAdv_stencil(CS%CoriolisAdv)
 
   h_av(:,:,:) = 0; hp(:,:,:) = 0
@@ -252,7 +254,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 
   dyn_p_surf = associated(p_surf_begin) .and. associated(p_surf_end)
   if (dyn_p_surf) then
-    call safe_alloc_ptr(p_surf,G%isd,G%ied,G%jsd,G%jed) ; p_surf(:,:) = 0.0
+    call safe_alloc_ptr(p_surf,G%isd,G%ied,G%jsd,G%jed) ; p_surf(:,:) = 0.0_wp
   else
     p_surf => forces%p_surf
   endif
@@ -275,12 +277,12 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! uh = u*h
 ! hp = h + dt/2 div . uh
   call cpu_clock_begin(id_clock_continuity)
-  call continuity(u, v, h, hp, uh, vh, dt*0.5, G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
+  call continuity(u, v, h, hp, uh, vh, dt*0.5_wp, G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
   call cpu_clock_end(id_clock_continuity)
   call pass_var(hp, G%Domain, clock=id_clock_pass)
   call pass_vector(uh, vh, G%Domain, clock=id_clock_pass)
 
-  call enable_averages(0.5*dt, Time_local-real_to_time(0.5*US%T_to_s*dt), CS%diag)
+  call enable_averages(0.5_wp*dt, Time_local-real_to_time(0.5_wp*US%T_to_s*dt), CS%diag)
 !   Here the first half of the thickness fluxes are offered for averaging.
   if (CS%id_uh > 0) call post_data(CS%id_uh, uh, CS%diag)
   if (CS%id_vh > 0) call post_data(CS%id_vh, vh, CS%diag)
@@ -291,7 +293,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   call cpu_clock_begin(id_clock_mom_update)
   do k=1,nz
     do j=js-cor_stencil,je+cor_stencil ; do i=is-cor_stencil,ie+cor_stencil
-      h_av(i,j,k) = (h(i,j,k) + hp(i,j,k)) * 0.5
+      h_av(i,j,k) = (h(i,j,k) + hp(i,j,k)) * 0.5_wp
     enddo ; enddo
     do j=js,je ; do I=Isq,Ieq
       u(I,j,k) = u(I,j,k) + dt * CS%diffu(I,j,k) * G%mask2dCu(I,j)
@@ -300,10 +302,10 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
       v(i,J,k) = v(i,J,k) + dt * CS%diffv(i,J,k) * G%mask2dCv(i,J)
     enddo ; enddo
     do j=js-2,je+2 ; do I=Isq-2,Ieq+2
-      uhtr(i,j,k) = uhtr(i,j,k) + 0.5*dt*uh(i,j,k)
+      uhtr(i,j,k) = uhtr(i,j,k) + 0.5_wp*dt*uh(i,j,k)
     enddo ; enddo
     do J=Jsq-2,Jeq+2 ; do i=is-2,ie+2
-      vhtr(i,j,k) = vhtr(i,j,k) + 0.5*dt*vh(i,j,k)
+      vhtr(i,j,k) = vhtr(i,j,k) + 0.5_wp*dt*vh(i,j,k)
     enddo ; enddo
   enddo
   call cpu_clock_end(id_clock_mom_update)
@@ -318,7 +320,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! PFu = d/dx M(h_av,T,S)
   call cpu_clock_begin(id_clock_pres)
   if (dyn_p_surf) then ; do j=js-2,je+2 ; do i=is-2,ie+2
-    p_surf(i,j) = 0.75*p_surf_begin(i,j) + 0.25*p_surf_end(i,j)
+    p_surf(i,j) = 0.75_wp*p_surf_begin(i,j) + 0.25_wp*p_surf_end(i,j)
   enddo ; enddo ; endif
   call PressureForce(h_av, tv, CS%PFu, CS%PFv, G, GV, US, &
                      CS%PressureForce_CSp, CS%ALE_CSp, CS%ADp, p_surf)
@@ -351,11 +353,11 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
  ! up <- up + dt/2 d/dz visc d/dz up
   call cpu_clock_begin(id_clock_vertvisc)
   call enable_averages(dt, Time_local, CS%diag)
-  dt_visc = dt ; if (CS%dt_visc_bug) dt_visc = 0.5*dt
+  dt_visc = dt ; if (CS%dt_visc_bug) dt_visc = 0.5_wp*dt
   call set_viscous_ML(u, v, h_av, tv, forces, visc, dt_visc, G, GV, US, CS%set_visc_CSp)
   call disable_averaging(CS%diag)
 
-  dt_visc = dt_pred ; if (CS%dt_visc_bug) dt_visc = 0.5*dt
+  dt_visc = dt_pred ; if (CS%dt_visc_bug) dt_visc = 0.5_wp*dt
   call thickness_to_dz(h_av, tv, dz, G, GV, US, halo_size=1)
   call vertvisc_coef(up, vp, h_av, dz, forces, visc, tv, dt_visc, G, GV, US, CS%vertvisc_CSp, CS%OBC, VarMix)
   call vertvisc(up, vp, h_av, forces, visc, dt_visc, CS%OBC, CS%ADp, CS%CDp, &
@@ -366,14 +368,14 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! uh = up * hp
 ! h_av = hp + dt/2 div . uh
   call cpu_clock_begin(id_clock_continuity)
-  call continuity(up, vp, hp, h_av, uh, vh, (0.5*dt), G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
+  call continuity(up, vp, hp, h_av, uh, vh, (0.5_wp*dt), G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
   call cpu_clock_end(id_clock_continuity)
   call pass_var(h_av, G%Domain, clock=id_clock_pass)
   call pass_vector(uh, vh, G%Domain, clock=id_clock_pass)
 
 ! h_av <- (hp + h_av)/2
   do k=1,nz ; do j=js-cor_stencil,je+cor_stencil ; do i=is-cor_stencil,ie+cor_stencil
-    h_av(i,j,k) = (hp(i,j,k) + h_av(i,j,k)) * 0.5
+    h_av(i,j,k) = (hp(i,j,k) + h_av(i,j,k)) * 0.5_wp
   enddo ; enddo ; enddo
 
 ! CAu = -(f+zeta(up))/h_av vh + d/dx KE(up)
@@ -385,7 +387,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! PFu = d/dx M(h_av,T,S)
   call cpu_clock_begin(id_clock_pres)
   if (dyn_p_surf) then ; do j=js-2,je+2 ; do i=is-2,ie+2
-    p_surf(i,j) = 0.25*p_surf_begin(i,j) + 0.75*p_surf_end(i,j)
+    p_surf(i,j) = 0.25_wp*p_surf_begin(i,j) + 0.75_wp*p_surf_end(i,j)
   enddo ; enddo ; endif
   call PressureForce(h_av, tv, CS%PFu, CS%PFv, G, GV, US, &
                      CS%PressureForce_CSp, CS%ALE_CSp, CS%ADp, p_surf)
@@ -402,10 +404,10 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! upp = u + dt/2 * ( PFu + CAu )
   call cpu_clock_begin(id_clock_mom_update)
   do k=1,nz ; do j=js,je ; do I=Isq,Ieq
-    upp(I,j,k) = G%mask2dCu(I,j) * (u(I,j,k) + dt * 0.5 * (CS%PFu(I,j,k) + CS%CAu(I,j,k)))
+    upp(I,j,k) = G%mask2dCu(I,j) * (u(I,j,k) + dt * 0.5_wp * (CS%PFu(I,j,k) + CS%CAu(I,j,k)))
   enddo ; enddo ; enddo
   do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
-    vpp(i,J,k) = G%mask2dCv(i,J) * (v(i,J,k) + dt * 0.5 * (CS%PFv(i,J,k) + CS%CAv(i,J,k)))
+    vpp(i,J,k) = G%mask2dCv(i,J) * (v(i,J,k) + dt * 0.5_wp * (CS%PFv(i,J,k) + CS%CAv(i,J,k)))
   enddo ; enddo ; enddo
   call cpu_clock_end(id_clock_mom_update)
 
@@ -418,8 +420,8 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! upp <- upp + dt/2 d/dz visc d/dz upp
   call cpu_clock_begin(id_clock_vertvisc)
   call thickness_to_dz(hp, tv, dz, G, GV, US, halo_size=1)
-  call vertvisc_coef(upp, vpp, hp, dz, forces, visc, tv, dt*0.5, G, GV, US, CS%vertvisc_CSp, CS%OBC, VarMix)
-  call vertvisc(upp, vpp, hp, forces, visc, dt*0.5, CS%OBC, CS%ADp, CS%CDp, &
+  call vertvisc_coef(upp, vpp, hp, dz, forces, visc, tv, dt*0.5_wp, G, GV, US, CS%vertvisc_CSp, CS%OBC, VarMix)
+  call vertvisc(upp, vpp, hp, forces, visc, dt*0.5_wp, CS%OBC, CS%ADp, CS%CDp, &
                 G, GV, US, CS%vertvisc_CSp, Waves=Waves)
   call cpu_clock_end(id_clock_vertvisc)
   call pass_vector(upp, vpp, G%Domain, clock=id_clock_pass)
@@ -427,7 +429,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! uh = upp * hp
 ! h = hp + dt/2 div . uh
   call cpu_clock_begin(id_clock_continuity)
-  call continuity(upp, vpp, hp, h, uh, vh, (dt*0.5), G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
+  call continuity(upp, vpp, hp, h, uh, vh, (dt*0.5_wp), G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
   call cpu_clock_end(id_clock_continuity)
   call pass_var(h, G%Domain, clock=id_clock_pass)
   call pass_vector(uh, vh, G%Domain, clock=id_clock_pass)
@@ -435,7 +437,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   ! for vertical remapping may need to be regenerated.
   call diag_update_remap_grids(CS%diag)
 
-  call enable_averages(0.5*dt, Time_local, CS%diag)
+  call enable_averages(0.5_wp*dt, Time_local, CS%diag)
 !   Here the second half of the thickness fluxes are offered for averaging.
   if (CS%id_uh > 0) call post_data(CS%id_uh, uh, CS%diag)
   if (CS%id_vh > 0) call post_data(CS%id_vh, vh, CS%diag)
@@ -446,7 +448,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   if (CS%id_ueffA > 0) then
     ueffA(:,:,:) = 0
     do k=1,nz ; do j=js,je ; do I=Isq,Ieq
-      if (abs(up(I,j,k)) > 0.) ueffA(I,j,k) = uh(I,j,k)/up(I,j,k)
+      if (abs(up(I,j,k)) > 0._wp) ueffA(I,j,k) = uh(I,j,k)/up(I,j,k)
     enddo ; enddo ; enddo
     call post_data(CS%id_ueffA, ueffA, CS%diag)
   endif
@@ -454,7 +456,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   if (CS%id_veffA > 0) then
     veffA(:,:,:) = 0
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
-      if (abs(vp(i,J,k)) > 0.) veffA(i,J,k) = vh(i,J,k)/vp(i,J,k)
+      if (abs(vp(i,J,k)) > 0._wp) veffA(i,J,k) = vh(i,J,k)/vp(i,J,k)
     enddo ; enddo ; enddo
     call post_data(CS%id_veffA, veffA, CS%diag)
   endif
@@ -462,13 +464,13 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
 ! h_av = (h + hp)/2
   do k=1,nz
     do j=js-cor_stencil,je+cor_stencil ; do i=is-cor_stencil,ie+cor_stencil
-      h_av(i,j,k) = 0.5*(h(i,j,k) + hp(i,j,k))
+      h_av(i,j,k) = 0.5_wp*(h(i,j,k) + hp(i,j,k))
     enddo ; enddo
     do j=js-2,je+2 ; do I=Isq-2,Ieq+2
-      uhtr(i,j,k) = uhtr(i,j,k) + 0.5*dt*uh(i,j,k)
+      uhtr(i,j,k) = uhtr(i,j,k) + 0.5_wp*dt*uh(i,j,k)
     enddo ; enddo
     do J=Jsq-2,Jeq+2 ; do i=is-2,ie+2
-      vhtr(i,j,k) = vhtr(i,j,k) + 0.5*dt*vh(i,j,k)
+      vhtr(i,j,k) = vhtr(i,j,k) + 0.5_wp*dt*vh(i,j,k)
     enddo ; enddo
   enddo
 
@@ -518,7 +520,7 @@ subroutine step_MOM_dyn_unsplit(u, v, h, tv, visc, Time_local, dt, forces, &
   if (GV%Boussinesq) then
     do j=js,je ; do i=is,ie ; eta_av(i,j) = -GV%Z_to_H*G%bathyT(i,j) ; enddo ; enddo
   else
-    do j=js,je ; do i=is,ie ; eta_av(i,j) = 0.0 ; enddo ; enddo
+    do j=js,je ; do i=is,ie ; eta_av(i,j) = 0.0_wp ; enddo ; enddo
   endif
   do k=1,nz ; do j=js,je ; do i=is,ie
     eta_av(i,j) = eta_av(i,j) + h_av(i,j,k)
@@ -563,12 +565,12 @@ subroutine register_restarts_dyn_unsplit(HI, GV, param_file, CS)
   endif
   allocate(CS)
 
-  ALLOC_(CS%diffu(IsdB:IedB,jsd:jed,nz)) ; CS%diffu(:,:,:) = 0.0
-  ALLOC_(CS%diffv(isd:ied,JsdB:JedB,nz)) ; CS%diffv(:,:,:) = 0.0
-  ALLOC_(CS%CAu(IsdB:IedB,jsd:jed,nz)) ; CS%CAu(:,:,:) = 0.0
-  ALLOC_(CS%CAv(isd:ied,JsdB:JedB,nz)) ; CS%CAv(:,:,:) = 0.0
-  ALLOC_(CS%PFu(IsdB:IedB,jsd:jed,nz)) ; CS%PFu(:,:,:) = 0.0
-  ALLOC_(CS%PFv(isd:ied,JsdB:JedB,nz)) ; CS%PFv(:,:,:) = 0.0
+  ALLOC_(CS%diffu(IsdB:IedB,jsd:jed,nz)) ; CS%diffu(:,:,:) = 0.0_wp
+  ALLOC_(CS%diffv(isd:ied,JsdB:JedB,nz)) ; CS%diffv(:,:,:) = 0.0_wp
+  ALLOC_(CS%CAu(IsdB:IedB,jsd:jed,nz)) ; CS%CAu(:,:,:) = 0.0_wp
+  ALLOC_(CS%CAv(isd:ied,JsdB:JedB,nz)) ; CS%CAv(:,:,:) = 0.0_wp
+  ALLOC_(CS%PFu(IsdB:IedB,jsd:jed,nz)) ; CS%PFu(:,:,:) = 0.0_wp
+  ALLOC_(CS%PFv(isd:ied,JsdB:JedB,nz)) ; CS%PFv(:,:,:) = 0.0_wp
 
   thickness_units = get_thickness_units(GV)
   flux_units = get_flux_units(GV)
@@ -585,11 +587,11 @@ subroutine initialize_dyn_unsplit(u, v, h, tv, Time, G, GV, US, param_file, diag
   type(ocean_grid_type),          intent(inout) :: G          !< The ocean's grid structure.
   type(verticalGrid_type),        intent(in)    :: GV         !< The ocean's vertical grid structure.
   type(unit_scale_type),          intent(in)    :: US         !< A dimensional unit scaling type
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                                   intent(inout) :: u          !< The zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                                   intent(inout) :: v          !< The meridional velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                   intent(inout) :: h          !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),          intent(in)    :: tv         !< Thermodynamic type
   type(time_type),        target, intent(in)    :: Time       !< The current model time.
@@ -671,8 +673,8 @@ subroutine initialize_dyn_unsplit(u, v, h, tv, Time, G, GV, US, param_file, diag
   call get_param(param_file, mdl, "CALCULATE_SAL", CS%calculate_SAL, &
                  "If true, calculate self-attraction and loading.", default=CS%use_tides)
 
-  allocate(CS%taux_bot(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(CS%tauy_bot(isd:ied,JsdB:JedB), source=0.0)
+  allocate(CS%taux_bot(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(CS%tauy_bot(isd:ied,JsdB:JedB), source=0.0_wp)
 
   MIS%diffu => CS%diffu ; MIS%diffv => CS%diffv
   MIS%PFu => CS%PFu ; MIS%PFv => CS%PFv

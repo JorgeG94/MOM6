@@ -4,6 +4,7 @@ module MOM_hybgen_remap
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public hybgen_plm_coefs, hybgen_ppm_coefs, hybgen_weno_coefs
@@ -14,10 +15,10 @@ contains
 subroutine hybgen_plm_coefs(si, dpi, slope, nk, ns, thin, PCM_lay)
   integer, intent(in)  :: nk        !< The number of input layers
   integer, intent(in)  :: ns        !< The number of scalar fields to work on
-  real,    intent(in)  :: si(nk,ns) !< The cell-averaged input scalar fields [A]
-  real,    intent(in)  :: dpi(nk)   !< The input grid layer thicknesses [H ~> m or kg m-2]
-  real,    intent(out) :: slope(nk,ns) !< The PLM slope times cell width [A]
-  real,    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
+  real(wp),    intent(in)  :: si(nk,ns) !< The cell-averaged input scalar fields [A]
+  real(wp),    intent(in)  :: dpi(nk)   !< The input grid layer thicknesses [H ~> m or kg m-2]
+  real(wp),    intent(out) :: slope(nk,ns) !< The PLM slope times cell width [A]
+  real(wp),    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
   logical, optional, intent(in)  :: PCM_lay(nk) !< If true for a layer, use PCM remapping for that layer
 
 !-----------------------------------------------------------------------
@@ -43,21 +44,21 @@ subroutine hybgen_plm_coefs(si, dpi, slope, nk, ns, thin, PCM_lay)
 !     Alan J. Wallcraft,  Naval Research Laboratory,  Aug. 2007.
 !-----------------------------------------------------------------------
 !
-  real :: qcen   ! A layer's thickness divided by the distance between the centers
+  real(wp) :: qcen   ! A layer's thickness divided by the distance between the centers
                  ! of the adjacent cells, usually ~0.5, but always <= 1 [nondim]
-  real :: zbot, zcen, ztop ! Tracer slopes times the layer thickness [A]
+  real(wp) :: zbot, zcen, ztop ! Tracer slopes times the layer thickness [A]
   integer :: i, k
 
   do i=1,ns
-    slope(1, i) = 0.0
-    slope(nk,i) = 0.0
+    slope(1, i) = 0.0_wp
+    slope(nk,i) = 0.0_wp
   enddo !i
   do k= 2,nk-1
     if (dpi(k) <= thin) then  !use PCM
-      do i=1,ns ; slope(k,i) = 0.0 ; enddo
+      do i=1,ns ; slope(k,i) = 0.0_wp ; enddo
     else
 ! ---     use qcen in place of 0.5 to allow for non-uniform grid
-      qcen = dpi(k) / (dpi(k)+0.5*(dpi(k-1)+dpi(k+1)))  !dpi(k)>thin
+      qcen = dpi(k) / (dpi(k)+0.5_wp*(dpi(k-1)+dpi(k+1)))  !dpi(k)>thin
       do i=1,ns
 ! ---       PLM (non-zero slope, but no new extrema)
 ! ---       layer value is si-0.5*slope at top    interface,
@@ -66,13 +67,13 @@ subroutine hybgen_plm_coefs(si, dpi, slope, nk, ns, thin, PCM_lay)
 ! ---       monotonized central-difference limiter (van Leer, 1977,
 ! ---       JCP 23 pp 276-299).  For a discussion of PLM limiters, see
 ! ---       Finite Volume Methods for Hyperbolic Problems by R.J. Leveque.
-        ztop = 2.0*(si(k,  i)-si(k-1,i))
-        zbot = 2.0*(si(k+1,i)-si(k,  i))
+        ztop = 2.0_wp*(si(k,  i)-si(k-1,i))
+        zbot = 2.0_wp*(si(k+1,i)-si(k,  i))
         zcen = qcen*(si(k+1,i)-si(k-1,i))
-        if     (ztop*zbot > 0.0) then !ztop,zbot are the same sign
+        if     (ztop*zbot > 0.0_wp) then !ztop,zbot are the same sign
           slope(k,i) = sign(min(abs(zcen),abs(zbot),abs(ztop)), zbot)
         else
-          slope(k,i) = 0.0  !local extrema, so no slope
+          slope(k,i) = 0.0_wp  !local extrema, so no slope
         endif
       enddo !i
     endif  !PCM:PLM
@@ -80,7 +81,7 @@ subroutine hybgen_plm_coefs(si, dpi, slope, nk, ns, thin, PCM_lay)
 
   if (present(PCM_lay)) then
     do k=1,nk ; if (PCM_lay(k)) then
-      do i=1,ns ; slope(k,i) = 0.0 ; enddo
+      do i=1,ns ; slope(k,i) = 0.0_wp ; enddo
     endif ; enddo
   endif
 
@@ -91,10 +92,10 @@ end subroutine hybgen_plm_coefs
 subroutine hybgen_ppm_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
   integer, intent(in)  :: nk        !< The number of input layers
   integer, intent(in)  :: ns        !< The scalar fields to work on
-  real,    intent(in)  :: s(nk,ns)  !< The input scalar fields [A]
-  real,    intent(in)  :: h_src(nk) !< The input grid layer thicknesses [H ~> m or kg m-2]
-  real,    intent(out) :: edges(nk,2,ns) !< The PPM interpolation edge values of the scalar fields [A]
-  real,    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
+  real(wp),    intent(in)  :: s(nk,ns)  !< The input scalar fields [A]
+  real(wp),    intent(in)  :: h_src(nk) !< The input grid layer thicknesses [H ~> m or kg m-2]
+  real(wp),    intent(out) :: edges(nk,2,ns) !< The PPM interpolation edge values of the scalar fields [A]
+  real(wp),    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
   logical, optional, intent(in)  :: PCM_lay(nk) !< If true for a layer, use PCM remapping for that layer
 
 !-----------------------------------------------------------------------
@@ -120,21 +121,21 @@ subroutine hybgen_ppm_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
 !     Alan J. Wallcraft,  Naval Research Laboratory,  Aug. 2007.
 !-----------------------------------------------------------------------
 !
-  real :: dp(nk) ! Input grid layer thicknesses, but with a minimum thickness given by thin [H ~> m or kg m-2]
+  real(wp) :: dp(nk) ! Input grid layer thicknesses, but with a minimum thickness given by thin [H ~> m or kg m-2]
   logical :: PCM_layer(nk) ! True for layers that should use PCM remapping, either because they are
                            ! very thin, or because this is specified by PCM_lay.
-  real :: da        ! Difference between the unlimited scalar edge value estimates [A]
-  real :: a6        ! Scalar field differences that are proportional to the curvature [A]
-  real :: slk, srk  ! Differences between adjacent cell averages of scalars [A]
-  real :: sck       ! Scalar differences across a cell [A]
-  real :: as(nk)    ! Scalar field difference across each cell [A]
-  real :: al(nk), ar(nk)   ! Scalar field at the left and right edges of a cell [A]
-  real :: h112(nk+1), h122(nk+1)  ! Combinations of thicknesses [H ~> m or kg m-2]
-  real :: I_h12(nk+1) ! Inverses of combinations of thickesses [H-1 ~> m-1 or m2 kg-1]
-  real :: h2_h123(nk)  ! A ratio of a layer thickness of the sum of 3 adjacent thicknesses [nondim]
-  real :: I_h0123(nk)     ! Inverse of the sum of 4 adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
-  real :: h01_h112(nk+1) ! A ratio of sums of adjacent thicknesses [nondim], 2/3 in the limit of uniform thicknesses.
-  real :: h23_h122(nk+1) ! A ratio of sums of adjacent thicknesses [nondim], 2/3 in the limit of uniform thicknesses.
+  real(wp) :: da        ! Difference between the unlimited scalar edge value estimates [A]
+  real(wp) :: a6        ! Scalar field differences that are proportional to the curvature [A]
+  real(wp) :: slk, srk  ! Differences between adjacent cell averages of scalars [A]
+  real(wp) :: sck       ! Scalar differences across a cell [A]
+  real(wp) :: as(nk)    ! Scalar field difference across each cell [A]
+  real(wp) :: al(nk), ar(nk)   ! Scalar field at the left and right edges of a cell [A]
+  real(wp) :: h112(nk+1), h122(nk+1)  ! Combinations of thicknesses [H ~> m or kg m-2]
+  real(wp) :: I_h12(nk+1) ! Inverses of combinations of thickesses [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: h2_h123(nk)  ! A ratio of a layer thickness of the sum of 3 adjacent thicknesses [nondim]
+  real(wp) :: I_h0123(nk)     ! Inverse of the sum of 4 adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: h01_h112(nk+1) ! A ratio of sums of adjacent thicknesses [nondim], 2/3 in the limit of uniform thicknesses.
+  real(wp) :: h23_h122(nk+1) ! A ratio of sums of adjacent thicknesses [nondim], 2/3 in the limit of uniform thicknesses.
   integer :: k, i
 
   ! This PPM remapper is not currently written to work with massless layers, so set
@@ -150,38 +151,38 @@ subroutine hybgen_ppm_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
 
   !compute grid metrics
   do k=2,nk
-    h112(K) = 2.*dp(k-1) + dp(k)
-    h122(K) = dp(k-1) + 2.*dp(k)
-    I_h12(K) = 1.0 / (dp(k-1) + dp(k))
+    h112(K) = 2._wp*dp(k-1) + dp(k)
+    h122(K) = dp(k-1) + 2._wp*dp(k)
+    I_h12(K) = 1.0_wp / (dp(k-1) + dp(k))
   enddo !k
   do k=2,nk-1
     h2_h123(k) = dp(k) / (dp(k) + (dp(k-1)+dp(k+1)))
   enddo
   do K=3,nk-1
-    I_h0123(K) = 1.0 / ((dp(k-2) + dp(k-1)) + (dp(k) + dp(k+1)))
+    I_h0123(K) = 1.0_wp / ((dp(k-2) + dp(k-1)) + (dp(k) + dp(k+1)))
 
-    h01_h112(K) = (dp(k-2) + dp(k-1)) / (2.0*dp(k-1) + dp(k))
-    h23_h122(K) = (dp(k) + dp(k+1))   / (dp(k-1) + 2.0*dp(k))
+    h01_h112(K) = (dp(k-2) + dp(k-1)) / (2.0_wp*dp(k-1) + dp(k))
+    h23_h122(K) = (dp(k) + dp(k+1))   / (dp(k-1) + 2.0_wp*dp(k))
   enddo
 
   do i=1,ns
     !Compute average slopes: Colella, Eq. (1.8)
-    as(1) = 0.
+    as(1) = 0._wp
     do k=2,nk-1
       if (PCM_layer(k)) then  !use PCM
-        as(k) = 0.0
+        as(k) = 0.0_wp
       else
         slk = s(k,  i)-s(k-1,i)
         srk = s(k+1,i)-s(k,  i)
-        if (slk*srk > 0.) then
+        if (slk*srk > 0._wp) then
           sck = h2_h123(k)*( h112(K)*srk*I_h12(K+1) + h122(K+1)*slk*I_h12(K) )
-          as(k) = sign(min(abs(2.0*slk), abs(sck), abs(2.0*srk)), sck)
+          as(k) = sign(min(abs(2.0_wp*slk), abs(sck), abs(2.0_wp*srk)), sck)
         else
-          as(k) = 0.
+          as(k) = 0._wp
         endif
       endif  !PCM:PPM
     enddo !k
-    as(nk) = 0.
+    as(nk) = 0._wp
     !Compute "first guess" edge values: Colella, Eq. (1.6)
     al(1) = s(1,i)  ! 1st layer PCM
     ar(1) = s(1,i)  ! 1st layer PCM
@@ -189,7 +190,7 @@ subroutine hybgen_ppm_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
     do K=3,nk-1
       ! This is a 4th order explicit edge value estimate.
       al(k) = (dp(k)*s(k-1,i) + dp(k-1)*s(k,i)) * I_h12(K) &
-            + I_h0123(K)*( 2.*dp(k)*dp(k-1)*I_h12(K)*(s(k,i)-s(k-1,i)) * &
+            + I_h0123(K)*( 2._wp*dp(k)*dp(k-1)*I_h12(K)*(s(k,i)-s(k-1,i)) * &
                            ( h01_h112(K) - h23_h122(K) ) &
                     + (dp(k)*as(k-1)*h23_h122(K) - dp(k-1)*as(k)*h01_h112(K)) )
       ar(k-1) = al(k)
@@ -199,16 +200,16 @@ subroutine hybgen_ppm_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
     ar(nk)  = s(nk,i)  ! last layer PCM
     !Impose monotonicity: Colella, Eq. (1.10)
     do k=2,nk-1
-      if ((PCM_layer(k)) .or. ((s(k+1,i)-s(k,i))*(s(k,i)-s(k-1,i)) <= 0.)) then !local extremum
+      if ((PCM_layer(k)) .or. ((s(k+1,i)-s(k,i))*(s(k,i)-s(k-1,i)) <= 0._wp)) then !local extremum
         al(k) = s(k,i)
         ar(k) = s(k,i)
       else
         da = ar(k)-al(k)
-        a6 = 6.0*s(k,i) - 3.0*(al(k)+ar(k))
+        a6 = 6.0_wp*s(k,i) - 3.0_wp*(al(k)+ar(k))
         if (da*a6 > da*da) then !peak in right half of zone
-          al(k) = 3.0*s(k,i) - 2.0*ar(k)
+          al(k) = 3.0_wp*s(k,i) - 2.0_wp*ar(k)
         elseif (da*a6 < -da*da) then !peak in left half of zone
-          ar(k) = 3.0*s(k,i) - 2.0*al(k)
+          ar(k) = 3.0_wp*s(k,i) - 2.0_wp*al(k)
         endif
       endif
     enddo !k
@@ -226,10 +227,10 @@ end subroutine hybgen_ppm_coefs
 subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
   integer, intent(in)  :: nk        !< The number of input layers
   integer, intent(in)  :: ns        !< The number of scalar fields to work on
-  real,    intent(in)  :: s(nk,ns)  !< The input scalar fields [A]
-  real,    intent(in)  :: h_src(nk) !< The input grid layer thicknesses [H ~> m or kg m-2]
-  real,    intent(out) :: edges(nk,2,ns) !< The WENO interpolation edge values of the scalar fields [A]
-  real,    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
+  real(wp),    intent(in)  :: s(nk,ns)  !< The input scalar fields [A]
+  real(wp),    intent(in)  :: h_src(nk) !< The input grid layer thicknesses [H ~> m or kg m-2]
+  real(wp),    intent(out) :: edges(nk,2,ns) !< The WENO interpolation edge values of the scalar fields [A]
+  real(wp),    intent(in)  :: thin      !< A negligible layer thickness that can be ignored [H ~> m or kg m-2]
   logical, optional, intent(in)  :: PCM_lay(nk) !< If true for a layer, use PCM remapping for that layer
 
 !-----------------------------------------------------------------------
@@ -262,26 +263,26 @@ subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
 !
 !  real, parameter :: dsmll=1.0e-8  ! This has units of [A2], and hence can not be a parameter.
 !
-  real :: curv_cell   ! An estimate of the tracer curvature centered on a cell times the grid
+  real(wp) :: curv_cell   ! An estimate of the tracer curvature centered on a cell times the grid
                       ! spacing [A H-1 ~> A m-1 or A m2 kg-1]
-  real :: seh1, seh2  ! Tracer slopes at the cell edges times the cell grid spacing [A]
-  real :: q01, q02    ! Various tracer differences between a cell average and the edge values [A]
-  real :: q001, q002  ! Tracer slopes at the cell edges times the cell grid spacing [A]
+  real(wp) :: seh1, seh2  ! Tracer slopes at the cell edges times the cell grid spacing [A]
+  real(wp) :: q01, q02    ! Various tracer differences between a cell average and the edge values [A]
+  real(wp) :: q001, q002  ! Tracer slopes at the cell edges times the cell grid spacing [A]
   logical :: PCM_layer(nk) ! True for layers that should use PCM remapping, either because they are
                       ! very thin, or because this is specified by PCM_lay.
-  real :: dp(nk)      ! Input grid layer thicknesses, but with a minimum thickness given by thin [H ~> m or kg m-2]
-  real :: qdpkm(nk)   ! Inverse of the sum of two adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
-  real :: qdpkmkp(nk) ! Inverse of the sum of three adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
-  real :: dpkm2kp(nk) ! Twice the distance between the centers of the layers two apart [H ~> m or kg m-2]
-  real :: zw(nk,2)    ! Squared combinations of the differences between the the cell average tracer
+  real(wp) :: dp(nk)      ! Input grid layer thicknesses, but with a minimum thickness given by thin [H ~> m or kg m-2]
+  real(wp) :: qdpkm(nk)   ! Inverse of the sum of two adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: qdpkmkp(nk) ! Inverse of the sum of three adjacent thicknesses [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: dpkm2kp(nk) ! Twice the distance between the centers of the layers two apart [H ~> m or kg m-2]
+  real(wp) :: zw(nk,2)    ! Squared combinations of the differences between the the cell average tracer
                       ! concentrations and the left and right edges [A2]
-  real :: min_ratio   ! The minimum ratio of the values of zw used to interpolate the edge values [nondim]
-  real :: wt1         ! The weight of the upper layer in the interpolated shared edge value [nondim]
-  real :: slope_edge(nk+1)  ! Tracer slopes at the edges [A H-1 ~> A m-1 or A m2 kg-1]
-  real :: val_edge(nk+1)    ! A weighted average edge concentration [A]
+  real(wp) :: min_ratio   ! The minimum ratio of the values of zw used to interpolate the edge values [nondim]
+  real(wp) :: wt1         ! The weight of the upper layer in the interpolated shared edge value [nondim]
+  real(wp) :: slope_edge(nk+1)  ! Tracer slopes at the edges [A H-1 ~> A m-1 or A m2 kg-1]
+  real(wp) :: val_edge(nk+1)    ! A weighted average edge concentration [A]
   integer :: i, k
 
-  min_ratio = 1.0e-8
+  min_ratio = 1.0e-8_wp
 
   ! The WENO remapper is not currently written to work with massless layers, so set
   ! the thicknesses for very thin layers to some minimum value.
@@ -296,11 +297,11 @@ subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
 
   !compute grid metrics
   do k=2,nk-1
-    qdpkm(  K) = 1.0 / (dp(k-1) + dp(k))
-    qdpkmkp(k) = 1.0 / (dp(k-1) + dp(k) + dp(k+1))
-    dpkm2kp(k) = dp(k-1) + 2.0*dp(k) + dp(k+1)
+    qdpkm(  K) = 1.0_wp / (dp(k-1) + dp(k))
+    qdpkmkp(k) = 1.0_wp / (dp(k-1) + dp(k) + dp(k+1))
+    dpkm2kp(k) = dp(k-1) + 2.0_wp*dp(k) + dp(k+1)
   enddo !k
-  qdpkm(nk) = 1.0 / (dp(nk-1) + dp(nk))
+  qdpkm(nk) = 1.0_wp / (dp(nk-1) + dp(nk))
 
   do i=1,ns
     do K=2,nk
@@ -309,14 +310,14 @@ subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
     k = 1  !PCM first layer
     edges(k,1,i) = s(k,i)
     edges(k,2,i) = s(k,i)
-    zw(k,1) = 0.0
-    zw(k,2) = 0.0
+    zw(k,1) = 0.0_wp
+    zw(k,2) = 0.0_wp
     do k=2,nk-1
-      if ((slope_edge(K)*slope_edge(K+1) < 0.0) .or. PCM_layer(k)) then  !use PCM
+      if ((slope_edge(K)*slope_edge(K+1) < 0.0_wp) .or. PCM_layer(k)) then  !use PCM
         edges(k,1,i) = s(k,i)
         edges(k,2,i) = s(k,i)
-        zw(k,1) = 0.0
-        zw(k,2) = 0.0
+        zw(k,1) = 0.0_wp
+        zw(k,2) = 0.0_wp
       else
         seh1 = dp(k)*slope_edge(K+1)
         seh2 = dp(k)*slope_edge(K)
@@ -336,15 +337,15 @@ subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
 
         edges(k,2,i) = s(k,i) + q001
         edges(k,1,i) = s(k,i) - q002
-        zw(k,1) = (2.0*q001 - q002)**2
-        zw(k,2) = (2.0*q002 - q001)**2
+        zw(k,1) = (2.0_wp*q001 - q002)**2
+        zw(k,2) = (2.0_wp*q002 - q001)**2
       endif  !PCM:WENO
     enddo !k
     k = nk  !PCM last layer
     edges(k,1,i) = s(k,i)
     edges(k,2,i) = s(k,i)
-    zw(k,  1) = 0.0
-    zw(k,  2) = 0.0
+    zw(k,  1) = 0.0_wp
+    zw(k,  2) = 0.0_wp
 
     do k=2,nk
       ! This was the original code based on that in Hycom, but because zw has
@@ -353,31 +354,31 @@ subroutine hybgen_weno_coefs(s, h_src, edges, nk, ns, thin, PCM_lay)
       !   ds2b = max(zw(k,  1), dsmll)
       !   val_edge(K) = (ds2b*edges(k-1,2,i)+ds2a*edges(k,1,i)) / (ds2b+ds2a)
       ! Use a weighted average of the two layers' estimated edge values as the actual edge value.
-      if (zw(k,1) + zw(k-1,2) <= 0.0) then
-        wt1 = 0.5
+      if (zw(k,1) + zw(k-1,2) <= 0.0_wp) then
+        wt1 = 0.5_wp
       elseif (zw(k,1) <= min_ratio * (zw(k,1) + zw(k-1,2))) then
         wt1 = min_ratio
       elseif (zw(k-1,2) <= min_ratio * (zw(k,1) + zw(k-1,2))) then
-        wt1 = (1.0 - min_ratio)
+        wt1 = (1.0_wp - min_ratio)
       else
         wt1 = zw(k,1) / (zw(k,1) + zw(k-1,2))
       endif
-      val_edge(k) = wt1*edges(k-1,2,i) + (1.0-wt1)*edges(k,1,i)
+      val_edge(k) = wt1*edges(k-1,2,i) + (1.0_wp-wt1)*edges(k,1,i)
     enddo !k
-    val_edge(   1) = 2.0*s( 1,i)-val_edge( 2)  !not used?
-    val_edge(nk+1) = 2.0*s(nk,i)-val_edge(nk)  !not used?
+    val_edge(   1) = 2.0_wp*s( 1,i)-val_edge( 2)  !not used?
+    val_edge(nk+1) = 2.0_wp*s(nk,i)-val_edge(nk)  !not used?
 
     do k=2,nk-1
       if (.not.PCM_layer(k)) then  !don't use PCM
         q01 = val_edge(K+1) - s(k,i)
         q02 = s(k,i) - val_edge(K)
-        if (q01*q02 < 0.0) then
-          q01 = 0.0
-          q02 = 0.0
-        elseif (abs(q01) > abs(2.0*q02)) then
-          q01 = 2.0*q02
-        elseif (abs(q02) > abs(2.0*q01)) then
-          q02 = 2.0*q01
+        if (q01*q02 < 0.0_wp) then
+          q01 = 0.0_wp
+          q02 = 0.0_wp
+        elseif (abs(q01) > abs(2.0_wp*q02)) then
+          q01 = 2.0_wp*q02
+        elseif (abs(q02) > abs(2.0_wp*q01)) then
+          q02 = 2.0_wp*q01
         endif
         edges(k,1,i) = s(k,i) - q02
         edges(k,2,i) = s(k,i) + q01

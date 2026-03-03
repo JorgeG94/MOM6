@@ -6,6 +6,8 @@ module MOM_unique_scales
 
 use MOM_error_handler, only : MOM_error, MOM_mesg, FATAL, WARNING, assert, MOM_get_verbosity
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 ! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
@@ -220,10 +222,10 @@ end subroutine encode_dim_powers
 !> Find the integer power of two that describe each of the scaling factors, or return 0 for
 !! scaling factors that are not exceptionally close to an integer power of 2.
 subroutine scales_to_powers(scale, pow2)
-  real,    intent(in)  :: scale(:)  !< The scaling factor for each dimension
+  real(wp),    intent(in)  :: scale(:)  !< The scaling factor for each dimension
   integer, intent(out) :: pow2(:)   !< The exact powers of 2 for each scale, or 0 for non-exact powers of 2.
 
-  real :: log2_sc        ! The log base 2 of an element of scale
+  real(wp) :: log2_sc        ! The log base 2 of an element of scale
   integer :: n, ndim
 
   ndim = size(scale)
@@ -231,12 +233,12 @@ subroutine scales_to_powers(scale, pow2)
   ! Find the integer power of two for the scaling factors, but skip the analysis of any factors
   ! that are not close enough to being integer powers of 2.
   do n=1,ndim
-    if (abs(scale(n)) > 0.0) then
-      log2_sc = log(abs(scale(n))) / log(2.0)
+    if (abs(scale(n)) > 0.0_wp) then
+      log2_sc = log(abs(scale(n))) / log(2.0_wp)
     else
-      log2_sc = 0.0
+      log2_sc = 0.0_wp
     endif
-    if (abs(log2_sc - nint(log2_sc)) < 1.0e-6) then
+    if (abs(log2_sc - nint(log2_sc)) < 1.0e-6_wp) then
       ! This is close to an integer power of two.
       pow2(n) = nint(log2_sc)
     else

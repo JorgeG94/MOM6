@@ -8,6 +8,8 @@ use MOM_error_handler, only : MOM_error, FATAL
 use MOM_file_parser,   only : get_param, log_version, param_file_type
 use MOM_grid,          only : ocean_grid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public spherical_harmonics_init, spherical_harmonics_end, order2index, calc_lmax
@@ -21,13 +23,13 @@ type, public :: sht_CS ; private
   integer :: ndegree !< Maximum degree of the spherical harmonics [nondim].
   integer :: lmax !< Number of associated Legendre polynomials of nonnegative m
                   !! [lmax=(ndegree+1)*(ndegree+2)/2] [nondim].
-  real, allocatable :: cos_clatT(:,:) !< Precomputed cosine of colatitude at the t-cells [nondim].
-  real, allocatable :: Pmm(:,:,:) !< Precomputed associated Legendre polynomials (m=n) at the t-cells [nondim].
-  real, allocatable :: cos_lonT(:,:,:), & !< Precomputed cosine factors at the t-cells [nondim].
+  real(wp), allocatable :: cos_clatT(:,:) !< Precomputed cosine of colatitude at the t-cells [nondim].
+  real(wp), allocatable :: Pmm(:,:,:) !< Precomputed associated Legendre polynomials (m=n) at the t-cells [nondim].
+  real(wp), allocatable :: cos_lonT(:,:,:), & !< Precomputed cosine factors at the t-cells [nondim].
                        sin_lonT(:,:,:)    !< Precomputed sine factors at the t-cells [nondim].
-  real, allocatable :: cos_lonT_wtd(:,:,:), & !< Precomputed area-weighted cosine factors at the t-cells [nondim]
+  real(wp), allocatable :: cos_lonT_wtd(:,:,:), & !< Precomputed area-weighted cosine factors at the t-cells [nondim]
                        sin_lonT_wtd(:,:,:)    !< Precomputed area-weighted sine factors at the t-cells [nondim]
-  real, allocatable :: a_recur(:,:), & !< Precomputed recurrence coefficients a [nondim].
+  real(wp), allocatable :: a_recur(:,:), & !< Precomputed recurrence coefficients a [nondim].
                        b_recur(:,:)    !< Precomputed recurrence coefficients b [nondim].
   logical :: reprod_sum !< True if use reproducible global sums
 end type sht_CS
@@ -43,32 +45,32 @@ contains
 subroutine spherical_harmonics_forward(G, CS, var, Snm_Re, Snm_Im, Nd, tmp_scale)
   type(ocean_grid_type), intent(in)    :: G            !< The ocean's grid structure.
   type(sht_CS),          intent(inout) :: CS           !< Control structure for SHT
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                          intent(in)    :: var          !< Input 2-D variable in arbitrary mks units [a]
                                                        !! or in arbitrary rescaled units [A ~> a] if
                                                        !! tmp_scale is present
-  real,                  intent(out)   :: Snm_Re(:)    !< SHT coefficients for the real modes (cosine) in
+  real(wp),                  intent(out)   :: Snm_Re(:)    !< SHT coefficients for the real modes (cosine) in
                                                        !! the same arbitrary units as var [a] or [A ~> a]
-  real,                  intent(out)   :: Snm_Im(:)    !< SHT coefficients for the imaginary modes (sine) in
+  real(wp),                  intent(out)   :: Snm_Im(:)    !< SHT coefficients for the imaginary modes (sine) in
                                                        !! the same arbitrary units as var [a] or [A ~> a]
   integer,     optional, intent(in)    :: Nd           !< Maximum degree of the spherical harmonics
                                                        !! overriding ndegree in the CS [nondim]
-  real,        optional, intent(in)    :: tmp_scale    !< A temporary rescaling factor to convert
+  real(wp),        optional, intent(in)    :: tmp_scale    !< A temporary rescaling factor to convert
                                                        !! var to MKS units during the reproducing
                                                        !! sums [a A-1 ~> 1]
   ! local variables
   integer :: Nmax ! Local copy of the maximum degree of the spherical harmonics
   integer :: Ltot ! Local copy of the number of spherical harmonics
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     pmn,   & ! Current associated Legendre polynomials of degree n and order m [nondim]
     pmnm1, & ! Associated Legendre polynomials of degree n-1 and order m [nondim]
     pmnm2    ! Associated Legendre polynomials of degree n-2 and order m [nondim]
-  real, allocatable, dimension(:,:,:) :: &
+  real(wp), allocatable, dimension(:,:,:) :: &
     Snm_Re_raw, & ! Array of un-summed real spherical harmonics transform coefficients for
                   ! reproducing sums in the same arbitrary units as var, [a] or [A ~> a]
     Snm_Im_raw    ! Array of un-summed imaginary spherical harmonics transform coefficients for
                   ! reproducing sums in the same arbitrary units as var, [a] or [A ~> a]
-  real :: sum_tot ! The total of all components output by the reproducing sum in the same
+  real(wp) :: sum_tot ! The total of all components output by the reproducing sum in the same
                   ! arbitrary units as var, [a] or [A ~> a]
   integer :: i, j, k
   integer :: is, ie, js, je, isd, ied, jsd, jed
@@ -87,21 +89,21 @@ subroutine spherical_harmonics_forward(G, CS, var, Snm_Re, Snm_Im, Nd, tmp_scale
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   do j=jsd,jed ; do i=isd,ied
-    pmn(i,j) = 0.0 ; pmnm1(i,j) = 0.0 ; pmnm2(i,j) = 0.0
+    pmn(i,j) = 0.0_wp ; pmnm1(i,j) = 0.0_wp ; pmnm2(i,j) = 0.0_wp
   enddo ; enddo
 
-  do l=1,Ltot ; Snm_Re(l) = 0.0 ; Snm_Im(l) = 0.0 ; enddo
+  do l=1,Ltot ; Snm_Re(l) = 0.0_wp ; Snm_Im(l) = 0.0_wp ; enddo
 
   if (CS%reprod_sum) then
-    allocate(Snm_Re_raw(is:ie, js:je, Ltot), source=0.0)
-    allocate(Snm_Im_raw(is:ie, js:je, Ltot), source=0.0)
+    allocate(Snm_Re_raw(is:ie, js:je, Ltot), source=0.0_wp)
+    allocate(Snm_Im_raw(is:ie, js:je, Ltot), source=0.0_wp)
     do m=0,Nmax
       l = order2index(m, Nmax)
 
       do j=js,je ; do i=is,ie
         Snm_Re_raw(i,j,l) = var(i,j) * CS%Pmm(i,j,m+1) * CS%cos_lonT_wtd(i,j,m+1)
         Snm_Im_raw(i,j,l) = var(i,j) * CS%Pmm(i,j,m+1) * CS%sin_lonT_wtd(i,j,m+1)
-        pmnm2(i,j) = 0.0
+        pmnm2(i,j) = 0.0_wp
         pmnm1(i,j) = CS%Pmm(i,j,m+1)
       enddo ; enddo
 
@@ -121,7 +123,7 @@ subroutine spherical_harmonics_forward(G, CS, var, Snm_Re, Snm_Im, Nd, tmp_scale
       do j=js,je ; do i=is,ie
         Snm_Re(l) = Snm_Re(l) + var(i,j) * CS%Pmm(i,j,m+1) * CS%cos_lonT_wtd(i,j,m+1)
         Snm_Im(l) = Snm_Im(l) + var(i,j) * CS%Pmm(i,j,m+1) * CS%sin_lonT_wtd(i,j,m+1)
-        pmnm2(i,j) = 0.0
+        pmnm2(i,j) = 0.0_wp
         pmnm1(i,j) = CS%Pmm(i,j,m+1)
       enddo ; enddo
 
@@ -156,19 +158,19 @@ end subroutine spherical_harmonics_forward
 subroutine spherical_harmonics_inverse(G, CS, Snm_Re, Snm_Im, var, Nd)
   type(ocean_grid_type), intent(in)  :: G            !< The ocean's grid structure.
   type(sht_CS),          intent(in)  :: CS           !< Control structure for SHT
-  real,                  intent(in)  :: Snm_Re(:)    !< SHT coefficients for the real modes (cosine)
+  real(wp),                  intent(in)  :: Snm_Re(:)    !< SHT coefficients for the real modes (cosine)
                                                      !! in arbitrary units [a] or [A ~> a]
-  real,                  intent(in)  :: Snm_Im(:)    !< SHT coefficients for the imaginary modes (sine) in
+  real(wp),                  intent(in)  :: Snm_Im(:)    !< SHT coefficients for the imaginary modes (sine) in
                                                      !! the same arbitrary units as Snm_Re [a] or [A ~> a]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                          intent(out) :: var          !< Output 2-D variable in the same arbitrary units
                                                      !! as Snm_Re and Snm_Im [a] or [A ~> a]
   integer,     optional, intent(in)  :: Nd           !< Maximum degree of the spherical harmonics
                                                      !! overriding ndegree in the CS [nondim]
   ! local variables
   integer :: Nmax ! Local copy of the maximum degree of the spherical harmonics [nondim]
-  real    :: mFac ! A constant multiplier. mFac = 1 (if m==0) or 2 (if m>0) [nondim]
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp)    :: mFac ! A constant multiplier. mFac = 1 (if m==0) or 2 (if m>0) [nondim]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     pmn,   & ! Current associated Legendre polynomials of degree n and order m [nondim]
     pmnm1, & ! Associated Legendre polynomials of degree n-1 and order m [nondim]
     pmnm2    ! Associated Legendre polynomials of degree n-2 and order m [nondim]
@@ -188,19 +190,19 @@ subroutine spherical_harmonics_inverse(G, CS, Snm_Re, Snm_Im, var, Nd)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   do j=jsd,jed ; do i=isd,ied
-    pmn(i,j) = 0.0 ; pmnm1(i,j) = 0.0 ; pmnm2(i,j) = 0.0
-    var(i,j) = 0.0
+    pmn(i,j) = 0.0_wp ; pmnm1(i,j) = 0.0_wp ; pmnm2(i,j) = 0.0_wp
+    var(i,j) = 0.0_wp
   enddo ; enddo
 
   do m=0,Nmax
-    mFac = sign(1.0, m-0.5)*0.5 + 1.5
+    mFac = sign(1.0_wp, m-0.5_wp)*0.5_wp + 1.5_wp
     l = order2index(m, Nmax)
 
     do j=js,je ; do i=is,ie
       var(i,j) = var(i,j) &
         + mFac * CS%Pmm(i,j,m+1) * (  Snm_Re(l) * CS%cos_lonT(i,j,m+1) &
                                     + Snm_Im(l) * CS%sin_lonT(i,j,m+1))
-      pmnm2(i,j) = 0.0
+      pmnm2(i,j) = 0.0_wp
       pmnm1(i,j) = CS%Pmm(i,j,m+1)
     enddo ; enddo
 
@@ -226,10 +228,10 @@ subroutine spherical_harmonics_init(G, param_file, CS)
   type(sht_CS), intent(inout)       :: CS !< Control structure for spherical harmonic transforms
 
   ! local variables
-  real, parameter :: PI = 4.0*atan(1.0) ! 3.1415926... calculated as 4*atan(1) [nondim]
-  real, parameter :: RADIAN = PI / 180.0 ! Degree to Radian constant [radian degree-1]
-  real, dimension(SZI_(G),SZJ_(G)) :: sin_clatT ! sine of colatitude at the t-cells [nondim].
-  real :: Pmm_coef ! = sqrt{ 1.0/(4.0*PI) * prod[(2k+1)/2k)] } [nondim].
+  real(wp), parameter :: PI = 4.0_wp*atan(1.0_wp) ! 3.1415926... calculated as 4*atan(1) [nondim]
+  real(wp), parameter :: RADIAN = PI / 180.0_wp ! Degree to Radian constant [radian degree-1]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: sin_clatT ! sine of colatitude at the t-cells [nondim].
+  real(wp) :: Pmm_coef ! = sqrt{ 1.0/(4.0*PI) * prod[(2k+1)/2k)] } [nondim].
   integer :: is, ie, js, je
   integer :: i, j, k
   integer :: m, n
@@ -253,40 +255,40 @@ subroutine spherical_harmonics_init(G, param_file, CS)
                  default=.False.)
 
   ! Calculate recurrence relationship coefficients
-  allocate(CS%a_recur(CS%ndegree+1, CS%ndegree+1), source=0.0)
-  allocate(CS%b_recur(CS%ndegree+1, CS%ndegree+1), source=0.0)
+  allocate(CS%a_recur(CS%ndegree+1, CS%ndegree+1), source=0.0_wp)
+  allocate(CS%b_recur(CS%ndegree+1, CS%ndegree+1), source=0.0_wp)
   do m=0,CS%ndegree ; do n=m+1,CS%ndegree
     ! These expressione will give NaNs with 32-bit integers for n > 23170, but this is trapped elsewhere.
-    CS%a_recur(n+1,m+1) = sqrt(real((2*n-1) * (2*n+1)) / real((n-m) * (n+m)))
-    CS%b_recur(n+1,m+1) = sqrt((real(2*n+1) * real((n+m-1) * (n-m-1))) / (real((n-m) * (n+m)) * real(2*n-3)))
+    CS%a_recur(n+1,m+1) = sqrt(real((2*n-1) * (2*n+1), wp) / real((n-m) * (n+m), wp))
+    CS%b_recur(n+1,m+1) = sqrt((real(2*n+1, wp) * real((n+m-1) * (n-m-1), wp)) / (real((n-m) * (n+m), wp) * real(2*n-3, wp)))
   enddo ; enddo
 
   ! Calculate complex exponential factors
-  allocate(CS%cos_lonT_wtd(is:ie, js:je, CS%ndegree+1), source=0.0)
-  allocate(CS%sin_lonT_wtd(is:ie, js:je, CS%ndegree+1), source=0.0)
-  allocate(CS%cos_lonT(is:ie, js:je, CS%ndegree+1), source=0.0)
-  allocate(CS%sin_lonT(is:ie, js:je, CS%ndegree+1), source=0.0)
+  allocate(CS%cos_lonT_wtd(is:ie, js:je, CS%ndegree+1), source=0.0_wp)
+  allocate(CS%sin_lonT_wtd(is:ie, js:je, CS%ndegree+1), source=0.0_wp)
+  allocate(CS%cos_lonT(is:ie, js:je, CS%ndegree+1), source=0.0_wp)
+  allocate(CS%sin_lonT(is:ie, js:je, CS%ndegree+1), source=0.0_wp)
   do m=0,CS%ndegree
     do j=js,je ; do i=is,ie
-      CS%cos_lonT(i,j,m+1)     = cos(real(m) * (G%geolonT(i,j)*RADIAN))
-      CS%sin_lonT(i,j,m+1)     = sin(real(m) * (G%geolonT(i,j)*RADIAN))
+      CS%cos_lonT(i,j,m+1)     = cos(real(m, wp) * (G%geolonT(i,j)*RADIAN))
+      CS%sin_lonT(i,j,m+1)     = sin(real(m, wp) * (G%geolonT(i,j)*RADIAN))
       CS%cos_lonT_wtd(i,j,m+1) = CS%cos_lonT(i,j,m+1) * G%areaT(i,j) / G%Rad_Earth_L**2
       CS%sin_lonT_wtd(i,j,m+1) = CS%sin_lonT(i,j,m+1) * G%areaT(i,j) / G%Rad_Earth_L**2
     enddo ; enddo
   enddo
 
   ! Calculate sine and cosine of colatitude
-  allocate(CS%cos_clatT(is:ie, js:je), source=0.0)
+  allocate(CS%cos_clatT(is:ie, js:je), source=0.0_wp)
   do j=js,je ; do i=is,ie
-    CS%cos_clatT(i,j) = cos(0.5*PI - G%geolatT(i,j)*RADIAN)
-    sin_clatT(i,j)    = sin(0.5*PI - G%geolatT(i,j)*RADIAN)
+    CS%cos_clatT(i,j) = cos(0.5_wp*PI - G%geolatT(i,j)*RADIAN)
+    sin_clatT(i,j)    = sin(0.5_wp*PI - G%geolatT(i,j)*RADIAN)
   enddo ; enddo
 
   ! Calculate the diagonal elements of the associated Legendre polynomials (n=m)
-  allocate(CS%Pmm(is:ie,js:je,m+1), source=0.0)
+  allocate(CS%Pmm(is:ie,js:je,m+1), source=0.0_wp)
   do m=0,CS%ndegree
-    Pmm_coef = 1.0/(4.0*PI)
-    do k=1,m ; Pmm_coef = Pmm_coef * (real(2*k+1) / real(2*k)) ; enddo
+    Pmm_coef = 1.0_wp/(4.0_wp*PI)
+    do k=1,m ; Pmm_coef = Pmm_coef * (real(2*k+1, wp) / real(2*k, wp)) ; enddo
     Pmm_coef = sqrt(Pmm_coef)
     do j=js,je ; do i=is,ie
       CS%Pmm(i,j,m+1) = Pmm_coef * (sin_clatT(i,j)**m)

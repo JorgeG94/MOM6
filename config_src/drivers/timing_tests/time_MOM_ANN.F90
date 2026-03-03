@@ -8,6 +8,8 @@ use MOM_ANN, only : ANN_apply_vector_orig, ANN_apply_vector_oi
 use MOM_ANN, only : ANN_apply_array_sio
 use MOM_ANN, only : ANN_random
 
+use MOM_datatypes, only : wp
+
 implicit none
 
 ! Command line options
@@ -98,19 +100,19 @@ subroutine time_ANN(nlayers, nin, width, nout, nsamp, nits, nxy, impl, label)
   ! Local variables
   type(ANN_CS) :: ANN ! ANN
   integer :: widths(nlayers) ! Width of each layer
-  real :: x_s(nin) ! Inputs (just features) [nondim]
-  real :: y_s(nin) ! Outputs (just features) [nondim]
-  real :: x_fs(nin,nxy) ! Inputs (feature, space) [nondim]
-  real :: y_fs(nin,nxy) ! Outputs (feature, space) [nondim]
-  real :: x_sf(nin,nxy) ! Inputs (space, feature) [nondim]
-  real :: y_sf(nin,nxy) ! Outputs (space, feature) [nondim]
+  real(wp) :: x_s(nin) ! Inputs (just features) [nondim]
+  real(wp) :: y_s(nin) ! Outputs (just features) [nondim]
+  real(wp) :: x_fs(nin,nxy) ! Inputs (feature, space) [nondim]
+  real(wp) :: y_fs(nin,nxy) ! Outputs (feature, space) [nondim]
+  real(wp) :: x_sf(nin,nxy) ! Inputs (space, feature) [nondim]
+  real(wp) :: y_sf(nin,nxy) ! Outputs (space, feature) [nondim]
   integer :: iter, samp ! Loop counters
   integer :: ij ! Horizontal loop index
-  real :: start, finish, timing ! CPU times [s]
-  real :: tmin, tmax, tmean, tstd ! Min, max, mean, and standard deviation, of CPU times [s]
+  real(wp) :: start, finish, timing ! CPU times [s]
+  real(wp) :: tmin, tmax, tmean, tstd ! Min, max, mean, and standard deviation, of CPU times [s]
   integer :: asamp ! Actual samples of timings
   integer :: aits ! Actual iterations
-  real :: words_per_sec ! Operations per sec estimated from parameters [# s-1]
+  real(wp) :: words_per_sec ! Operations per sec estimated from parameters [# s-1]
 
   widths(:) = width
   widths(1) = nin
@@ -121,10 +123,10 @@ subroutine time_ANN(nlayers, nin, width, nout, nsamp, nits, nxy, impl, label)
   call random_number(x_sf)
 
 
-  tmin = 1e9
-  tmax = 0.
-  tmean = 0.
-  tstd = 0.
+  tmin = 1e9_wp
+  tmax = 0._wp
+  tmean = 0._wp
+  tstd = 0._wp
   asamp = nits ! Most cases below use this
   aits = nits / nxy ! Most cases below use this
 
@@ -162,7 +164,7 @@ subroutine time_ANN(nlayers, nin, width, nout, nsamp, nits, nxy, impl, label)
         asamp = nsamp * aits ! Account for working on whole arrays
     end select
 
-    timing = ( finish - start ) / real(nits) ! Average time per call
+    timing = ( finish - start ) / real(nits, wp) ! Average time per call
 
     tmin = min( tmin, timing )
     tmax = max( tmax, timing )
@@ -170,10 +172,10 @@ subroutine time_ANN(nlayers, nin, width, nout, nsamp, nits, nxy, impl, label)
     tstd = tstd + timing**2
   enddo
 
-  tmean = tmean / real(nsamp)
-  tstd = tstd / real(nsamp) ! convert to mean of squares
+  tmean = tmean / real(nsamp, wp)
+  tstd = tstd / real(nsamp, wp) ! convert to mean of squares
   tstd = tstd - tmean**2  ! convert to variance
-  tstd = sqrt( tstd * real(nsamp) / real(nsamp-1) ) ! convert to standard deviation
+  tstd = sqrt( tstd * real(nsamp, wp) / real(nsamp-1, wp) ) ! convert to standard deviation
   words_per_sec = ANN%parameters / ( tmean * 1024 * 1024 )
 
   write(*,"(2x,3a)") '"', trim(label), '": {'

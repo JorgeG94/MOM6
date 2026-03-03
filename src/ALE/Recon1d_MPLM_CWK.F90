@@ -11,6 +11,8 @@ module Recon1d_MPLM_CWK
 use Recon1d_type, only : testing
 use Recon1d_PLM_CWK, only : PLM_CWK
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MPLM_CWK, testing
@@ -50,15 +52,15 @@ contains
 !> Calculate a 1D PLM reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(MPLM_CWK), intent(inout) :: this !< This reconstruction
-  real,            intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,            intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),            intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),            intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp ! The PLM slopes (difference across cell) [A]
-  real :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
+  real(wp) :: slp ! The PLM slopes (difference across cell) [A]
+  real(wp) :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
                                     ! differences across the cell [A]
-  real :: u_min, u_max ! Minimum and maximum value across cell [A]
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: u_e(this%n+1) ! Average of edge values [A]
+  real(wp) :: u_min, u_max ! Minimum and maximum value across cell [A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: u_e(this%n+1) ! Average of edge values [A]
   integer :: k, n
 
   n = this%n
@@ -86,30 +88,30 @@ subroutine reconstruct(this, h, u)
     ! Piecewise Parabolic Method, Colella and Woodward (1984),
     ! http://dx.doi.org/10.1016/0021-991(84)90143-8.
     ! For uniform resolution it simplifies to ( u_r - u_l )/2 .
-    sigma_c = 0.5 * ( u_r - u_l )
+    sigma_c = 0.5_wp * ( u_r - u_l )
 
     ! Limit slope so that reconstructions are bounded by neighbors
     u_min = min( u_l, u_c, u_r )
     u_max = max( u_l, u_c, u_r )
 
-    if ( (sigma_l * sigma_r) > 0.0 ) then
+    if ( (sigma_l * sigma_r) > 0.0_wp ) then
       ! This limits the slope so that the edge values are bounded by the two cell averages spanning the edge
-      slp = sign( min( abs(sigma_c), 2.*min( u_c - u_min, u_max - u_c ) ), sigma_c )
+      slp = sign( min( abs(sigma_c), 2._wp*min( u_c - u_min, u_max - u_c ) ), sigma_c )
     else
       ! Extrema in the mean values require a PCM reconstruction
-      slp = 0.0
+      slp = 0.0_wp
     endif
 
     ! Left edge
     u_min = min( u_c, u_l )
     u_max = max( u_c, u_l )
-    u_l = u_c - 0.5 * slp
+    u_l = u_c - 0.5_wp * slp
     this%ul(k) = max( min( u_l, u_max), u_min )
 
     ! Right edge
     u_min = min( u_c, u_r )
     u_max = max( u_c, u_r )
-    u_r = u_c + 0.5 * slp
+    u_r = u_c + 0.5_wp * slp
     this%ur(k) = max( min( u_r, u_max), u_min )
   enddo
 
@@ -120,7 +122,7 @@ subroutine reconstruct(this, h, u)
   ! Average edge values
   u_e(1) = this%ul(1)
   do K = 2, n
-    u_e(K) = 0.5 * ( this%ur(k-1) + this%ul(k) )
+    u_e(K) = 0.5_wp * ( this%ur(k-1) + this%ul(k) )
   enddo
   u_e(n+1) = this%ur(n)
 
@@ -144,24 +146,24 @@ subroutine reconstruct(this, h, u)
     u_min = min( u_l, u_c, u_r )
     u_max = max( u_l, u_c, u_r )
 
-    if ( (sigma_l * sigma_r) > 0.0 ) then
+    if ( (sigma_l * sigma_r) > 0.0_wp ) then
       ! This limits the slope so that the edge values are bounded by the two cell averages spanning the edge
-      slp = sign( min( abs(sigma_c), 2.*min( u_c - u_min, u_max - u_c ) ), sigma_c )
+      slp = sign( min( abs(sigma_c), 2._wp*min( u_c - u_min, u_max - u_c ) ), sigma_c )
     else
       ! Extrema in the mean values require a PCM reconstruction
-      slp = 0.0
+      slp = 0.0_wp
     endif
 
     ! Left edge
     u_min = min( u_c, u_l )
     u_max = max( u_c, u_l )
-    u_l = u_c - 0.5 * slp
+    u_l = u_c - 0.5_wp * slp
     this%ul(k) = max( min( u_l, u_max), u_min )
 
     ! Right edge
     u_min = min( u_c, u_r )
     u_max = max( u_c, u_r )
-    u_r = u_c + 0.5 * slp
+    u_r = u_c + 0.5_wp * slp
     this%ur(k) = max( min( u_r, u_max), u_min )
   enddo
 
@@ -170,46 +172,46 @@ end subroutine reconstruct
 !> Checks the MPLM_CWK reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(MPLM_CWK), intent(in) :: this !< This reconstruction
-  real,            intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,            intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),            intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),            intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell reconstruction is monotonic within each cell (it should be as a straight line)
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell is a straight line (to within machine precision)
   do k = 1, this%n
-    if ( abs(2. * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
-         max(abs(2. * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
+    if ( abs(2._wp * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
+         max(abs(2._wp * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of right edges, w.r.t. the cell means
   do K = 1, this%n-1
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. the cell means
   do K = 2, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of right edges, w.r.t. this cell mean and the next cell left edge
   do K = 1, this%n-1
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. this cell mean and the previous cell right edge
   do K = 2, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
 end function check_reconstruction
@@ -221,8 +223,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,         intent(in)    :: stdout  !< I/O channel for stdout
   integer,         intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -234,31 +236,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/1.,2.,5./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/1.,4.,5./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/1._wp,2._wp,5._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/1._wp,4._wp,5._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,0./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/0.,2.,0./), 'dfdx in center')
-  call test%real_arr(3, ur, (/0.,2.,0./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/0._wp,2._wp,0._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/0._wp,2._wp,0._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/0._wp,2._wp,0._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.,3.25,5./), 'Return interval average')
+  call test%real_arr(3, um, (/1._wp,3.25_wp,5._wp/), 'Return interval average')
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )
@@ -272,13 +274,13 @@ logical function unit_tests(this, verbose, stdout, stderr)
   ! The O(h^2) slopes are -, 2, 2, - and the limited
   ! slopes are 0, 1, 1, 0 so the everywhere the reconstructions
   ! are bounded by neighbors but ur(2) and ul(3) are out-of-order.
-  call this%reconstruct( (/1.,1.,1.,1./), (/0.,3.,4.,7./) )
+  call this%reconstruct( (/1._wp,1._wp,1._wp,1._wp/), (/0._wp,3._wp,4._wp,7._wp/) )
   do k = 1, 4
-    ul(k) = this%f(k, 0.)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(4, ul, (/0.,2.5,3.5,7./), 'Evaluation on left edge')
-  call test%real_arr(4, ur, (/0.,3.5,4.5,7./), 'Evaluation on right edge')
+  call test%real_arr(4, ul, (/0._wp,2.5_wp,3.5_wp,7._wp/), 'Evaluation on left edge')
+  call test%real_arr(4, ur, (/0._wp,3.5_wp,4.5_wp,7._wp/), 'Evaluation on right edge')
 
   deallocate( um, ul, ur )
 

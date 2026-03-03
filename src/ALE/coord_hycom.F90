@@ -10,6 +10,8 @@ use MOM_remapping,     only : remapping_CS, remapping_core_h
 use regrid_interp,     only : interp_CS_type, build_and_interpolate_grid, regridding_set_ppolys
 use regrid_interp,     only : DEGREE_MAX
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -21,16 +23,16 @@ type, public :: hycom_CS ; private
   integer :: nk
 
   !> Nominal near-surface resolution [Z ~> m]
-  real, allocatable, dimension(:) :: coordinateResolution
+  real(wp), allocatable, dimension(:) :: coordinateResolution
 
   !> Nominal density of interfaces [R ~> kg m-3]
-  real, allocatable, dimension(:) :: target_density
+  real(wp), allocatable, dimension(:) :: target_density
 
   !> Maximum depths of interfaces [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: max_interface_depths
+  real(wp), allocatable, dimension(:) :: max_interface_depths
 
   !> Maximum thicknesses of layers [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: max_layer_thickness
+  real(wp), allocatable, dimension(:) :: max_layer_thickness
 
   !> If true, an interface only moves if it improves the density fit
   logical :: only_improves = .false.
@@ -39,10 +41,10 @@ type, public :: hycom_CS ; private
   logical :: use_3d = .false.
 
   !> Nominal density of interfaces [R ~> kg m-3]
-  real, allocatable, dimension(:,:,:) :: target_density_3d
+  real(wp), allocatable, dimension(:,:,:) :: target_density_3d
 
   !> Nominal near-surface resolution [Z ~> m]
-  real, allocatable, dimension(:,:,:) :: coordinateResolution_3d
+  real(wp), allocatable, dimension(:,:,:) :: coordinateResolution_3d
 
   !> Interpolation control structure
   type(interp_CS_type) :: interp_CS
@@ -56,8 +58,8 @@ contains
 subroutine init_coord_hycom(CS, nk, coordinateResolution, target_density, interp_CS)
   type(hycom_CS),       pointer    :: CS !< Unassociated pointer to hold the control structure
   integer,              intent(in) :: nk !< Number of layers in generated grid
-  real, dimension(nk),  intent(in) :: coordinateResolution !< Nominal near-surface resolution [Z ~> m]
-  real, dimension(nk+1),intent(in) :: target_density !< Interface target densities [R ~> kg m-3]
+  real(wp), dimension(nk),  intent(in) :: coordinateResolution !< Nominal near-surface resolution [Z ~> m]
+  real(wp), dimension(nk+1),intent(in) :: target_density !< Interface target densities [R ~> kg m-3]
   type(interp_CS_type), intent(in) :: interp_CS !< Controls for interpolation
 
   if (associated(CS)) call MOM_error(FATAL, "init_coord_hycom: CS already associated!")
@@ -80,8 +82,8 @@ subroutine init_3d_coord_hycom(CS, G, nk, coordinateResolution, target_density, 
   type(hycom_CS),       pointer    :: CS  !< Unassociated pointer to hold the control structure
   type(ocean_grid_type),intent(in) :: G   !< Ocean grid structure
   integer,              intent(in) :: nk  !< Number of layers in generated grid
-  real, dimension(SZI_(G),SZJ_(G),nk), intent(in) :: coordinateResolution !< Nominal near-surface resolution [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),nk+1), intent(in) :: target_density !< Interface target densities [R ~> kg m-3]
+  real(wp), dimension(SZI_(G),SZJ_(G),nk), intent(in) :: coordinateResolution !< Nominal near-surface resolution [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),nk+1), intent(in) :: target_density !< Interface target densities [R ~> kg m-3]
   type(interp_CS_type), intent(in) :: interp_CS !< Controls for interpolation
   ! Local variables
   integer   :: i,j,k
@@ -89,15 +91,15 @@ subroutine init_3d_coord_hycom(CS, G, nk, coordinateResolution, target_density, 
   if (associated(CS)) call MOM_error(FATAL, "init_3d_coord_hycom: CS already associated!")
 
   allocate(CS)
-  allocate(CS%coordinateResolution_3d(nk,SZI_(G),SZJ_(G)), source=0.0)
-  allocate(CS%target_density_3d(nk+1,SZI_(G),SZJ_(G)), source=0.0)
+  allocate(CS%coordinateResolution_3d(nk,SZI_(G),SZJ_(G)), source=0.0_wp)
+  allocate(CS%target_density_3d(nk+1,SZI_(G),SZJ_(G)), source=0.0_wp)
 
   CS%nk        = nk
   CS%use_3d    = .true.
   CS%interp_CS = interp_CS
 
   do i=G%isc-1,G%iec+1; do j=G%jsc-1,G%jec+1
-    if (G%mask2dT(i,j)>0.) then
+    if (G%mask2dT(i,j)>0._wp) then
       do k= 1,nk
         CS%coordinateResolution_3d(k,i,j) = coordinateResolution(i,j,k)
         CS%target_density_3d(k,i,j) = target_density(i,j,k)
@@ -129,8 +131,8 @@ end subroutine end_coord_hycom
 !> This subroutine can be used to set the parameters for the coord_hycom module
 subroutine set_hycom_params(CS, max_interface_depths, max_layer_thickness, only_improves, interp_CS)
   type(hycom_CS),                 pointer    :: CS !< Coordinate control structure
-  real, dimension(:),   optional, intent(in) :: max_interface_depths !< Maximum depths of interfaces [H ~> m or kg m-2]
-  real, dimension(:),   optional, intent(in) :: max_layer_thickness  !< Maximum thicknesses of layers [H ~> m or kg m-2]
+  real(wp), dimension(:),   optional, intent(in) :: max_interface_depths !< Maximum depths of interfaces [H ~> m or kg m-2]
+  real(wp), dimension(:),   optional, intent(in) :: max_layer_thickness  !< Maximum thicknesses of layers [H ~> m or kg m-2]
   logical, optional, intent(in) :: only_improves !< If true, an interface only moves if it improves the density fit
   type(interp_CS_type), optional, intent(in) :: interp_CS !< Controls for interpolation
 
@@ -164,45 +166,45 @@ subroutine build_hycom1_column(CS, remapCS, eqn_of_state, nz, ix, jy, depth, h, 
   integer,               intent(in)    :: nz    !< Number of levels
   integer,               intent(in)    :: ix    !< x direction array index
   integer,               intent(in)    :: jy    !< y direction array index
-  real,                  intent(in)    :: depth !< Depth of ocean bottom (positive [H ~> m or kg m-2])
-  real, dimension(nz),   intent(in)    :: T     !< Temperature of column [C ~> degC]
-  real, dimension(nz),   intent(in)    :: S     !< Salinity of column [S ~> ppt]
-  real, dimension(nz),   intent(in)    :: h     !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(nz),   intent(in)    :: p_col !< Layer pressure [R L2 T-2 ~> Pa]
-  real, dimension(nz+1), intent(in)    :: z_col !< Interface positions relative to the surface [H ~> m or kg m-2]
-  real, dimension(CS%nk+1), intent(inout) :: z_col_new !< Absolute positions of interfaces [H ~> m or kg m-2]
-  real, optional,        intent(in)    :: zScale !< Scaling factor from the input coordinate thicknesses in [Z ~> m]
+  real(wp),                  intent(in)    :: depth !< Depth of ocean bottom (positive [H ~> m or kg m-2])
+  real(wp), dimension(nz),   intent(in)    :: T     !< Temperature of column [C ~> degC]
+  real(wp), dimension(nz),   intent(in)    :: S     !< Salinity of column [S ~> ppt]
+  real(wp), dimension(nz),   intent(in)    :: h     !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(nz),   intent(in)    :: p_col !< Layer pressure [R L2 T-2 ~> Pa]
+  real(wp), dimension(nz+1), intent(in)    :: z_col !< Interface positions relative to the surface [H ~> m or kg m-2]
+  real(wp), dimension(CS%nk+1), intent(inout) :: z_col_new !< Absolute positions of interfaces [H ~> m or kg m-2]
+  real(wp), optional,        intent(in)    :: zScale !< Scaling factor from the input coordinate thicknesses in [Z ~> m]
                                                 !! to desired units for zInterface, perhaps GV%Z_to_H in which
                                                 !! case this has units of [H Z-1 ~> nondim or kg m-3]
-  real,                  intent(in)    :: h_neglect !< A negligibly small width for the purpose of
+  real(wp),                  intent(in)    :: h_neglect !< A negligibly small width for the purpose of
                                                 !! cell reconstruction [H ~> m or kg m-2]
-  real,        optional, intent(in)    :: h_neglect_edge !< A negligibly small width for the purpose of
+  real(wp),        optional, intent(in)    :: h_neglect_edge !< A negligibly small width for the purpose of
                                                 !! edge value calculation [H ~> m or kg m-2]
 
   ! Local variables
   integer   :: k
-  real, dimension(nz)      :: rho_col   ! Layer densities in a column [R ~> kg m-3]
-  real, dimension(CS%nk)   :: h_col_new ! New layer thicknesses [H ~> m or kg m-2]
-  real, dimension(CS%nk)   :: r_col_new ! New layer densities [R ~> kg m-3]
-  real, dimension(CS%nk)   :: T_col_new ! New layer temperatures [C ~> degC]
-  real, dimension(CS%nk)   :: S_col_new ! New layer salinities [S ~> ppt]
-  real, dimension(CS%nk)   :: p_col_new ! New layer pressure [R L2 T-2 ~> Pa]
-  real, dimension(CS%nk+1) :: RiA_ini   ! Initial nk+1 interface density anomaly w.r.t. the
+  real(wp), dimension(nz)      :: rho_col   ! Layer densities in a column [R ~> kg m-3]
+  real(wp), dimension(CS%nk)   :: h_col_new ! New layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(CS%nk)   :: r_col_new ! New layer densities [R ~> kg m-3]
+  real(wp), dimension(CS%nk)   :: T_col_new ! New layer temperatures [C ~> degC]
+  real(wp), dimension(CS%nk)   :: S_col_new ! New layer salinities [S ~> ppt]
+  real(wp), dimension(CS%nk)   :: p_col_new ! New layer pressure [R L2 T-2 ~> Pa]
+  real(wp), dimension(CS%nk+1) :: RiA_ini   ! Initial nk+1 interface density anomaly w.r.t. the
                                         ! interface target densities [R ~> kg m-3]
-  real, dimension(CS%nk+1) :: RiA_new   ! New interface density anomaly w.r.t. the
+  real(wp), dimension(CS%nk+1) :: RiA_new   ! New interface density anomaly w.r.t. the
                                         ! interface target densities [R ~> kg m-3]
-  real :: z_1, z_nz  ! mid point of 1st and last layers [H ~> m or kg m-2]
-  real :: z_scale    ! A scaling factor from the input thicknesses to the target thicknesses,
+  real(wp) :: z_1, z_nz  ! mid point of 1st and last layers [H ~> m or kg m-2]
+  real(wp) :: z_scale    ! A scaling factor from the input thicknesses to the target thicknesses,
                      ! perhaps 1 or a factor in [H Z-1 ~> 1 or kg m-3]
-  real :: stretching ! z* stretching, converts z* to z [nondim].
-  real :: nominal_z ! Nominal depth of interface when using z* [H ~> m or kg m-2]
+  real(wp) :: stretching ! z* stretching, converts z* to z [nondim].
+  real(wp) :: nominal_z ! Nominal depth of interface when using z* [H ~> m or kg m-2]
   logical :: maximum_depths_set ! If true, the maximum depths of interface have been set.
   logical :: maximum_h_set      ! If true, the maximum layer thicknesses have been set.
 
   maximum_depths_set = allocated(CS%max_interface_depths)
   maximum_h_set = allocated(CS%max_layer_thickness)
 
-  z_scale = 1.0 ; if (present(zScale)) z_scale = zScale
+  z_scale = 1.0_wp ; if (present(zScale)) z_scale = zScale
 
   if (CS%only_improves .and. nz == CS%nk) then
     call build_hycom1_target_anomaly(CS, remapCS, eqn_of_state, CS%nk, ix, jy, depth, &
@@ -228,10 +230,10 @@ subroutine build_hycom1_column(CS, remapCS, eqn_of_state, nz, ix, jy, depth, h, 
   endif
   if (CS%only_improves .and. nz == CS%nk) then
     ! Only move an interface if it improves the density fit
-    z_1 = 0.5 * ( z_col(1) + z_col(2) )
-    z_nz  = 0.5 * ( z_col(nz) + z_col(nz+1) )
+    z_1 = 0.5_wp * ( z_col(1) + z_col(2) )
+    z_nz  = 0.5_wp * ( z_col(nz) + z_col(nz+1) )
     do k = 1,CS%nk
-      p_col_new(k) = p_col(1) + ( 0.5 * ( z_col_new(K) + z_col_new(K+1) ) - z_1 ) &
+      p_col_new(k) = p_col(1) + ( 0.5_wp * ( z_col_new(K) + z_col_new(K+1) ) - z_1 ) &
                                 / ( z_nz - z_1 ) * ( p_col(nz) - p_col(1) )
     enddo
     ! Remap from original h and T,S to get T,S_col_new
@@ -249,7 +251,7 @@ subroutine build_hycom1_column(CS, remapCS, eqn_of_state, nz, ix, jy, depth, h, 
 
   ! Sweep down the interfaces and make sure that the interface is at least
   ! as deep as a nominal target z* grid
-  nominal_z = 0.
+  nominal_z = 0._wp
   stretching = z_col(nz+1) / depth ! Stretches z* to z
   if (CS%use_3d) then
     do k = 2, CS%nk+1
@@ -286,25 +288,25 @@ subroutine build_hycom1_target_anomaly(CS, remapCS, eqn_of_state, nz, ix, jy, de
   integer,               intent(in)  :: nz     !< Number of levels
   integer,               intent(in)  :: ix     !< x direction array index
   integer,               intent(in)  :: jy     !< y direction array index
-  real,                  intent(in)  :: depth  !< Depth of ocean bottom (positive [H ~> m or kg m-2])
-  real, dimension(nz),   intent(in)  :: T      !< Temperature of column [C ~> degC]
-  real, dimension(nz),   intent(in)  :: S      !< Salinity of column [S ~> ppt]
-  real, dimension(nz),   intent(in)  :: h      !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(nz),   intent(in)  :: p_col  !< Layer pressure [R L2 T-2 ~> Pa]
-  real, dimension(nz),   intent(out) :: R      !< Layer density [R ~> kg m-3]
-  real, dimension(nz+1), intent(out) :: RiAnom !< The interface density anomaly
+  real(wp),                  intent(in)  :: depth  !< Depth of ocean bottom (positive [H ~> m or kg m-2])
+  real(wp), dimension(nz),   intent(in)  :: T      !< Temperature of column [C ~> degC]
+  real(wp), dimension(nz),   intent(in)  :: S      !< Salinity of column [S ~> ppt]
+  real(wp), dimension(nz),   intent(in)  :: h      !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(nz),   intent(in)  :: p_col  !< Layer pressure [R L2 T-2 ~> Pa]
+  real(wp), dimension(nz),   intent(out) :: R      !< Layer density [R ~> kg m-3]
+  real(wp), dimension(nz+1), intent(out) :: RiAnom !< The interface density anomaly
                                                !! w.r.t. the interface target
                                                !! densities [R ~> kg m-3]
-  real,                  intent(in)  :: h_neglect !< A negligibly small width for the purpose of
+  real(wp),                  intent(in)  :: h_neglect !< A negligibly small width for the purpose of
                                                !! cell reconstruction [H ~> m or kg m-2]
-  real,        optional, intent(in)  :: h_neglect_edge !< A negligibly small width for the purpose of
+  real(wp),        optional, intent(in)  :: h_neglect_edge !< A negligibly small width for the purpose of
                                                 !! edge value calculation [H ~> m or kg m-2]
   ! Local variables
   integer   :: degree,k
-  real, dimension(nz)   :: rho_col ! Layer densities in a column [R ~> kg m-3]
-  real, dimension(nz,2) :: ppoly_E ! Polynomial edge values [R ~> kg m-3]
-  real, dimension(nz,2) :: ppoly_S ! Polynomial edge slopes [R H-1]
-  real, dimension(nz,DEGREE_MAX+1) :: ppoly_C ! Polynomial interpolant coeficients on the local 0-1 grid [R ~> kg m-3]
+  real(wp), dimension(nz)   :: rho_col ! Layer densities in a column [R ~> kg m-3]
+  real(wp), dimension(nz,2) :: ppoly_E ! Polynomial edge values [R ~> kg m-3]
+  real(wp), dimension(nz,2) :: ppoly_S ! Polynomial edge slopes [R H-1]
+  real(wp), dimension(nz,DEGREE_MAX+1) :: ppoly_C ! Polynomial interpolant coeficients on the local 0-1 grid [R ~> kg m-3]
 
   ! Work bottom recording potential density
   call calculate_density(T, S, p_col, rho_col, eqn_of_state)
@@ -327,7 +329,7 @@ subroutine build_hycom1_target_anomaly(CS, remapCS, eqn_of_state, nz, ix, jy, de
       elseif (ppoly_E(k,1) < CS%target_density_3d(k,ix,jy)) then
         RiAnom(k) = ppoly_E(k,1)   - CS%target_density_3d(k,ix,jy)  !interface is lighter than target
       else
-        RiAnom(k) = 0.0  !interface spans the target
+        RiAnom(k) = 0.0_wp  !interface spans the target
       endif
     enddo
     RiAnom(nz+1) = ppoly_E(nz,2) - CS%target_density_3d(nz+1,ix,jy)
@@ -341,7 +343,7 @@ subroutine build_hycom1_target_anomaly(CS, remapCS, eqn_of_state, nz, ix, jy, de
       elseif (ppoly_E(k,1) < CS%target_density(k)) then
         RiAnom(k) = ppoly_E(k,1)   - CS%target_density(k)  !interface is lighter than target
       else
-        RiAnom(k) = 0.0  !interface spans the target
+        RiAnom(k) = 0.0_wp  !interface spans the target
       endif
     enddo
     RiAnom(nz+1) = ppoly_E(nz,2) - CS%target_density(nz+1)

@@ -5,7 +5,8 @@ module MOM_intrinsic_functions
 ! This file is part of MOM6. See LICENSE.md for the license.
 
 use iso_fortran_env, only : stdout => output_unit, stderr => error_unit
-use iso_fortran_env, only : int64, real64
+
+use MOM_datatypes, only : int64, real64, wp
 
 implicit none ; private
 
@@ -14,11 +15,11 @@ public :: intrinsic_functions_unit_tests
 
 ! Floating point model, if bit layout from high to low is (sign, exp, frac)
 
-integer, parameter :: bias = maxexponent(1.) - 1
+integer, parameter :: bias = maxexponent(1._wp) - 1
   !< The double precision exponent offset
-integer, parameter :: signbit = storage_size(1.) - 1
+integer, parameter :: signbit = storage_size(1._wp) - 1
   !< Position of sign bit
-integer, parameter :: explen = 1 + ceiling(log(real(bias))/log(2.))
+integer, parameter :: explen = 1 + ceiling(log(real(bias, wp))/log(2._wp))
   !< Bit size of exponent
 integer, parameter :: expbit = signbit - explen
   !< Position of lowest exponent bit
@@ -30,9 +31,9 @@ contains
 !> Evaluate the inverse cosh, either using a math library or an
 !! equivalent expression
 function invcosh(x)
-  real, intent(in) :: x !< The argument of the inverse of cosh [nondim].  NaNs will
+  real(wp), intent(in) :: x !< The argument of the inverse of cosh [nondim].  NaNs will
                         !! occur if x<1, but there is no error checking
-  real :: invcosh  ! The inverse of cosh of x [nondim]
+  real(wp) :: invcosh  ! The inverse of cosh of x [nondim]
 
 #ifdef __INTEL_COMPILER
   invcosh = acosh(x)
@@ -46,30 +47,30 @@ end function invcosh
 !> Returns the cube root of a real argument at roundoff accuracy, in a form that works properly with
 !! rescaling of the argument by integer powers of 8.  If the argument is a NaN, a NaN is returned.
 elemental function cuberoot(x) result(root)
-  real, intent(in) :: x !< The argument of cuberoot in arbitrary units cubed [A3]
-  real :: root !< The real cube root of x in arbitrary units [A]
+  real(wp), intent(in) :: x !< The argument of cuberoot in arbitrary units cubed [A3]
+  real(wp) :: root !< The real cube root of x in arbitrary units [A]
 
-  real :: asx ! The absolute value of x rescaled by an integer power of 8 to put it into
+  real(wp) :: asx ! The absolute value of x rescaled by an integer power of 8 to put it into
               ! the range from 0.125 < asx <= 1.0, in ambiguous units cubed [B3]
-  real :: root_asx ! The cube root of asx [B]
-  real :: ra_3 ! root_asx cubed [B3]
-  real :: num ! The numerator of an expression for the evolving estimate of the cube root of asx
+  real(wp) :: root_asx ! The cube root of asx [B]
+  real(wp) :: ra_3 ! root_asx cubed [B3]
+  real(wp) :: num ! The numerator of an expression for the evolving estimate of the cube root of asx
               ! in arbitrary units that can grow or shrink with each iteration [B C]
-  real :: den ! The denominator of an expression for the evolving estimate of the cube root of asx
+  real(wp) :: den ! The denominator of an expression for the evolving estimate of the cube root of asx
               ! in arbitrary units that can grow or shrink with each iteration [C]
-  real :: num_prev ! The numerator of an expression for the previous iteration of the evolving estimate
+  real(wp) :: num_prev ! The numerator of an expression for the previous iteration of the evolving estimate
               ! of the cube root of asx in arbitrary units that can grow or shrink with each iteration [B D]
-  real :: np_3 ! num_prev cubed  [B3 D3]
-  real :: den_prev ! The denominator of an expression for the previous iteration of the evolving estimate of
+  real(wp) :: np_3 ! num_prev cubed  [B3 D3]
+  real(wp) :: den_prev ! The denominator of an expression for the previous iteration of the evolving estimate of
               ! the cube root of asx in arbitrary units that can grow or shrink with each iteration [D]
-  real :: dp_3 ! den_prev cubed  [C3]
-  real :: r0  ! Initial value of the iterative solver. [B C]
-  real :: r0_3 ! r0 cubed [B3 C3]
+  real(wp) :: dp_3 ! den_prev cubed  [C3]
+  real(wp) :: r0  ! Initial value of the iterative solver. [B C]
+  real(wp) :: r0_3 ! r0 cubed [B3 C3]
   integer :: itt
 
   integer(kind=int64) :: e_x, s_x
 
-  if ((x >= 0.0) .eqv. (x <= 0.0)) then
+  if ((x >= 0.0_wp) .eqv. (x <= 0.0_wp)) then
     ! Return 0 for an input of 0, or NaN for a NaN input.
     root = x
   else
@@ -84,10 +85,10 @@ elemental function cuberoot(x) result(root)
 
     ! This first estimate gives the same magnitude of errors for 0.125 and 1.0 after two iterations.
     ! The first iteration is applied explicitly.
-    r0 = 0.707106
+    r0 = 0.707106_wp
     r0_3 = r0 * r0 * r0
-    num = r0 * (r0_3 + 2.0 * asx)
-    den = 2.0 * r0_3 + asx
+    num = r0 * (r0_3 + 2.0_wp * asx)
+    den = 2.0_wp * r0_3 + asx
 
     do itt=1,2
       ! Halley's method iterates estimates as Root = Root * (Root**3 + 2.*asx) / (2.*Root**3 + asx).
@@ -97,8 +98,8 @@ elemental function cuberoot(x) result(root)
       np_3 = num_prev * num_prev * num_prev
       dp_3 = den_prev * den_prev * den_prev
 
-      num = num_prev * (np_3 + 2.0 * asx * dp_3)
-      den = den_prev * (2.0 * np_3 + asx * dp_3)
+      num = num_prev * (np_3 + 2.0_wp * asx * dp_3)
+      den = den_prev * (2.0_wp * np_3 + asx * dp_3)
       ! Equivalent to:  root_asx = root_asx * (root_asx**3 + 2.*asx) / (2.*root_asx**3 + asx)
     enddo
     ! At this point the error in root_asx is better than 1 part in 3e14.
@@ -107,7 +108,7 @@ elemental function cuberoot(x) result(root)
     ! One final iteration with Newton's method polishes up the root and gives a solution
     ! that is within the last bit of the true solution.
     ra_3 = root_asx * root_asx * root_asx
-    root_asx = root_asx - (ra_3 - asx) / (3.0 * (root_asx * root_asx))
+    root_asx = root_asx - (ra_3 - asx) / (3.0_wp * (root_asx * root_asx))
 
     root = descale(root_asx, e_x, s_x)
   endif
@@ -116,9 +117,9 @@ end function cuberoot
 
 !> Rescale `a` to the range [0.125, 1) and compute its cube-root exponent.
 pure subroutine rescale_cbrt(a, x, e_r, s_a)
-  real, intent(in) :: a
+  real(wp), intent(in) :: a
     !< The real parameter to be rescaled for cube root in arbitrary units cubed [A3]
-  real, intent(out) :: x
+  real(wp), intent(out) :: x
     !< The rescaled value of a in the range from 0.125 < asx <= 1.0, in ambiguous units cubed [B3]
   integer(kind=int64), intent(out) :: e_r
     !< Cube root of the exponent of the rescaling of `a`
@@ -155,19 +156,19 @@ pure subroutine rescale_cbrt(a, x, e_r, s_a)
   ! Insert the new 11-bit exponent into xb and write to x and extend the
   ! bitcount to 12, so that the sign bit is zero and x is always positive.
   call mvbits(e_x + bias, 0, explen + 1, xb, fraclen)
-  x = transfer(xb, 1.)
+  x = transfer(xb, 1._wp)
 end subroutine rescale_cbrt
 
 
 !> Undo the rescaling of a real number back to its original base.
 pure function descale(x, e_a, s_a) result(a)
-  real, intent(in) :: x
+  real(wp), intent(in) :: x
     !< The rescaled value which is to be restored in ambiguous units [B]
   integer(kind=int64), intent(in) :: e_a
     !< Exponent of the unscaled value
   integer(kind=int64), intent(in) :: s_a
     !< Sign bit of the unscaled value
-  real :: a
+  real(wp) :: a
     !< Restored value with the corrected exponent and sign in arbitrary units [A]
 
   integer(kind=int64) :: xb
@@ -180,7 +181,7 @@ pure function descale(x, e_a, s_a) result(a)
   e_x = ibits(xb, expbit, explen)
   call mvbits(e_a + e_x, 0, explen, xb, expbit)
   call mvbits(s_a, 0, 1, xb, signbit)
-  a = transfer(xb, 1.)
+  a = transfer(xb, 1._wp)
 end function descale
 
 
@@ -190,7 +191,7 @@ function intrinsic_functions_unit_tests(verbose) result(fail)
   logical :: fail !< True if any of the unit tests fail
 
   ! Local variables
-  real :: testval  ! A test value for self-consistency testing [nondim]
+  real(wp) :: testval  ! A test value for self-consistency testing [nondim]
   logical :: v
   integer :: n
 
@@ -198,34 +199,34 @@ function intrinsic_functions_unit_tests(verbose) result(fail)
   v = verbose
   write(stdout,*) '==== MOM_intrinsic_functions: intrinsic_functions_unit_tests ==='
 
-  fail = fail .or. Test_cuberoot(v, 1.2345678901234e9)
-  fail = fail .or. Test_cuberoot(v, -9.8765432109876e-21)
-  fail = fail .or. Test_cuberoot(v, 64.0)
-  fail = fail .or. Test_cuberoot(v, -0.5000000000001)
-  fail = fail .or. Test_cuberoot(v, 0.0)
-  fail = fail .or. Test_cuberoot(v, 1.0)
-  fail = fail .or. Test_cuberoot(v, 0.125)
-  fail = fail .or. Test_cuberoot(v, 0.965)
-  fail = fail .or. Test_cuberoot(v, 1.0 - epsilon(1.0))
-  fail = fail .or. Test_cuberoot(v, 1.0 - 0.5*epsilon(1.0))
+  fail = fail .or. Test_cuberoot(v, 1.2345678901234e9_wp)
+  fail = fail .or. Test_cuberoot(v, -9.8765432109876e-21_wp)
+  fail = fail .or. Test_cuberoot(v, 64.0_wp)
+  fail = fail .or. Test_cuberoot(v, -0.5000000000001_wp)
+  fail = fail .or. Test_cuberoot(v, 0.0_wp)
+  fail = fail .or. Test_cuberoot(v, 1.0_wp)
+  fail = fail .or. Test_cuberoot(v, 0.125_wp)
+  fail = fail .or. Test_cuberoot(v, 0.965_wp)
+  fail = fail .or. Test_cuberoot(v, 1.0_wp - epsilon(1.0_wp))
+  fail = fail .or. Test_cuberoot(v, 1.0_wp - 0.5_wp*epsilon(1.0_wp))
 
-  testval = 1.0e-99
+  testval = 1.0e-99_wp
   v = .false.
   do n=-160,160
     fail = fail .or. Test_cuberoot(v, testval)
-    testval = (-2.908 * (1.414213562373 + 1.2345678901234e-5*n)) * testval
+    testval = (-2.908_wp * (1.414213562373_wp + 1.2345678901234e-5_wp*n)) * testval
   enddo
 end function intrinsic_functions_unit_tests
 
 !> True if the cube of cuberoot(val) does not closely match val. False otherwise.
 logical function Test_cuberoot(verbose, val)
   logical, intent(in) :: verbose !< If true, write results to stdout
-  real, intent(in) :: val  !< The real value to test, in arbitrary units [A]
+  real(wp), intent(in) :: val  !< The real value to test, in arbitrary units [A]
   ! Local variables
-  real :: diff ! The difference between val and the cube root of its cube [A].
+  real(wp) :: diff ! The difference between val and the cube root of its cube [A].
 
   diff = val - cuberoot(val)**3
-  Test_cuberoot = (abs(diff) > 2.0e-15*abs(val))
+  Test_cuberoot = (abs(diff) > 2.0e-15_wp*abs(val))
 
   if (Test_cuberoot) then
     write(stdout, '("For val = ",ES22.15,", (val - cuberoot(val**3))) = ",ES9.2," <-- FAIL")') val, diff

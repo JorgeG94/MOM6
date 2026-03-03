@@ -17,6 +17,7 @@ use MOM_verticalGrid, only : verticalGrid_type
 use MOM_EOS, only : calculate_density
 use CVMix_shear, only : CVMix_init_shear, CVMix_coeffs_shear
 use MOM_kappa_shear, only : kappa_shear_is_used
+use MOM_datatypes, only : wp
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -33,14 +34,14 @@ type, public :: CVMix_shear_cs ; private
   logical :: use_LMD94                      !< Flags to use the LMD94 scheme
   logical :: use_PP81                       !< Flags to use Pacanowski and Philander (JPO 1981)
   integer :: n_smooth_ri                    !< Number of times to smooth Ri using a 1-2-1 filter
-  real    :: Ri_zero                        !< LMD94 critical Richardson number [nondim]
-  real    :: Nu_zero                        !< LMD94 maximum interior diffusivity [Z2 T-1 ~> m2 s-1]
-  real    :: KPP_exp                        !< Exponent of unitless factor of diffusivities
+  real(wp)    :: Ri_zero                        !< LMD94 critical Richardson number [nondim]
+  real(wp)    :: Nu_zero                        !< LMD94 maximum interior diffusivity [Z2 T-1 ~> m2 s-1]
+  real(wp)    :: KPP_exp                        !< Exponent of unitless factor of diffusivities
                                             !! for KPP internal shear mixing scheme [nondim]
-  real, allocatable, dimension(:,:,:) :: N2 !< Squared Brunt-Vaisala frequency [T-2 ~> s-2]
-  real, allocatable, dimension(:,:,:) :: S2 !< Squared shear frequency [T-2 ~> s-2]
-  real, allocatable, dimension(:,:,:) :: ri_grad !< Gradient Richardson number [nondim]
-  real, allocatable, dimension(:,:,:) :: ri_grad_orig !< Gradient Richardson number
+  real(wp), allocatable, dimension(:,:,:) :: N2 !< Squared Brunt-Vaisala frequency [T-2 ~> s-2]
+  real(wp), allocatable, dimension(:,:,:) :: S2 !< Squared shear frequency [T-2 ~> s-2]
+  real(wp), allocatable, dimension(:,:,:) :: ri_grad !< Gradient Richardson number [nondim]
+  real(wp), allocatable, dimension(:,:,:) :: ri_grad_orig !< Gradient Richardson number
                                                       !! after smoothing [nondim]
   character(10) :: Mix_Scheme               !< Mixing scheme name (string)
 
@@ -61,41 +62,41 @@ subroutine calculate_CVMix_shear(u_H, v_H, h, tv, kd, kv, G, GV, US, CS )
   type(ocean_grid_type),                      intent(in)  :: G   !< Grid structure.
   type(verticalGrid_type),                    intent(in)  :: GV  !< Vertical grid structure.
   type(unit_scale_type),                      intent(in)  :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: u_H !< Initial zonal velocity on T points [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: v_H !< Initial meridional velocity on T
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: u_H !< Initial zonal velocity on T points [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: v_H !< Initial meridional velocity on T
                                                                  !! points [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> m or kg m-2].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)  :: h   !< Layer thickness [H ~> m or kg m-2].
   type(thermo_var_ptrs),                      intent(in)  :: tv  !< Thermodynamics structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: kd !< The vertical diffusivity at each interface
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: kd !< The vertical diffusivity at each interface
                                                                  !! (not layer!) [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: kv !< The vertical viscosity at each interface
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: kv !< The vertical viscosity at each interface
                                                                  !! (not layer!) [H Z T-1 ~> m2 s-1 or Pa s]
   type(CVMix_shear_cs),                       pointer     :: CS  !< The control structure returned by a previous
                                                                  !! call to CVMix_shear_init.
   ! Local variables
   integer :: i, j, k, kk, km1, s
-  real :: GoRho  ! Gravitational acceleration divided by density [Z T-2 R-1 ~> m4 s-2 kg-1]
-  real :: pref   ! Interface pressures [R L2 T-2 ~> Pa]
-  real :: DU, DV ! Velocity differences [L T-1 ~> m s-1]
-  real :: dz_int ! Grid spacing around an interface [Z ~> m]
-  real :: N2     ! Buoyancy frequency at an interface [T-2 ~> s-2]
-  real :: S2     ! Shear squared at an interface [T-2 ~> s-2]
-  real :: dummy  ! A dummy variable [nondim]
-  real :: dRho   ! Buoyancy differences [Z T-2 ~> m s-2]
-  real, dimension(SZI_(G),SZK_(GV)) :: dz ! Height change across layers [Z ~> m]
-  real, dimension(2*(GV%ke)) :: pres_1d ! A column of interface pressures [R L2 T-2 ~> Pa]
-  real, dimension(2*(GV%ke)) :: temp_1d ! A column of temperatures [C ~> degC]
-  real, dimension(2*(GV%ke)) :: salt_1d ! A column of salinities [S ~> ppt]
-  real, dimension(2*(GV%ke)) :: rho_1d  ! A column of densities at interface pressures [R ~> kg m-3]
-  real, dimension(GV%ke+1) :: Ri_Grad   !< Gradient Richardson number [nondim]
-  real, dimension(GV%ke+1) :: Ri_Grad_prev !< Gradient Richardson number before s.th smoothing iteration [nondim]
-  real, dimension(GV%ke+1) :: Kvisc   !< Vertical viscosity at interfaces [m2 s-1]
-  real, dimension(GV%ke+1) :: Kdiff   !< Diapycnal diffusivity at interfaces [m2 s-1]
-  real :: epsln  !< Threshold to identify vanished layers [H ~> m or kg m-2]
+  real(wp) :: GoRho  ! Gravitational acceleration divided by density [Z T-2 R-1 ~> m4 s-2 kg-1]
+  real(wp) :: pref   ! Interface pressures [R L2 T-2 ~> Pa]
+  real(wp) :: DU, DV ! Velocity differences [L T-1 ~> m s-1]
+  real(wp) :: dz_int ! Grid spacing around an interface [Z ~> m]
+  real(wp) :: N2     ! Buoyancy frequency at an interface [T-2 ~> s-2]
+  real(wp) :: S2     ! Shear squared at an interface [T-2 ~> s-2]
+  real(wp) :: dummy  ! A dummy variable [nondim]
+  real(wp) :: dRho   ! Buoyancy differences [Z T-2 ~> m s-2]
+  real(wp), dimension(SZI_(G),SZK_(GV)) :: dz ! Height change across layers [Z ~> m]
+  real(wp), dimension(2*(GV%ke)) :: pres_1d ! A column of interface pressures [R L2 T-2 ~> Pa]
+  real(wp), dimension(2*(GV%ke)) :: temp_1d ! A column of temperatures [C ~> degC]
+  real(wp), dimension(2*(GV%ke)) :: salt_1d ! A column of salinities [S ~> ppt]
+  real(wp), dimension(2*(GV%ke)) :: rho_1d  ! A column of densities at interface pressures [R ~> kg m-3]
+  real(wp), dimension(GV%ke+1) :: Ri_Grad   !< Gradient Richardson number [nondim]
+  real(wp), dimension(GV%ke+1) :: Ri_Grad_prev !< Gradient Richardson number before s.th smoothing iteration [nondim]
+  real(wp), dimension(GV%ke+1) :: Kvisc   !< Vertical viscosity at interfaces [m2 s-1]
+  real(wp), dimension(GV%ke+1) :: Kdiff   !< Diapycnal diffusivity at interfaces [m2 s-1]
+  real(wp) :: epsln  !< Threshold to identify vanished layers [H ~> m or kg m-2]
 
   ! some constants
   GoRho = GV%g_Earth_Z_T2 / GV%Rho0
-  epsln = 1.e-10 * GV%m_to_H
+  epsln = 1.e-10_wp * GV%m_to_H
 
   do j = G%jsc, G%jec
 
@@ -105,11 +106,11 @@ subroutine calculate_CVMix_shear(u_H, v_H, h, tv, kd, kv, G, GV, US, CS )
     do i = G%isc, G%iec
 
       ! skip calling for land points
-      if (G%mask2dT(i,j)==0.) cycle
+      if (G%mask2dT(i,j)==0._wp) cycle
 
       ! Richardson number computed for each cell in a column.
-      pRef = 0. ; if (associated(tv%p_surf)) pRef = tv%p_surf(i,j)
-      Ri_Grad(:)=1.e8 !Initialize w/ large Richardson value
+      pRef = 0._wp ; if (associated(tv%p_surf)) pRef = tv%p_surf(i,j)
+      Ri_Grad(:)=1.e8_wp !Initialize w/ large Richardson value
       do k=1,GV%ke
         ! pressure, temp, and saln for EOS
         ! kk+1 = k fields
@@ -141,12 +142,12 @@ subroutine calculate_CVMix_shear(u_H, v_H, h, tv, kd, kv, G, GV, US, CS )
         if (GV%Boussinesq .or. GV%semi_Boussinesq) then
           dRho = GoRho * (rho_1D(kk+1) - rho_1D(kk+2))
         else
-          dRho = GV%g_Earth_Z_T2 * (rho_1D(kk+1) - rho_1D(kk+2)) / (0.5*(rho_1D(kk+1) + rho_1D(kk+2)))
+          dRho = GV%g_Earth_Z_T2 * (rho_1D(kk+1) - rho_1D(kk+2)) / (0.5_wp*(rho_1D(kk+1) + rho_1D(kk+2)))
         endif
-        dz_int = 0.5*(dz(i,km1) + dz(i,k)) + GV%dZ_subroundoff
+        dz_int = 0.5_wp*(dz(i,km1) + dz(i,k)) + GV%dZ_subroundoff
         N2 = DRHO / dz_int
         S2 = US%L_to_Z**2*((DU*DU) + (DV*DV)) / (dz_int*dz_int)
-        Ri_Grad(k) = max(0., N2) / max(S2, 1.e-10*US%T_to_s**2)
+        Ri_Grad(k) = max(0._wp, N2) / max(S2, 1.e-10_wp*US%T_to_s**2)
 
         ! fill 3d arrays, if user asks for diagnostics
         if (CS%id_N2 > 0) CS%N2(i,j,k) = N2
@@ -172,10 +173,10 @@ subroutine calculate_CVMix_shear(u_H, v_H, h, tv, kd, kv, G, GV, US, CS )
           Ri_Grad_prev(:) = Ri_Grad(:)
 
           ! 2) vertically smooth Ri with 1-2-1 filter
-          dummy =  0.25 * Ri_grad_prev(2)
+          dummy =  0.25_wp * Ri_grad_prev(2)
           do k = 3, GV%ke
-            Ri_Grad(k) = dummy + 0.5 * Ri_Grad_prev(k) + 0.25 * Ri_grad_prev(k+1)
-            dummy = 0.25 * Ri_grad(k)
+            Ri_Grad(k) = dummy + 0.5_wp * Ri_Grad_prev(k) + 0.25_wp * Ri_grad_prev(k+1)
+            dummy = 0.25_wp * Ri_grad(k)
           enddo
         enddo
 
@@ -283,16 +284,16 @@ logical function CVMix_shear_init(Time, G, GV, US, param_file, diag, CS)
 
   call get_param(param_file, mdl, "NU_ZERO", CS%Nu_Zero, &
                  "Leading coefficient in KPP shear mixing.", &
-                 units="m2 s-1", default=5.e-3, scale=US%m2_s_to_Z2_T)
+                 units="m2 s-1", default=5.e-3_wp, scale=US%m2_s_to_Z2_T)
   call get_param(param_file, mdl, "RI_ZERO", CS%Ri_Zero, &
                  "Critical Richardson for KPP shear mixing, "// &
                  "NOTE this the internal mixing and this is "// &
                  "not for setting the boundary layer depth.", &
-                 units="nondim", default=0.8)
+                 units="nondim", default=0.8_wp)
   call get_param(param_file, mdl, "KPP_EXP", CS%KPP_exp, &
                  "Exponent of unitless factor of diffusivities, "// &
                  "for KPP internal shear mixing scheme.", &
-                 units="nondim", default=3.0)
+                 units="nondim", default=3.0_wp)
   call get_param(param_file, mdl, "N_SMOOTH_RI", CS%n_smooth_ri, &
                  "If > 0, vertically smooth the Richardson "// &
                  "number by applying a 1-2-1 filter N_SMOOTH_RI times.", &
@@ -308,19 +309,19 @@ logical function CVMix_shear_init(Time, G, GV, US, param_file, diag, CS)
   CS%id_N2 = register_diag_field('ocean_model', 'N2_shear', diag%axesTi, Time, &
       'Square of Brunt-Vaisala frequency used by MOM_CVMix_shear module', '1/s2', conversion=US%s_to_T**2)
   if (CS%id_N2 > 0) then
-    allocate( CS%N2( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=0. )
+    allocate( CS%N2( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=0._wp )
   endif
 
   CS%id_S2 = register_diag_field('ocean_model', 'S2_shear', diag%axesTi, Time, &
       'Square of vertical shear used by MOM_CVMix_shear module','1/s2', conversion=US%s_to_T**2)
   if (CS%id_S2 > 0) then
-    allocate( CS%S2( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=0. )
+    allocate( CS%S2( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=0._wp )
   endif
 
   CS%id_ri_grad = register_diag_field('ocean_model', 'ri_grad_shear', diag%axesTi, Time, &
       'Gradient Richarson number used by MOM_CVMix_shear module','nondim')
   if (CS%id_ri_grad > 0) then !Initialize w/ large Richardson value
-    allocate( CS%ri_grad( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=1.e8 )
+    allocate( CS%ri_grad( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=1.e8_wp )
   endif
 
   if (CS%n_smooth_ri > 0) then
@@ -330,7 +331,7 @@ logical function CVMix_shear_init(Time, G, GV, US, param_file, diag, CS)
         'part of the MOM_CVMix_shear module and only available when N_SMOOTH_RI > 0','nondim')
   endif
   if (CS%id_ri_grad_orig > 0 .or. CS%n_smooth_ri > 0) then !Initialize w/ large Richardson value
-    allocate( CS%ri_grad_orig( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=1.e8 )
+    allocate( CS%ri_grad_orig( SZI_(G), SZJ_(G), SZK_(GV)+1 ), source=1.e8_wp )
   endif
 
   CS%id_kd = register_diag_field('ocean_model', 'kd_shear_CVMix', diag%axesTi, Time, &

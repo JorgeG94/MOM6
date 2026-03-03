@@ -13,6 +13,8 @@ use MOM_time_manager,   only : time_type, time_type_to_real
 use MOM_unit_scaling,   only : unit_scale_type
 use MOM_verticalGrid,   only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -32,7 +34,7 @@ subroutine supercritical_set_OBC_data(OBC, G, GV, US, param_file)
   type(param_file_type),   intent(in) :: param_file !< Parameter file structure
   ! Local variables
   character(len=40)  :: mdl = "supercritical_set_OBC_data" ! This subroutine's name.
-  real :: zonal_flow ! Inflow speed [L T-1 ~> m s-1]
+  real(wp) :: zonal_flow ! Inflow speed [L T-1 ~> m s-1]
   integer :: unrot_dir ! The unrotated direction of the segment
   integer :: turns    ! Number of index quarter turns
   integer :: i, j, k, l
@@ -44,7 +46,7 @@ subroutine supercritical_set_OBC_data(OBC, G, GV, US, param_file)
 
   call get_param(param_file, mdl, "SUPERCRITICAL_ZONAL_FLOW", zonal_flow, &
                  "Constant zonal flow imposed at upstream open boundary.", &
-                 units="m/s", default=8.57, scale=US%m_s_to_L_T)
+                 units="m/s", default=8.57_wp, scale=US%m_s_to_L_T)
 
   turns = modulo(G%HI%turns, 4)
 
@@ -77,7 +79,7 @@ subroutine supercritical_set_OBC_data(OBC, G, GV, US, param_file)
       isd = segment%HI%isd ; ied = segment%HI%ied
       JsdB = segment%HI%JsdB ; JedB = segment%HI%JedB
       do J=JsdB,JedB ; do i=isd,ied
-        segment%normal_vel_bt(i,J) = 0.0
+        segment%normal_vel_bt(i,J) = 0.0_wp
       enddo ; enddo
     endif
   enddo

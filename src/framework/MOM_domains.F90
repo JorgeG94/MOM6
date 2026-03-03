@@ -28,6 +28,8 @@ use MOM_string_functions, only : slasher
 use MOM_cpu_clock,        only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
 use MOM_unit_scaling,     only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: MOM_infra_init, MOM_infra_end
@@ -496,32 +498,32 @@ subroutine gen_auto_mask_table(n_global, reentrant, tripolar_N, npes, param_file
   type(unit_scale_type), optional, pointer  :: US         !< A dimensional unit scaling type
 
   ! Local variables
-  real, dimension(n_global(1), n_global(2)) :: D        ! Bathymetric depth (to be read in from TOPO_FILE) [Z ~> m]
+  real(wp), dimension(n_global(1), n_global(2)) :: D        ! Bathymetric depth (to be read in from TOPO_FILE) [Z ~> m]
   integer, dimension(:,:), allocatable :: mask          ! Cell masks (based on D and MINIMUM_DEPTH)
   character(len=200) :: topo_filepath, topo_file        ! Strings for file/path
   character(len=200) :: topo_varname                    ! Variable name in file
   character(len=200) :: topo_config
   character(len=40)  :: mdl = "gen_auto_mask_table"      ! This subroutine's name.
   integer :: i, j, p
-  real :: Dmask          ! The depth for masking in the same units as D             [Z ~> m]
-  real :: min_depth      ! The minimum ocean depth in the same units as D           [Z ~> m]
-  real :: mask_depth     ! The depth shallower than which to mask a point as land.  [Z ~> m]
-  real :: glob_ocn_frac  ! ratio of ocean points to total number of points          [nondim]
-  real :: r_p            ! aspect ratio for division count p.                       [nondim]
-  real :: m_to_Z         ! A conversion factor from m to height units           [Z m-1 ~> 1]
+  real(wp) :: Dmask          ! The depth for masking in the same units as D             [Z ~> m]
+  real(wp) :: min_depth      ! The minimum ocean depth in the same units as D           [Z ~> m]
+  real(wp) :: mask_depth     ! The depth shallower than which to mask a point as land.  [Z ~> m]
+  real(wp) :: glob_ocn_frac  ! ratio of ocean points to total number of points          [nondim]
+  real(wp) :: r_p            ! aspect ratio for division count p.                       [nondim]
+  real(wp) :: m_to_Z         ! A conversion factor from m to height units           [Z m-1 ~> 1]
   integer :: nx, ny      ! global domain sizes
   integer, parameter :: ibuf=2, jbuf=2
-  real, parameter :: r_extreme = 4.0 ! aspect ratio limit (>1) for a layout to be considered [nondim]
+  real(wp), parameter :: r_extreme = 4.0_wp ! aspect ratio limit (>1) for a layout to be considered [nondim]
   integer :: num_masked_blocks
   integer, allocatable :: mask_table(:,:)
 
-  m_to_Z = 1.0 ; if (present(US)) m_to_Z = US%m_to_Z
+  m_to_Z = 1.0_wp ; if (present(US)) m_to_Z = US%m_to_Z
 
   ! Read in params necessary for auto-masking
   call get_param(param_file, mdl, "MINIMUM_DEPTH", min_depth, &
-                 units="m", default=0.0, scale=m_to_Z, do_not_log=.true.)
+                 units="m", default=0.0_wp, scale=m_to_Z, do_not_log=.true.)
   call get_param(param_file, mdl, "MASKING_DEPTH", mask_depth, &
-                 units="m", default=-9999.0, scale=m_to_Z, do_not_log=.true.)
+                 units="m", default=-9999.0_wp, scale=m_to_Z, do_not_log=.true.)
   call get_param(param_file, mdl, "TOPO_CONFIG", topo_config, default="file", do_not_log=.true.)
   call get_param(param_file, mdl, "TOPO_FILE", topo_file, do_not_log=.true., default="topog.nc")
   call get_param(param_file, mdl, "TOPO_VARNAME", topo_varname, do_not_log=.true., default="depth")
@@ -542,7 +544,7 @@ subroutine gen_auto_mask_table(n_global, reentrant, tripolar_N, npes, param_file
   ny = n_global(2)
 
   ! Read in bathymetric depth.
-  D(:,:) = -9.0e30 * m_to_Z ! Initializing to a very large negative depth (tall mountains) everywhere.
+  D(:,:) = -9.0e30_wp * m_to_Z ! Initializing to a very large negative depth (tall mountains) everywhere.
   call read_field(topo_filepath, trim(topo_varname), D, start=(/1, 1/), nread=n_global, no_domain=.true., &
                   scale=m_to_Z)
 
@@ -550,7 +552,7 @@ subroutine gen_auto_mask_table(n_global, reentrant, tripolar_N, npes, param_file
 
   ! Determine cell masks
   Dmask = mask_depth
-  if (mask_depth == -9999.0*m_to_Z) Dmask = min_depth
+  if (mask_depth == -9999.0_wp*m_to_Z) Dmask = min_depth
   do i=1,nx ; do j=1,ny
     if (D(i,j) <= Dmask) then
       mask(i+ibuf,j+jbuf) = 0
@@ -589,7 +591,7 @@ subroutine gen_auto_mask_table(n_global, reentrant, tripolar_N, npes, param_file
     mask(:, jbuf+ny) = 1
   endif
 
-  glob_ocn_frac = real(sum(mask(1+ibuf:nx+ibuf, 1+jbuf:ny+jbuf))) / (nx * ny)
+  glob_ocn_frac = real(sum(mask(1+ibuf:nx+ibuf, 1+jbuf:ny+jbuf)), wp) / (nx * ny)
 
   ! Iteratively check for all possible division counts starting from the upper bound of npes/glob_ocn_frac,
   ! which is over-optimistic for realistic domains, but may be satisfied with idealized domains.
@@ -599,7 +601,7 @@ subroutine gen_auto_mask_table(n_global, reentrant, tripolar_N, npes, param_file
     call MOM_define_layout(n_global, p, layout)
 
     ! don't bother checking this p if the aspect ratio is extreme
-    r_p = (real(nx)/layout(1)) / (real(ny)/layout(2))
+    r_p = (real(nx, wp)/layout(1)) / (real(ny, wp)/layout(2))
     if ( r_p * r_extreme < 1 .or. r_extreme < r_p ) cycle
 
     ! Get the number of masked_blocks for this particular division count

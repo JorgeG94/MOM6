@@ -12,6 +12,8 @@ module Recon1d_EMPLM_CWK
 use Recon1d_type, only : testing
 use Recon1d_MPLM_CWK, only : MPLM_CWK
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public EMPLM_CWK, testing
@@ -47,15 +49,15 @@ contains
 !> Calculate a 1D PLM reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(EMPLM_CWK), intent(inout) :: this !< This reconstruction
-  real,             intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,             intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),             intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),             intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp ! The PLM slopes (difference across cell) [A]
-  real :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
+  real(wp) :: slp ! The PLM slopes (difference across cell) [A]
+  real(wp) :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
                                     ! differences across the cell [A]
-  real :: u_min, u_max ! Minimum and maximum value across cell [A]
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: u_e(this%n+1) ! Average of edge values [A]
+  real(wp) :: u_min, u_max ! Minimum and maximum value across cell [A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: u_e(this%n+1) ! Average of edge values [A]
   integer :: k, n
 
   n = this%n
@@ -77,8 +79,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,          intent(in)    :: stdout  !< I/O channel for stdout
   integer,          intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -90,31 +92,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,4./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/2.,4.,6./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/0._wp,2._wp,4._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/2._wp,4._wp,6._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/2.,2.,2./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/2.,2.,2./), 'dfdx in center')
-  call test%real_arr(3, ur, (/2.,2.,2./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/2._wp,2._wp,2._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/2._wp,2._wp,2._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/2._wp,2._wp,2._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.25, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.25_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.,3.,5./), 'Return interval average')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Return interval average')
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )
@@ -128,13 +130,13 @@ logical function unit_tests(this, verbose, stdout, stderr)
   ! The O(h^2) slopes are -, 2, 2, - and the limited
   ! slopes are 0, 1, 1, 0 so the everywhere the reconstructions
   ! are bounded by neighbors but ur(2) and ul(3) are out-of-order.
-  call this%reconstruct( (/1.,1.,1.,1./), (/0.,3.,4.,7./) )
+  call this%reconstruct( (/1._wp,1._wp,1._wp,1._wp/), (/0._wp,3._wp,4._wp,7._wp/) )
   do k = 1, 4
-    ul(k) = this%f(k, 0.)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(4, ul, (/-2.5,2.5,3.5,4.5/), 'Evaluation on left edge')
-  call test%real_arr(4, ur, (/2.5,3.5,4.5,9.5/), 'Evaluation on right edge')
+  call test%real_arr(4, ul, (/-2.5_wp,2.5_wp,3.5_wp,4.5_wp/), 'Evaluation on left edge')
+  call test%real_arr(4, ur, (/2.5_wp,3.5_wp,4.5_wp,9.5_wp/), 'Evaluation on right edge')
 
   deallocate( um, ul, ur )
 

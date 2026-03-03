@@ -18,6 +18,8 @@ use MOM_tracer_flow_control, only : tracer_flow_control_CS
 use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : surface
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MESO_buoyancy_forcing, MESO_surface_forcing_init
@@ -27,19 +29,19 @@ type, public :: MESO_surface_forcing_CS ; private
 
   logical :: use_temperature !< If true, temperature and salinity are used as state variables.
   logical :: restorebuoy     !< If true, use restoring surface buoyancy forcing.
-  real :: Rho0               !< The density used in the Boussinesq approximation [R ~> kg m-3].
-  real :: G_Earth            !< The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
-  real :: Flux_const         !< The restoring rate at the surface [Z T-1 ~> m s-1].
-  real :: rho_restore        !< The density that is used to convert piston velocities into salt
+  real(wp) :: Rho0               !< The density used in the Boussinesq approximation [R ~> kg m-3].
+  real(wp) :: G_Earth            !< The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
+  real(wp) :: Flux_const         !< The restoring rate at the surface [Z T-1 ~> m s-1].
+  real(wp) :: rho_restore        !< The density that is used to convert piston velocities into salt
                              !! or heat fluxes with salinity or temperature restoring [R ~> kg m-3]
-  real :: gust_const         !< A constant unresolved background gustiness
+  real(wp) :: gust_const         !< A constant unresolved background gustiness
                              !! that contributes to ustar [R L Z T-2 ~> Pa]
-  real, dimension(:,:), pointer :: &
+  real(wp), dimension(:,:), pointer :: &
     T_Restore(:,:) => NULL(), & !< The temperature to restore the SST toward [C ~> degC].
     S_Restore(:,:) => NULL(), & !< The salinity to restore the sea surface salnity toward [S ~> ppt]
     PmE(:,:) => NULL(), &       !< The prescribed precip minus evap [Z T-1 ~> m s-1].
     Solar(:,:) => NULL()        !< The shortwave forcing into the ocean [Q R Z T-1 ~> W m-2].
-  real, dimension(:,:), pointer :: Heat(:,:) => NULL() !< The prescribed longwave, latent and sensible
+  real(wp), dimension(:,:), pointer :: Heat(:,:) => NULL() !< The prescribed longwave, latent and sensible
                                 !! heat flux into the ocean [Q R Z T-1 ~> W m-2].
   character(len=200) :: inputdir !< The directory where NetCDF input files are.
   character(len=200) :: salinityrestore_file !< The file with the target sea surface salinity
@@ -62,7 +64,7 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
                                                     !! describe the surface state of the ocean.
   type(forcing),                 intent(inout) :: fluxes !< A structure containing thermodynamic forcing fields
   type(time_type),               intent(in)    :: day  !< The time of the fluxes
-  real,                          intent(in)    :: dt   !< The amount of time over which
+  real(wp),                          intent(in)    :: dt   !< The amount of time over which
                                                        !! the fluxes apply [T ~> s]
   type(ocean_grid_type),         intent(in)    :: G    !< The ocean's grid structure
   type(unit_scale_type),         intent(in)    :: US   !< A dimensional unit scaling type
@@ -79,9 +81,9 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
 !  are in W m-2 and positive for heat going into the ocean.  All fresh water
 !  fluxes are in kg m-2 s-1 and positive for water moving into the ocean.
 
-  real :: density_restore  ! The potential density that is being restored toward [R ~> kg m-3].
-  real :: rhoXcp ! The mean density times the heat capacity [Q R C-1 ~> J m-3 degC-1].
-  real :: buoy_rest_const  ! A constant relating density anomalies to the
+  real(wp) :: density_restore  ! The potential density that is being restored toward [R ~> kg m-3].
+  real(wp) :: rhoXcp ! The mean density times the heat capacity [Q R C-1 ~> J m-3 degC-1].
+  real(wp) :: buoy_rest_const  ! A constant relating density anomalies to the
                            ! restoring buoyancy flux [L2 T-3 R-1 ~> m5 s-3 kg-1].
 
   integer :: i, j, is, ie, js, je
@@ -140,15 +142,15 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
     do j=js,je ; do i=is,ie
       ! Fluxes of fresh water through the surface are in units of [R Z T-1 ~> kg m-2 s-1]
       ! and are positive downward - i.e. evaporation should be negative.
-      fluxes%evap(i,j) = -0.0 * G%mask2dT(i,j)
+      fluxes%evap(i,j) = -0.0_wp * G%mask2dT(i,j)
       fluxes%lprec(i,j) =  CS%PmE(i,j) * CS%Rho0 * G%mask2dT(i,j)
 
       ! vprec will be set later, if it is needed for salinity restoring.
-      fluxes%vprec(i,j) = 0.0
+      fluxes%vprec(i,j) = 0.0_wp
 
       !   Heat fluxes are in units of [Q R Z T-1 ~> W m-2] and are positive into the ocean.
-      fluxes%lw(i,j)     = 0.0 * G%mask2dT(i,j)
-      fluxes%latent(i,j) = 0.0 * G%mask2dT(i,j)
+      fluxes%lw(i,j)     = 0.0_wp * G%mask2dT(i,j)
+      fluxes%latent(i,j) = 0.0_wp * G%mask2dT(i,j)
       fluxes%sens(i,j)   = CS%Heat(i,j) * G%mask2dT(i,j)
       fluxes%sw(i,j)     = CS%Solar(i,j) * G%mask2dT(i,j)
     enddo ; enddo
@@ -156,7 +158,7 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
     do j=js,je ; do i=is,ie
       !   fluxes%buoy is the buoyancy flux into the ocean [L2 T-3 ~> m2 s-3].  A positive
       ! buoyancy flux is of the same sign as heating the ocean.
-      fluxes%buoy(i,j) = 0.0 * G%mask2dT(i,j)
+      fluxes%buoy(i,j) = 0.0_wp * G%mask2dT(i,j)
     enddo ; enddo
   endif
 
@@ -172,15 +174,15 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
       do j=js,je ; do i=is,ie
         !   Set Temp_restore and Salin_restore to the temperature (in degC) and
         ! salinity (in ppt or PSU) that are being restored toward.
-        if (G%mask2dT(i,j) > 0.0) then
+        if (G%mask2dT(i,j) > 0.0_wp) then
           fluxes%heat_added(i,j) = G%mask2dT(i,j) * &
               ((CS%T_Restore(i,j) - sfc_state%SST(i,j)) * rhoXcp * CS%Flux_const)
           fluxes%vprec(i,j) = - (CS%rho_restore * CS%Flux_const) * &
               (CS%S_Restore(i,j) - sfc_state%SSS(i,j)) / &
-              (0.5*(sfc_state%SSS(i,j) + CS%S_Restore(i,j)))
+              (0.5_wp*(sfc_state%SSS(i,j) + CS%S_Restore(i,j)))
         else
-          fluxes%heat_added(i,j) = 0.0
-          fluxes%vprec(i,j) = 0.0
+          fluxes%heat_added(i,j) = 0.0_wp
+          fluxes%vprec(i,j) = 0.0_wp
         endif
       enddo ; enddo
     else
@@ -190,11 +192,11 @@ subroutine MESO_buoyancy_forcing(sfc_state, fluxes, day, dt, G, US, CS)
         "Buoyancy restoring used without modification." )
 
       ! The -1 is because density has the opposite sign to buoyancy.
-      buoy_rest_const = -1.0 * (CS%G_Earth * CS%Flux_const) / CS%rho_restore
+      buoy_rest_const = -1.0_wp * (CS%G_Earth * CS%Flux_const) / CS%rho_restore
       do j=js,je ; do i=is,ie
        !   Set density_restore to an expression for the surface potential
        ! density [R ~> kg m-3] that is being restored toward.
-        density_restore = 1030.0 * US%kg_m3_to_R
+        density_restore = 1030.0_wp * US%kg_m3_to_R
 
         fluxes%buoy(i,j) = G%mask2dT(i,j) * buoy_rest_const * &
                            (density_restore - sfc_state%sfc_density(i,j))
@@ -235,15 +237,15 @@ subroutine MESO_surface_forcing_init(Time, G, US, param_file, diag, CS)
 
   call get_param(param_file, mdl, "G_EARTH", CS%G_Earth, &
                  "The gravitational acceleration of the Earth.", &
-                 units="m s-2", default = 9.80, scale=US%m_to_L**2*US%Z_to_m*US%T_to_s**2)
+                 units="m s-2", default = 9.80_wp, scale=US%m_to_L**2*US%Z_to_m*US%T_to_s**2)
   call get_param(param_file, mdl, "RHO_0", CS%Rho0, &
                  "The mean ocean density used with BOUSSINESQ true to "//&
                  "calculate accelerations and the mass for conservation "//&
                  "properties, or with BOUSSINSEQ false to convert some "//&
                  "parameters from vertical units of m to kg m-2.", &
-                 units="kg m-3", default=1035.0, scale=US%kg_m3_to_R)
+                 units="kg m-3", default=1035.0_wp, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "GUST_CONST", CS%gust_const, &
-                 "The background gustiness in the winds.", units="Pa", default=0.0, &
+                 "The background gustiness in the winds.", units="Pa", default=0.0_wp, &
                  scale=US%Pa_to_RLZ_T2)
 
   call get_param(param_file, mdl, "RESTOREBUOY", CS%restorebuoy, &
@@ -255,7 +257,7 @@ subroutine MESO_surface_forcing_init(Time, G, US, param_file, diag, CS)
     call get_param(param_file, mdl, "FLUXCONST", CS%Flux_const, &
                  "The constant that relates the restoring surface fluxes to the relative "//&
                  "surface anomalies (akin to a piston velocity).  Note the non-MKS units.", &
-                 default=0.0, units="m day-1", scale=US%m_to_Z/(86400.0*US%s_to_T))
+                 default=0.0_wp, units="m day-1", scale=US%m_to_Z/(86400.0_wp*US%s_to_T))
 
     call get_param(param_file, mdl, "SSTRESTORE_FILE", CS%SSTrestore_file, &
                  "The file with the SST toward which to restore in "//&
@@ -278,7 +280,7 @@ subroutine MESO_surface_forcing_init(Time, G, US, param_file, diag, CS)
                  "The density that is used to convert piston velocities into salt or heat "//&
                  "fluxes with RESTORE_SALINITY or RESTORE_TEMPERATURE.", &
                  units="kg m-3", default=CS%Rho0*US%R_to_kg_m3, scale=US%kg_m3_to_R, &
-                 do_not_log=(CS%Flux_const==0.0).or.(.not.CS%restorebuoy))
+                 do_not_log=(CS%Flux_const==0.0_wp).or.(.not.CS%restorebuoy))
   endif
 
 end subroutine MESO_surface_forcing_init

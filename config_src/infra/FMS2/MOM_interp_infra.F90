@@ -27,6 +27,8 @@ use netcdf, only : nf90_get_var
 use netcdf, only : NF90_NOWRITE
 use netcdf, only : NF90_NOERR
 
+use MOM_datatypes, only : wp
+
 
 implicit none ; private
 
@@ -83,12 +85,12 @@ subroutine horiz_interp_from_weights_field2d(Interp, data_in, data_out, verbose,
                                              missing_value, missing_permit, err_msg)
 
   type(horiz_interp_type),        intent(in)  :: Interp   !< type containing interpolation options and weights
-  real, dimension(:,:),           intent(in)  :: data_in  !< input data
-  real, dimension(:,:),           intent(out) :: data_out !< output data
+  real(wp), dimension(:,:),           intent(in)  :: data_in  !< input data
+  real(wp), dimension(:,:),           intent(out) :: data_out !< output data
   integer,              optional, intent(in)  :: verbose  !< verbosity level
-  real, dimension(:,:), optional, intent(in)  :: mask_in  !< mask for input data
-  real, dimension(:,:), optional, intent(out) :: mask_out !< mask for output data
-  real,                 optional, intent(in)  :: missing_value  !< A value indicating missing data
+  real(wp), dimension(:,:), optional, intent(in)  :: mask_in  !< mask for input data
+  real(wp), dimension(:,:), optional, intent(out) :: mask_out !< mask for output data
+  real(wp),                 optional, intent(in)  :: missing_value  !< A value indicating missing data
   integer,              optional, intent(in)  :: missing_permit !< number of allowed points with
                                                           !! missing value for interpolation (0-3)
   character(len=*),     optional, intent(out) :: err_msg  !< error message
@@ -105,12 +107,12 @@ subroutine horiz_interp_from_weights_field3d(Interp, data_in, data_out, verbose,
                                              missing_value, missing_permit, err_msg)
 
   type(horiz_interp_type),          intent(in)  :: Interp   !< type containing interpolation options and weights
-  real, dimension(:,:,:),           intent(in)  :: data_in  !< input data
-  real, dimension(:,:,:),           intent(out) :: data_out !< output data
+  real(wp), dimension(:,:,:),           intent(in)  :: data_in  !< input data
+  real(wp), dimension(:,:,:),           intent(out) :: data_out !< output data
   integer,                optional, intent(in)  :: verbose  !< verbosity level
-  real, dimension(:,:,:), optional, intent(in)  :: mask_in  !< mask for input data
-  real, dimension(:,:,:), optional, intent(out) :: mask_out !< mask for output data
-  real,                   optional, intent(in)  :: missing_value !< A value indicating missing data
+  real(wp), dimension(:,:,:), optional, intent(in)  :: mask_in  !< mask for input data
+  real(wp), dimension(:,:,:), optional, intent(out) :: mask_out !< mask for output data
+  real(wp),                   optional, intent(in)  :: missing_value !< A value indicating missing data
   integer,                optional, intent(in)  :: missing_permit !< number of allowed points with
                                                             !! missing value for interpolation (0-3)
   character(len=*),       optional, intent(out) :: err_msg  !< error message
@@ -129,17 +131,17 @@ subroutine build_horiz_interp_weights_2d_to_2d(Interp, lon_in, lat_in, lon_out, 
                                                is_latlon_in, is_latlon_out)
 
   type(horiz_interp_type), intent(inout) :: Interp         !< type containing interpolation options and weights
-  real, dimension(:,:),       intent(in) :: lon_in         !< input longitude 2d
-  real, dimension(:,:),       intent(in) :: lat_in         !< input latitude 2d
-  real, dimension(:,:),       intent(in) :: lon_out        !< output longitude 2d
-  real, dimension(:,:),       intent(in) :: lat_out        !< output latitude 2d
+  real(wp), dimension(:,:),       intent(in) :: lon_in         !< input longitude 2d
+  real(wp), dimension(:,:),       intent(in) :: lat_in         !< input latitude 2d
+  real(wp), dimension(:,:),       intent(in) :: lon_out        !< output longitude 2d
+  real(wp), dimension(:,:),       intent(in) :: lat_out        !< output latitude 2d
   integer,          optional, intent(in) :: verbose        !< verbosity level
   character(len=*), optional, intent(in) :: interp_method  !< interpolation method
   integer,          optional, intent(in) :: num_nbrs       !< number of nearest neighbors
-  real,             optional, intent(in) :: max_dist       !< maximum region of influence
+  real(wp),             optional, intent(in) :: max_dist       !< maximum region of influence
   logical,          optional, intent(in) :: src_modulo     !< periodicity of E-W boundary
-  real, dimension(:,:), optional, intent(in) :: mask_in    !< mask for input data
-  real, dimension(:,:), optional, intent(inout) :: mask_out !< mask for output data
+  real(wp), dimension(:,:), optional, intent(in) :: mask_in    !< mask for input data
+  real(wp), dimension(:,:), optional, intent(inout) :: mask_out !< mask for output data
   logical,          optional, intent(in) :: is_latlon_in   !< input grid is regular lat/lon grid
   logical,          optional, intent(in) :: is_latlon_out  !< output grid is regular lat/lon grid
 
@@ -179,7 +181,7 @@ function get_extern_field_axes(field) result(axes)
     ! Dimension length
   integer :: var_dim
     ! netCDF ID of the variable associated with dimension of the same name
-  real, allocatable :: axis_points(:)
+  real(wp), allocatable :: axis_points(:)
     ! Axis values
 
   integer :: ncid
@@ -280,7 +282,7 @@ end function get_extern_field_axes
 function get_extern_field_missing(index)
 
   integer, intent(in) :: index     !< field index
-  real :: get_extern_field_missing !< field missing value
+  real(wp) :: get_extern_field_missing !< field missing value
 
   get_extern_field_missing = get_external_field_missing(index)
 
@@ -296,7 +298,7 @@ subroutine get_external_field_info(field, size, axes, missing)
     !< Dimension sizes for the input data
   type(axistype), optional, intent(inout) :: axes(4)
     !< Axis types for the input data
-  real, optional, intent(inout) :: missing
+  real(wp), optional, intent(inout) :: missing
     !< Missing value for the input data
 
   if (present(size)) then
@@ -317,7 +319,7 @@ end subroutine get_external_field_info
 subroutine time_interp_extern_0d(field, time, data_in, verbose)
   type(external_field), intent(in) :: field    !< Handle for time interpolated field
   type(time_type),   intent(in)    :: time     !< The target time for the data
-  real,              intent(inout) :: data_in  !< The interpolated value
+  real(wp),              intent(inout) :: data_in  !< The interpolated value
   logical, optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
 
   call time_interp_external(field%id, time, data_in, verbose=verbose)
@@ -329,7 +331,7 @@ end subroutine time_interp_extern_0d
 subroutine time_interp_extern_2d(field, time, data_in, interp, verbose, horz_interp, mask_out)
   type(external_field), intent(in)    :: field    !< Handle for time interpolated field
   type(time_type),      intent(in)    :: time     !< The target time for the data
-  real, dimension(:,:), intent(inout) :: data_in  !< The array in which to store the interpolated values
+  real(wp), dimension(:,:), intent(inout) :: data_in  !< The array in which to store the interpolated values
   integer,    optional, intent(in)    :: interp   !< A flag indicating the temporal interpolation method
   logical,    optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
   type(horiz_interp_type), &
@@ -346,7 +348,7 @@ end subroutine time_interp_extern_2d
 subroutine time_interp_extern_3d(field, time, data_in, interp, verbose, horz_interp, mask_out)
   type(external_field),   intent(in)    :: field    !< Handle for time interpolated field
   type(time_type),        intent(in)    :: time     !< The target time for the data
-  real, dimension(:,:,:), intent(inout) :: data_in  !< The array in which to store the interpolated values
+  real(wp), dimension(:,:,:), intent(inout) :: data_in  !< The array in which to store the interpolated values
   integer,      optional, intent(in)    :: interp   !< A flag indicating the temporal interpolation method
   logical,      optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
   type(horiz_interp_type), &

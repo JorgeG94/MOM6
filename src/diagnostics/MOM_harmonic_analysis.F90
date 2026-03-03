@@ -13,6 +13,8 @@ use MOM_io,            only : var_desc, create_MOM_file, SINGLE_FILE, MOM_write_
 use MOM_error_handler, only : MOM_mesg, MOM_error, NOTE
 use MOM_tidal_forcing, only : astro_longitudes, astro_longitudes_init, eq_phase, nodal_fu, tidal_frequency
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public HA_init, HA_accum
@@ -23,10 +25,10 @@ public HA_init, HA_accum
 type, private :: HA_type
   character(len=16) :: key = "none"          !< Name of the field of which harmonic analysis is to be performed
   character(len=1)  :: grid                  !< The grid on which the field is defined ('h', 'q', 'u', or 'v')
-  real :: old_time = -1.0                    !< The time of the previous accumulating step [T ~> s]
-  real, allocatable :: ref(:,:)              !< The initial field in arbitrary units [A]
-  real, allocatable :: FtF(:,:)              !< Accumulator of (F' * F) [nondim]
-  real, allocatable :: FtSSH(:,:,:)          !< Accumulator of (F' * SSH_in) in arbitrary units [A]
+  real(wp) :: old_time = -1.0_wp                    !< The time of the previous accumulating step [T ~> s]
+  real(wp), allocatable :: ref(:,:)              !< The initial field in arbitrary units [A]
+  real(wp), allocatable :: FtF(:,:)              !< Accumulator of (F' * F) [nondim]
+  real(wp), allocatable :: FtSSH(:,:,:)          !< Accumulator of (F' * SSH_in) in arbitrary units [A]
   !>@{ Lower and upper bounds of input data
   integer :: is, ie, js, je
   !>@}
@@ -45,7 +47,7 @@ type, public :: harmonic_analysis_CS ; private
     time_start, &                            !< Start time of harmonic analysis
     time_end, &                              !< End time of harmonic analysis
     time_ref                                 !< Reference time (t = 0) used to calculate tidal forcing
-  real, allocatable, dimension(:) :: &
+  real(wp), allocatable, dimension(:) :: &
     freq, &                                  !< The frequency of a tidal constituent [T-1 ~> s-1]
     phase0, &                                !< The phase of a tidal constituent at time 0 [rad]
     tide_fn, &                               !< Amplitude modulation of tides by nodal cycle [nondim].
@@ -87,8 +89,8 @@ subroutine HA_init(Time, US, param_file, nc, CS)
   integer :: c
 
   type(HA_type) :: ha1                              !< A temporary, null field used for initializing CS%list
-  real :: HA_start_time                             !< Start time of harmonic analysis [T ~> s]
-  real :: HA_end_time                               !< End time of harmonic analysis [T ~> s]
+  real(wp) :: HA_start_time                             !< Start time of harmonic analysis [T ~> s]
+  real(wp) :: HA_end_time                               !< End time of harmonic analysis [T ~> s]
   logical :: HA_ssh, HA_ubt, HA_vbt
   character(len=40)  :: mdl="MOM_harmonic_analysis" !< This module's name
   character(len=255) :: mesg
@@ -161,8 +163,8 @@ subroutine HA_init(Time, US, param_file, nc, CS)
     call get_param(param_file, mdl, "HA_"//trim(CS%const_name(c))//"_FREQ", &
                    CS%freq(c), "Frequency of the "//trim(CS%const_name(c))//&
                    " constituent. This is used if USE_HA is true and "//trim(CS%const_name(c))//&
-                   " is in HA_CONSTITUENTS.", units="rad s-1", scale=US%T_to_s, default=0.0)
-    if (CS%freq(c)<=0.0) then
+                   " is in HA_CONSTITUENTS.", units="rad s-1", scale=US%T_to_s, default=0.0_wp)
+    if (CS%freq(c)<=0.0_wp) then
       select case (trim(CS%const_name(c)))
         case ('M4')
           CS%freq(c) = tidal_frequency('M2') * 2
@@ -188,15 +190,15 @@ subroutine HA_init(Time, US, param_file, nc, CS)
     call get_param(param_file, mdl, "HA_"//trim(CS%const_name(c))//"_PHASE_T0", CS%phase0(c), &
                    "Phase of the "//trim(CS%const_name(c))//" tidal constituent at time 0. "//&
                    "This is only used if USE_HA is true and "//trim(CS%const_name(c))// &
-                   " is in HA_CONSTITUENTS.", units="radians", default=0.0)
+                   " is in HA_CONSTITUENTS.", units="radians", default=0.0_wp)
     if (use_eq_phase) CS%phase0(c) = eq_phase(trim(CS%const_name(c)), tidal_longitudes)
 
     ! Nodal modulation should be turned off for tidal constituents not available in MOM_tidal_forcing
     if (add_nodal_terms) then
       call nodal_fu(trim(trim(CS%const_name(c))), nodal_longitudes%N, CS%tide_fn(c), CS%tide_un(c))
     else
-      CS%tide_fn(c) = 1.0
-      CS%tide_un(c) = 0.0
+      CS%tide_fn(c) = 1.0_wp
+      CS%tide_un(c) = 0.0_wp
     endif
   enddo
 
@@ -208,15 +210,15 @@ subroutine HA_init(Time, US, param_file, nc, CS)
                  "If negative, |HA_START_TIME| determines the length of harmonic analysis, "//&
                  "and harmonic analysis will start |HA_START_TIME| days before HA_END_TIME, "//&
                  "or at the beginning of the run segment, whichever occurs later.", &
-                 units="days", default=0.0, scale=86400.0*US%s_to_T)
+                 units="days", default=0.0_wp, scale=86400.0_wp*US%s_to_T)
   call get_param(param_file, mdl, "HA_END_TIME", HA_end_time, &
                  "End time of harmonic analysis, in units of days after "//&
                  "the start of the current run segment. Must be positive "//&
                  "and smaller than the length of the currnet run segment, "//&
                  "otherwise harmonic analysis will not be performed.", &
-                 units="days", default=0.0, scale=86400.0*US%s_to_T)
+                 units="days", default=0.0_wp, scale=86400.0_wp*US%s_to_T)
 
-  if (HA_end_time <= 0.0) then
+  if (HA_end_time <= 0.0_wp) then
     call MOM_mesg('MOM_harmonic_analysis: HA_END_TIME is zero or negative. '//&
                   'Harmonic analysis will not be performed.')
     CS%HAready = .false. ; return
@@ -230,9 +232,9 @@ subroutine HA_init(Time, US, param_file, nc, CS)
 
   CS%HAready = .true.
 
-  if (HA_start_time < 0.0) then
+  if (HA_start_time < 0.0_wp) then
     HA_start_time = HA_end_time + HA_start_time
-    if (HA_start_time <= 0.0) HA_start_time = 0.0
+    if (HA_start_time <= 0.0_wp) HA_start_time = 0.0_wp
   endif
 
   CS%time_start = Time + real_to_time(US%T_to_s * HA_start_time)
@@ -303,7 +305,7 @@ end subroutine HA_register
 !! for Cholesky decomposition.
 subroutine HA_accum(key, data, Time, G, CS)
   character(len=*),           intent(in) :: key  !< Name of the current field
-  real, dimension(:,:),       intent(in) :: data !< Input data of which harmonic analysis is to be performed [A]
+  real(wp), dimension(:,:),       intent(in) :: data !< Input data of which harmonic analysis is to be performed [A]
   type(time_type),            intent(in) :: Time !< The current model time
   type(ocean_grid_type),      intent(in) :: G    !< The ocean's grid structure
   type(harmonic_analysis_CS), intent(inout) :: CS   !< Control structure of the MOM_harmonic_analysis module
@@ -311,9 +313,9 @@ subroutine HA_accum(key, data, Time, G, CS)
   ! Local variables
   type(HA_type), pointer :: ha1
   type(HA_node), pointer :: tmp
-  real :: now                                    !< The relative time compared with the tidal reference [T ~> s]
-  real :: dt                                     !< The current time step size of the accumulator [T ~> s]
-  real :: cosomegat, sinomegat, ccosomegat, ssinomegat !< The components of the phase [nondim]
+  real(wp) :: now                                    !< The relative time compared with the tidal reference [T ~> s]
+  real(wp) :: dt                                     !< The current time step size of the accumulator [T ~> s]
+  real(wp) :: cosomegat, sinomegat, ccosomegat, ssinomegat !< The components of the phase [nondim]
   integer :: nc, i, j, k, c, cc, icos, isin, iccos, issin, is, ie, js, je
   character(len=128) :: mesg
 
@@ -336,7 +338,7 @@ subroutine HA_accum(key, data, Time, G, CS)
   now = CS%US%s_to_T * time_type_to_real(Time - CS%time_ref)
 
   !!! Additional processing at the initial accumulating step !!!
-  if (ha1%old_time < 0.0) then
+  if (ha1%old_time < 0.0_wp) then
     ha1%old_time = now
 
     write(mesg,*) "MOM_harmonic_analysis: initializing accumulator, key = ", trim(ha1%key)
@@ -348,9 +350,9 @@ subroutine HA_accum(key, data, Time, G, CS)
     ha1%js = LBOUND(data,2) ; js = ha1%js
     ha1%je = UBOUND(data,2) ; je = ha1%je
 
-    allocate(ha1%ref(is:ie,js:je), source=0.0)
-    allocate(ha1%FtF(2*nc+1,2*nc+1), source=0.0)
-    allocate(ha1%FtSSH(is:ie,js:je,2*nc+1), source=0.0)
+    allocate(ha1%ref(is:ie,js:je), source=0.0_wp)
+    allocate(ha1%FtF(2*nc+1,2*nc+1), source=0.0_wp)
+    allocate(ha1%FtSSH(is:ie,js:je,2*nc+1), source=0.0_wp)
     ha1%ref(:,:) = data(:,:)
   endif
 
@@ -361,7 +363,7 @@ subroutine HA_accum(key, data, Time, G, CS)
 
   !!! Accumulator of FtF !!!
   !< First entry, corresponding to the zero frequency constituent (mean)
-  ha1%FtF(1,1) = ha1%FtF(1,1) + 1.0
+  ha1%FtF(1,1) = ha1%FtF(1,1) + 1.0_wp
 
   do c=1,nc
     icos = 2*c
@@ -429,7 +431,7 @@ subroutine HA_write(ha1, Time, G, CS)
   type(harmonic_analysis_CS), intent(in) :: CS     !< Control structure of the MOM_harmonic_analysis module
 
   ! Local variables
-  real, dimension(:,:,:), allocatable :: FtSSHw    !< An array containing the harmonic constants [A]
+  real(wp), dimension(:,:,:), allocatable :: FtSSHw    !< An array containing the harmonic constants [A]
   integer :: year, month, day, hour, minute, second
   integer :: nc, i, j, k, is, ie, js, je
 
@@ -440,7 +442,7 @@ subroutine HA_write(ha1, Time, G, CS)
 
   nc = CS%nc ; is = ha1%is ; ie = ha1%ie ; js = ha1%js ; je = ha1%je
 
-  allocate(FtSSHw(is:ie,js:je,2*nc+1), source=0.0)
+  allocate(FtSSHw(is:ie,js:je,2*nc+1), source=0.0_wp)
 
   ! Compute the harmonic coefficients
   call HA_solver(ha1, nc, ha1%FtF, FtSSHw)
@@ -462,7 +464,7 @@ subroutine HA_write(ha1, Time, G, CS)
 
   ! Create output file
   call create_MOM_file(cdf, trim(filename), cdf_vars, &
-                       2*nc+1, cdf_fields, SINGLE_FILE, 86400.0, G=G)
+                       2*nc+1, cdf_fields, SINGLE_FILE, 86400.0_wp, G=G)
 
   ! Add the initial field back to the mean state
   do j=js,je ; do i=is,ie
@@ -470,10 +472,10 @@ subroutine HA_write(ha1, Time, G, CS)
   enddo ; enddo
 
   ! Write data
-  call MOM_write_field(cdf, cdf_fields(1), G%domain, FtSSHw(:,:,1), 0.0)
+  call MOM_write_field(cdf, cdf_fields(1), G%domain, FtSSHw(:,:,1), 0.0_wp)
   do k=1,nc
-    call MOM_write_field(cdf, cdf_fields(2*k  ), G%domain, FtSSHw(:,:,2*k  ), 0.0)
-    call MOM_write_field(cdf, cdf_fields(2*k+1), G%domain, FtSSHw(:,:,2*k+1), 0.0)
+    call MOM_write_field(cdf, cdf_fields(2*k  ), G%domain, FtSSHw(:,:,2*k  ), 0.0_wp)
+    call MOM_write_field(cdf, cdf_fields(2*k+1), G%domain, FtSSHw(:,:,2*k+1), 0.0_wp)
   enddo
 
   call cdf%flush()
@@ -494,23 +496,23 @@ end subroutine HA_write
 subroutine HA_solver(ha1, nc, FtF, x)
   type(HA_type), pointer,              intent(in)  :: ha1    !< Control structure for the current field
   integer,                             intent(in)  :: nc     !< Number of harmonic constituents
-  real, dimension(:,:),                intent(in)  :: FtF    !< Accumulator of (F' * F) for all fields [nondim]
-  real, dimension(ha1%is:ha1%ie,ha1%js:ha1%je,2*nc+1), &
+  real(wp), dimension(:,:),                intent(in)  :: FtF    !< Accumulator of (F' * F) for all fields [nondim]
+  real(wp), dimension(ha1%is:ha1%ie,ha1%js:ha1%je,2*nc+1), &
                                        intent(out) :: x      !< Solution vector of harmonic constants [A]
 
   ! Local variables
-  real :: tmp0                                !< Temporary variable for Cholesky decomposition [nondim]
-  real, dimension(2*nc+1,2*nc+1)      :: L    !< Lower triangular matrix of Cholesky decomposition [nondim]
-  real, dimension(2*nc+1)             :: tmp1 !< Inverse of the diagonal entries of L [nondim]
-  real, dimension(ha1%is:ha1%ie,ha1%js:ha1%je)        :: tmp2 !< 2D temporary array involving FtSSH [A]
-  real, dimension(ha1%is:ha1%ie,ha1%js:ha1%je,2*nc+1) :: y    !< 3D temporary array, i.e., L' * x [A]
+  real(wp) :: tmp0                                !< Temporary variable for Cholesky decomposition [nondim]
+  real(wp), dimension(2*nc+1,2*nc+1)      :: L    !< Lower triangular matrix of Cholesky decomposition [nondim]
+  real(wp), dimension(2*nc+1)             :: tmp1 !< Inverse of the diagonal entries of L [nondim]
+  real(wp), dimension(ha1%is:ha1%ie,ha1%js:ha1%je)        :: tmp2 !< 2D temporary array involving FtSSH [A]
+  real(wp), dimension(ha1%is:ha1%ie,ha1%js:ha1%je,2*nc+1) :: y    !< 3D temporary array, i.e., L' * x [A]
   integer :: k, m, n
 
   ! Cholesky decomposition
   do m=1,2*nc+1
 
     ! First, calculate the diagonal entries
-    tmp0 = 0.0
+    tmp0 = 0.0_wp
     do k=1,m-1                             ! This loop operates along the m-th row
       tmp0 = tmp0 + L(m,k) * L(m,k)
     enddo
@@ -519,7 +521,7 @@ subroutine HA_solver(ha1, nc, FtF, x)
     ! Now calculate the off-diagonal entries
     tmp1(m) = 1 / L(m,m)
     do k=m+1,2*nc+1                        ! This loop operates along the column below the m-th diagonal entry
-      tmp0 = 0.0
+      tmp0 = 0.0_wp
       do n=1,m-1
         tmp0 = tmp0 + L(k,n) * L(m,n)
       enddo
@@ -529,7 +531,7 @@ subroutine HA_solver(ha1, nc, FtF, x)
 
   ! Solve for y from L * y = FtSSH
   do k=1,2*nc+1
-    tmp2(:,:) = 0.0
+    tmp2(:,:) = 0.0_wp
     do m=1,k-1
       tmp2(:,:) = tmp2(:,:) + L(k,m) * y(:,:,m)
     enddo
@@ -538,7 +540,7 @@ subroutine HA_solver(ha1, nc, FtF, x)
 
   ! Solve for x from L' * x = y
   do k=2*nc+1,1,-1
-    tmp2(:,:) = 0.0
+    tmp2(:,:) = 0.0_wp
     do m=k+1,2*nc+1
       tmp2(:,:) = tmp2(:,:) + L(m,k) * x(:,:,m)
     enddo

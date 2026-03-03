@@ -17,6 +17,8 @@ use MOM_file_parser,       only : param_file_type, get_param, log_version
 use MOM_unit_scaling,      only : unit_scale_type
 use MOM_debugging,         only : hchksum, uvchksum
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public porous_widths_layer, porous_widths_interface, porous_barriers_init
@@ -29,7 +31,7 @@ type, public :: porous_barrier_CS; private
   type(diag_ctrl), pointer :: &
       diag => Null()                !< A structure to regulate diagnostic output timing
   logical :: debug                  !< If true, write verbose checksums for debugging purposes.
-  real    :: mask_depth             !< The depth shallower than which porous barrier is not applied [Z ~> m]
+  real(wp)    :: mask_depth             !< The depth shallower than which porous barrier is not applied [Z ~> m]
   integer :: eta_interp             !< An integer indicating how the interface heights at the velocity
                                     !! points are calculated. Valid values are given by the parameters
                                     !! defined below: MAX, MIN, ARITHMETIC and HARMONIC.
@@ -63,25 +65,25 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
   type(ocean_grid_type),                      intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),                    intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),                      intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),                      intent(in) :: tv  !< A structure pointing to various
                                                                 !! thermodynamic variables.
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: eta_bt !< optional barotropic variable
+  real(wp), dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: eta_bt !< optional barotropic variable
                                                                    !! used to dilate the layer thicknesses
                                                                    !! [H ~> m or kg m-2].
   type(porous_barrier_type),                  intent(inout) :: pbv !< porous barrier fractional cell metrics
   type(porous_barrier_CS),                    intent(in) :: CS     !< Control structure for porous barrier
 
   !local variables
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: eta_u ! Layer interface heights at u points [Z ~> m]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: eta_v ! Layer interface heights at v points [Z ~> m]
-  real, dimension(SZIB_(G),SZJB_(G)) :: A_layer_prev ! Integral of fractional open width from the bottom
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: eta_u ! Layer interface heights at u points [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: eta_v ! Layer interface heights at v points [Z ~> m]
+  real(wp), dimension(SZIB_(G),SZJB_(G)) :: A_layer_prev ! Integral of fractional open width from the bottom
                                                      ! to the previous layer at u or v points [Z ~> m]
   logical, dimension(SZIB_(G),SZJB_(G)) :: do_I ! Booleans for calculation at u or v points
                                                 ! updated while moving up layers
-  real :: A_layer ! Integral of fractional open width from bottom to current layer [Z ~> m]
-  real :: dz_min  ! The minimum layer thickness [Z ~> m]
-  real :: dmask ! The depth below which porous barrier is not applied [Z ~> m]
+  real(wp) :: A_layer ! Integral of fractional open width from bottom to current layer [Z ~> m]
+  real(wp) :: dz_min  ! The minimum layer thickness [Z ~> m]
+  real(wp) :: dmask ! The depth below which porous barrier is not applied [Z ~> m]
   integer :: i, j, k, nk, is, ie, js, je, Isq, Ieq, Jsq, Jeq
 
   if (.not.CS%initialized) call MOM_error(FATAL, &
@@ -93,7 +95,7 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
   Isq = G%IscB; Ieq = G%IecB; Jsq = G%JscB; Jeq = G%JecB
 
   if (CS%answer_date < 20220806) then
-    dmask = 0.0
+    dmask = 0.0_wp
   else
     dmask = CS%mask_depth
   endif
@@ -114,10 +116,10 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
     do k=nk,1,-1 ; do j=js,je ; do I=Isq,Ieq ; if (G%porous_DavgU(I,j) < dmask) then
       call calc_por_layer(G%porous_DminU(I,j), G%porous_DmaxU(I,j), G%porous_DavgU(I,j), &
                           eta_u(I,j,K), A_layer, do_I(I,j))
-      if (eta_u(I,j,K) - eta_u(I,j,K+1) > 0.0) then
+      if (eta_u(I,j,K) - eta_u(I,j,K+1) > 0.0_wp) then
         pbv%por_face_areaU(I,j,k) = (A_layer - A_layer_prev(I,j)) / (eta_u(I,j,K) - eta_u(I,j,K+1))
       else
-        pbv%por_face_areaU(I,j,k) = 0.0
+        pbv%por_face_areaU(I,j,k) = 0.0_wp
       endif
       A_layer_prev(I,j) = A_layer
     endif ; enddo ; enddo ; enddo
@@ -126,14 +128,14 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
       if (do_I(I,j)) then
         call calc_por_layer(G%porous_DminU(I,j), G%porous_DmaxU(I,j), G%porous_DavgU(I,j), &
                             eta_u(I,j,K), A_layer, do_I(I,j))
-        if (eta_u(I,j,K) - (eta_u(I,j,K+1)+dz_min) > 0.0) then
-          pbv%por_face_areaU(I,j,k) = min(1.0, (A_layer - A_layer_prev(I,j)) / (eta_u(I,j,K) - eta_u(I,j,K+1)))
+        if (eta_u(I,j,K) - (eta_u(I,j,K+1)+dz_min) > 0.0_wp) then
+          pbv%por_face_areaU(I,j,k) = min(1.0_wp, (A_layer - A_layer_prev(I,j)) / (eta_u(I,j,K) - eta_u(I,j,K+1)))
         else
-          pbv%por_face_areaU(I,j,k) = 0.0 ! use calc_por_interface() might be a better choice
+          pbv%por_face_areaU(I,j,k) = 0.0_wp ! use calc_por_interface() might be a better choice
         endif
         A_layer_prev(I,j) = A_layer
       else
-        pbv%por_face_areaU(I,j,k) = 1.0
+        pbv%por_face_areaU(I,j,k) = 1.0_wp
       endif
     enddo ; enddo ; enddo
   endif
@@ -150,10 +152,10 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
     do k=nk,1,-1 ; do J=Jsq,Jeq ; do i=is,ie ; if (G%porous_DavgV(i,J) < dmask) then
       call calc_por_layer(G%porous_DminV(i,J), G%porous_DmaxV(i,J), G%porous_DavgV(i,J), &
                           eta_v(i,J,K), A_layer, do_I(i,J))
-      if (eta_v(i,J,K) - eta_v(i,J,K+1) > 0.0) then
+      if (eta_v(i,J,K) - eta_v(i,J,K+1) > 0.0_wp) then
         pbv%por_face_areaV(i,J,k) = (A_layer - A_layer_prev(i,J)) / (eta_v(i,J,K) - eta_v(i,J,K+1))
       else
-        pbv%por_face_areaV(i,J,k) = 0.0
+        pbv%por_face_areaV(i,J,k) = 0.0_wp
       endif
       A_layer_prev(i,J) = A_layer
     endif ; enddo ; enddo ; enddo
@@ -162,14 +164,14 @@ subroutine porous_widths_layer(h, tv, G, GV, US, pbv, CS, eta_bt)
       if (do_I(i,J)) then
         call calc_por_layer(G%porous_DminV(i,J), G%porous_DmaxV(i,J), G%porous_DavgV(i,J), &
                             eta_v(i,J,K), A_layer, do_I(i,J))
-        if (eta_v(i,J,K) - (eta_v(i,J,K+1)+dz_min) > 0.0) then
-          pbv%por_face_areaV(i,J,k) = min(1.0, (A_layer - A_layer_prev(i,J)) / (eta_v(i,J,K) - eta_v(i,J,K+1)))
+        if (eta_v(i,J,K) - (eta_v(i,J,K+1)+dz_min) > 0.0_wp) then
+          pbv%por_face_areaV(i,J,k) = min(1.0_wp, (A_layer - A_layer_prev(i,J)) / (eta_v(i,J,K) - eta_v(i,J,K+1)))
         else
-          pbv%por_face_areaV(i,J,k) = 0.0 ! use calc_por_interface() might be a better choice
+          pbv%por_face_areaV(i,J,k) = 0.0_wp ! use calc_por_interface() might be a better choice
         endif
         A_layer_prev(i,J) = A_layer
       else
-        pbv%por_face_areaV(i,J,k) = 1.0
+        pbv%por_face_areaV(i,J,k) = 1.0_wp
       endif
     enddo ; enddo ; enddo
   endif
@@ -194,21 +196,21 @@ subroutine porous_widths_interface(h, tv, G, GV, US, pbv, CS, eta_bt)
   type(ocean_grid_type),                      intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),                    intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),                      intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),                      intent(in) :: tv  !< A structure pointing to various
                                                                 !! thermodynamic variables.
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: eta_bt !< optional barotropic variable
+  real(wp), dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: eta_bt !< optional barotropic variable
                                                                    !! used to dilate the layer thicknesses
                                                                    !! [H ~> m or kg m-2].
   type(porous_barrier_type),                  intent(inout) :: pbv  !< porous barrier fractional cell metrics
   type(porous_barrier_CS),                    intent(in) :: CS !< Control structure for porous barrier
 
   !local variables
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: eta_u ! Layer interface height at u points [Z ~> m]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: eta_v ! Layer interface height at v points [Z ~> m]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1) :: eta_u ! Layer interface height at u points [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1) :: eta_v ! Layer interface height at v points [Z ~> m]
   logical, dimension(SZIB_(G),SZJB_(G)) :: do_I ! Booleans for calculation at u or v points
                                                 ! updated while moving up layers
-  real :: dmask ! The depth below which porous barrier is not applied [Z ~> m]
+  real(wp) :: dmask ! The depth below which porous barrier is not applied [Z ~> m]
   integer :: i, j, k, nk, is, ie, js, je, Isq, Ieq, Jsq, Jeq
 
   if (.not.CS%initialized) call MOM_error(FATAL, &
@@ -220,7 +222,7 @@ subroutine porous_widths_interface(h, tv, G, GV, US, pbv, CS, eta_bt)
   Isq = G%IscB; Ieq = G%IecB; Jsq = G%JscB; Jeq = G%JecB
 
   if (CS%answer_date < 20220806) then
-    dmask = 0.0
+    dmask = 0.0_wp
   else
     dmask = CS%mask_depth
   endif
@@ -244,7 +246,7 @@ subroutine porous_widths_interface(h, tv, G, GV, US, pbv, CS, eta_bt)
         call calc_por_interface(G%porous_DminU(I,j), G%porous_DmaxU(I,j), G%porous_DavgU(I,j), &
                                 eta_u(I,j,K), pbv%por_layer_widthU(I,j,K), do_I(I,j))
       else
-        pbv%por_layer_widthU(I,j,K) = 1.0
+        pbv%por_layer_widthU(I,j,K) = 1.0_wp
       endif
     enddo ; enddo ; enddo
   endif
@@ -266,7 +268,7 @@ subroutine porous_widths_interface(h, tv, G, GV, US, pbv, CS, eta_bt)
         call calc_por_interface(G%porous_DminV(i,J), G%porous_DmaxV(i,J), G%porous_DavgV(i,J), &
                                 eta_v(i,J,K), pbv%por_layer_widthV(i,J,K), do_I(i,J))
       else
-        pbv%por_layer_widthV(i,J,K) = 1.0
+        pbv%por_layer_widthV(i,J,K) = 1.0_wp
       endif
     enddo ; enddo ; enddo
   endif
@@ -290,21 +292,21 @@ subroutine calc_eta_at_uv(eta_u, eta_v, interp, dmask, h, tv, G, GV, US, eta_bt)
   type(ocean_grid_type),                        intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),                      intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),                        intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),    intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),    intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),                        intent(in) :: tv  !< A structure pointing to various
                                                                   !! thermodynamic variables.
-  real, dimension(SZI_(G),SZJ_(G)), optional,   intent(in) :: eta_bt !< optional barotropic variable
+  real(wp), dimension(SZI_(G),SZJ_(G)), optional,   intent(in) :: eta_bt !< optional barotropic variable
                                                                    !! used to dilate the layer thicknesses
                                                                    !! [H ~> m or kg m-2].
-  real,                                         intent(in) :: dmask !< The depth shallower than which
+  real(wp),                                         intent(in) :: dmask !< The depth shallower than which
                                                                     !! porous barrier is not applied [Z ~> m]
   integer,                                      intent(in) :: interp !< eta interpolation method
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: eta_u !< Layer interface heights at u points [Z ~> m]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), intent(out) :: eta_v !< Layer interface heights at v points [Z ~> m]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), intent(out) :: eta_u !< Layer interface heights at u points [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), intent(out) :: eta_v !< Layer interface heights at v points [Z ~> m]
 
   ! local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Layer interface heights [Z ~> m].
-  real :: dz_neglect ! A negligible height difference [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Layer interface heights [Z ~> m].
+  real(wp) :: dz_neglect ! A negligible height difference [Z ~> m]
   integer :: i, j, k, nk, is, ie, js, je, Isq, Ieq, Jsq, Jeq
 
   is = G%isc; ie = G%iec; js = G%jsc; je = G%jec; nk = GV%ke
@@ -342,19 +344,19 @@ subroutine calc_eta_at_uv(eta_u, eta_v, interp, dmask, h, tv, G, GV, US, eta_bt)
     case (ETA_INTERP_ARITH) ! Arithmetic mean
       do K=1,nk+1
         do j=js,je ; do I=Isq,Ieq ; if (G%porous_DavgU(I,j) < dmask) then
-          eta_u(I,j,K) = 0.5 * (eta(i,j,K) + eta(i+1,j,K))
+          eta_u(I,j,K) = 0.5_wp * (eta(i,j,K) + eta(i+1,j,K))
         endif ; enddo ; enddo
         do J=Jsq,Jeq ; do i=is,ie ; if (G%porous_DavgV(i,J) < dmask) then
-          eta_v(i,J,K) = 0.5 * (eta(i,j,K) + eta(i,j+1,K))
+          eta_v(i,J,K) = 0.5_wp * (eta(i,j,K) + eta(i,j+1,K))
         endif ; enddo ; enddo
       enddo
     case (ETA_INTERP_HARM)  ! Harmonic mean
       do K=1,nk+1
         do j=js,je ; do I=Isq,Ieq ; if (G%porous_DavgU(I,j) < dmask) then
-          eta_u(I,j,K) = 2.0 * (eta(i,j,K) * eta(i+1,j,K)) / (eta(i,j,K) + eta(i+1,j,K) + dz_neglect)
+          eta_u(I,j,K) = 2.0_wp * (eta(i,j,K) * eta(i+1,j,K)) / (eta(i,j,K) + eta(i+1,j,K) + dz_neglect)
         endif ; enddo ; enddo
         do J=Jsq,Jeq ; do i=is,ie ; if (G%porous_DavgV(i,J) < dmask) then
-          eta_v(i,J,K) = 2.0 * (eta(i,j,K) * eta(i,j+1,K)) / (eta(i,j,K) + eta(i,j+1,K) + dz_neglect)
+          eta_v(i,J,K) = 2.0_wp * (eta(i,j,K) * eta(i,j+1,K)) / (eta(i,j,K) + eta(i,j+1,K) + dz_neglect)
         endif ; enddo ; enddo
       enddo
     case default
@@ -366,32 +368,32 @@ end subroutine calc_eta_at_uv
 !> subroutine to calculate the profile fit (the three parameter fit from Adcroft 2013)
 ! of the open face area fraction below a certain depth (eta_layer) in a column
 subroutine calc_por_layer(D_min, D_max, D_avg, eta_layer, A_layer, do_next)
-  real,    intent(in)  :: D_min     !< minimum topographic height (deepest) [Z ~> m]
-  real,    intent(in)  :: D_max     !< maximum topographic height (shallowest) [Z ~> m]
-  real,    intent(in)  :: D_avg     !< mean topographic height [Z ~> m]
-  real,    intent(in)  :: eta_layer !< height of interface [Z ~> m]
-  real,    intent(out) :: A_layer   !< frac. open face area of below eta_layer [Z ~> m]
+  real(wp),    intent(in)  :: D_min     !< minimum topographic height (deepest) [Z ~> m]
+  real(wp),    intent(in)  :: D_max     !< maximum topographic height (shallowest) [Z ~> m]
+  real(wp),    intent(in)  :: D_avg     !< mean topographic height [Z ~> m]
+  real(wp),    intent(in)  :: eta_layer !< height of interface [Z ~> m]
+  real(wp),    intent(out) :: A_layer   !< frac. open face area of below eta_layer [Z ~> m]
   logical, intent(out) :: do_next   !< False if eta_layer>D_max
 
   ! local variables
-  real :: m      ! convenience constant for fit [nondim]
-  real :: zeta   ! normalized vertical coordinate [nondim]
+  real(wp) :: m      ! convenience constant for fit [nondim]
+  real(wp) :: zeta   ! normalized vertical coordinate [nondim]
 
   do_next = .True.
   if (eta_layer <= D_min) then
-    A_layer = 0.0
+    A_layer = 0.0_wp
   elseif (eta_layer > D_max) then
     A_layer = eta_layer - D_avg
     do_next = .False.
   else
     m = (D_avg - D_min) / (D_max - D_min)
     zeta = (eta_layer - D_min) / (D_max - D_min)
-    if (m < 0.5) then
-      A_layer = (D_max - D_min) * ((1.0 - m) * zeta**(1.0 / (1.0 - m)))
-    elseif (m == 0.5) then
-      A_layer = (D_max - D_min) * (0.5 * zeta * zeta)
+    if (m < 0.5_wp) then
+      A_layer = (D_max - D_min) * ((1.0_wp - m) * zeta**(1.0_wp / (1.0_wp - m)))
+    elseif (m == 0.5_wp) then
+      A_layer = (D_max - D_min) * (0.5_wp * zeta * zeta)
     else
-      A_layer = (D_max - D_min) * (zeta - m + m * ((1.0 - zeta)**(1.0 / m)))
+      A_layer = (D_max - D_min) * (zeta - m + m * ((1.0_wp - zeta)**(1.0_wp / m)))
     endif
   endif
 end subroutine calc_por_layer
@@ -399,35 +401,35 @@ end subroutine calc_por_layer
 !> subroutine to calculate the profile fit (the three parameter fit from Adcroft 2013)
 ! of the open interface fraction at a certain depth (eta_layer) in a column
 subroutine calc_por_interface(D_min, D_max, D_avg, eta_layer, w_layer, do_next)
-  real,    intent(in)  :: D_min     !< minimum topographic height (deepest) [Z ~> m]
-  real,    intent(in)  :: D_max     !< maximum topographic height (shallowest) [Z ~> m]
-  real,    intent(in)  :: D_avg     !< mean topographic height [Z ~> m]
-  real,    intent(in)  :: eta_layer !< height of interface [Z ~> m]
-  real,    intent(out) :: w_layer   !< frac. open interface width at eta_layer [nondim]
+  real(wp),    intent(in)  :: D_min     !< minimum topographic height (deepest) [Z ~> m]
+  real(wp),    intent(in)  :: D_max     !< maximum topographic height (shallowest) [Z ~> m]
+  real(wp),    intent(in)  :: D_avg     !< mean topographic height [Z ~> m]
+  real(wp),    intent(in)  :: eta_layer !< height of interface [Z ~> m]
+  real(wp),    intent(out) :: w_layer   !< frac. open interface width at eta_layer [nondim]
   logical, intent(out) :: do_next   !< False if eta_layer>D_max
 
   ! local variables
-  real :: m, a     ! convenience constants for fit [nondim]
-  real :: zeta     ! normalized vertical coordinate [nondim]
+  real(wp) :: m, a     ! convenience constants for fit [nondim]
+  real(wp) :: zeta     ! normalized vertical coordinate [nondim]
 
   do_next = .True.
   if (eta_layer <= D_min) then
-    w_layer = 0.0
+    w_layer = 0.0_wp
   elseif (eta_layer > D_max) then
-    w_layer = 1.0
+    w_layer = 1.0_wp
     do_next = .False.
   else  ! The following option could be refactored for stability and efficiency (with fewer divisions)
     m = (D_avg - D_min) / (D_max - D_min)
-    a = (1.0 - m) / m
+    a = (1.0_wp - m) / m
     zeta = (eta_layer - D_min) / (D_max - D_min)
-    if (m < 0.5) then
-      w_layer = zeta**(1.0 / a)
+    if (m < 0.5_wp) then
+      w_layer = zeta**(1.0_wp / a)
       ! Note that this would be safer and more efficent if it were rewritten as:
       ! w_layer = zeta**( (D_avg - D_min) / (D_max - D_avg) )
-    elseif (m == 0.5) then
+    elseif (m == 0.5_wp) then
       w_layer = zeta
     else
-      w_layer = 1.0 - (1.0 - zeta)**a
+      w_layer = 1.0_wp - (1.0_wp - zeta)**a
     endif
   endif
 end subroutine calc_por_interface
@@ -466,7 +468,7 @@ subroutine porous_barriers_init(Time, GV, US, param_file, diag, CS)
                  "If the effective average depth at the velocity cell is shallower than this "//&
                  "number, then porous barrier is not applied at that location.  "//&
                  "PORBAR_MASKING_DEPTH is assumed to be positive below the sea surface.", &
-                 units="m", default=0.0, scale=US%m_to_Z)
+                 units="m", default=0.0_wp, scale=US%m_to_Z)
   ! The sign needs to be inverted to be consistent with the sign convention of Davg_[UV]
   CS%mask_depth = -CS%mask_depth
   call get_param(param_file, mdl, "PORBAR_ETA_INTERP", interp_method, &

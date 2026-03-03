@@ -72,6 +72,8 @@ program MOM6
   use MOM_write_cputime,   only : write_cputime, MOM_write_cputime_init
   use MOM_write_cputime,   only : write_cputime_start_clock, write_cputime_CS
 
+use MOM_datatypes, only : wp
+
   implicit none
 
 #include <MOM_memory.h>
@@ -123,18 +125,18 @@ program MOM6
   type(time_type) :: Time_step_ocean    ! A time_type version of dt_forcing.
   logical :: segment_start_time_set     ! True if segment_start_time has been set to a valid value.
 
-  real    :: elapsed_time = 0.0   ! Elapsed time in this run [T ~> s].
+  real(wp)    :: elapsed_time = 0.0_wp   ! Elapsed time in this run [T ~> s].
   logical :: elapsed_time_master  ! If true, elapsed time is used to set the model's master
                                   ! clock (Time).  This is needed if Time_step_ocean is not
                                   ! an exact representation of dt_forcing.
-  real :: dt_forcing              ! The coupling time step [T ~> s].
-  real :: dt                      ! The nominal baroclinic dynamics time step [T ~> s].
+  real(wp) :: dt_forcing              ! The coupling time step [T ~> s].
+  real(wp) :: dt                      ! The nominal baroclinic dynamics time step [T ~> s].
   integer :: ntstep               ! The number of baroclinic dynamics time steps within dt_forcing.
-  real :: dt_therm                ! The thermodynamic timestep [T ~> s]
-  real :: dt_dyn                  ! The actual dynamic timestep used [T ~> s].  The value of dt_dyn
+  real(wp) :: dt_therm                ! The thermodynamic timestep [T ~> s]
+  real(wp) :: dt_dyn                  ! The actual dynamic timestep used [T ~> s].  The value of dt_dyn
                                   ! is chosen so that dt_forcing is an integer multiple of dt_dyn.
-  real :: dtdia                   ! The diabatic timestep [T ~> s]
-  real :: t_elapsed_seg           ! The elapsed time in this run segment [T ~> s]
+  real(wp) :: dtdia                   ! The diabatic timestep [T ~> s]
+  real(wp) :: t_elapsed_seg           ! The elapsed time in this run segment [T ~> s]
   integer :: n, ns, n_max, nts, n_last_thermo
   logical :: diabatic_first, single_step_call, initialize_smb
   type(time_type) :: Time2, time_chg ! Temporary time variables
@@ -146,7 +148,7 @@ program MOM6
                                 ! restart file is saved at the end of a run segment
                                 ! unless Restart_control is negative.
 
-  real            :: Time_unit       ! The time unit for the following input fields [s].
+  real(wp)            :: Time_unit       ! The time unit for the following input fields [s].
   type(time_type) :: restint         ! The time between saves of the restart file.
   type(time_type) :: daymax          ! The final day of the simulation.
 
@@ -270,7 +272,7 @@ program MOM6
     Start_time = set_date(date_init(1), date_init(2), date_init(3), &
                           date_init(4), date_init(5), date_init(6))
   else
-    Start_time = real_to_time(0.0)
+    Start_time = real_to_time(0.0_wp)
   endif
 
   call time_interp_external_init()
@@ -326,7 +328,7 @@ program MOM6
   call MOM_wave_interface_init(Time, grid, GV, US, param_file, Waves_CSp, diag)
 
   segment_start_time = Time
-  elapsed_time = 0.0
+  elapsed_time = 0.0_wp
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_name, version, "")
@@ -343,10 +345,10 @@ program MOM6
                    units="s", scale=US%s_to_T, fail_if_missing=.true.)
     dt = dt_forcing
   endif
-  ntstep = MAX(1,ceiling(dt_forcing/dt - 0.001))
+  ntstep = MAX(1,ceiling(dt_forcing/dt - 0.001_wp))
 
   Time_step_ocean = real_to_time(US%T_to_s*dt_forcing)
-  elapsed_time_master = (abs(dt_forcing - US%s_to_T*time_type_to_real(Time_step_ocean)) > 1.0e-12*dt_forcing)
+  elapsed_time_master = (abs(dt_forcing - US%s_to_T*time_type_to_real(Time_step_ocean)) > 1.0e-12_wp*dt_forcing)
   if (elapsed_time_master) &
     call MOM_mesg("Using real elapsed time for the master clock.", 2)
 
@@ -354,7 +356,7 @@ program MOM6
   ! Note that Time_unit always is in [s].
   call get_param(param_file, mod_name, "TIMEUNIT", Time_unit, &
                  "The time unit for DAYMAX, ENERGYSAVEDAYS, and RESTINT.", &
-                 units="s", default=86400.0)
+                 units="s", default=86400.0_wp)
   if (years+months+days+hours+minutes+seconds > 0) then
     Time_end = increment_date(Time, years, months, days, hours, minutes, seconds)
     call MOM_mesg('Segment run length determined from ocean_solo_nml.', 2)
@@ -408,7 +410,7 @@ program MOM6
   call get_param(param_file, mod_name, "RESTINT", restint, &
                  "The interval between saves of the restart file in units "//&
                  "of TIMEUNIT.  Use 0 (the default) to not save "//&
-                 "incremental restart files at all.", default=real_to_time(0.0), &
+                 "incremental restart files at all.", default=real_to_time(0.0_wp), &
                  timeunit=Time_unit)
   call get_param(param_file, mod_name, "WRITE_CPU_STEPS", cpu_steps, &
                  "The number of coupled timesteps between writing the cpu "//&
@@ -437,7 +439,7 @@ program MOM6
   if (((.not.BTEST(Restart_control,1)) .and. (.not.BTEST(Restart_control,0))) &
       .or. (Restart_control < 0)) permit_incr_restart = .false.
 
-  if (restint > real_to_time(0.0)) then
+  if (restint > real_to_time(0.0_wp)) then
     ! restart_time is the next integral multiple of restint.
     restart_time = Start_time + restint * &
         (1 + ((Time + Time_step_ocean) - Start_time) / restint)
@@ -487,13 +489,13 @@ program MOM6
     elseif (single_step_call) then
       call step_MOM(forces, fluxes, sfc_state, Time1, dt_forcing, MOM_CSp, Waves=Waves_CSP)
     else
-      n_max = 1 ; if (dt_forcing > dt) n_max = ceiling(dt_forcing/dt - 0.001)
-      dt_dyn = dt_forcing / real(n_max)
+      n_max = 1 ; if (dt_forcing > dt) n_max = ceiling(dt_forcing/dt - 0.001_wp)
+      dt_dyn = dt_forcing / real(n_max, wp)
 
-      nts = MAX(1,MIN(n_max,floor(dt_therm/dt_dyn + 0.001)))
+      nts = MAX(1,MIN(n_max,floor(dt_therm/dt_dyn + 0.001_wp)))
       n_last_thermo = 0
 
-      Time2 = Time1 ; t_elapsed_seg = 0.0
+      Time2 = Time1 ; t_elapsed_seg = 0.0_wp
       do n=1,n_max
         if (diabatic_first) then
           if (modulo(n-1,nts)==0) then
@@ -531,7 +533,7 @@ program MOM6
 !   Time = Time + Time_step_ocean
 !   This is here to enable fractional-second time steps.
     elapsed_time = elapsed_time + dt_forcing
-    if (elapsed_time > 2.0e9*US%s_to_T) then
+    if (elapsed_time > 2.0e9_wp*US%s_to_T) then
       ! This is here to ensure that the conversion from a real to an integer can be accurately
       ! represented in long runs (longer than ~63 years). It will also ensure that elapsed time
       ! does not lose resolution of order the timetype's resolution, provided that the timestep and

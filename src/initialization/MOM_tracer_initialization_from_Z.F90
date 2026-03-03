@@ -19,6 +19,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_verticalGrid,  only : verticalGrid_type
 use MOM_ALE,           only : ALE_remap_scalar
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -42,14 +44,14 @@ subroutine MOM_initialize_tracer_from_Z(h, tr, G, GV, US, PF, src_file, src_var_
   type(ocean_grid_type),      intent(inout) :: G   !< Ocean grid structure.
   type(verticalGrid_type),    intent(in)    :: GV  !< Ocean vertical grid structure.
   type(unit_scale_type),      intent(in)    :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(in)    :: h   !< Layer thicknesses, in [H ~> m or kg m-2] or
                                                    !! [Z ~> m] depending on the value of h_in_Z_units.
-  real, dimension(:,:,:),     pointer       :: tr  !< Pointer to array to be initialized [CU ~> conc]
+  real(wp), dimension(:,:,:),     pointer       :: tr  !< Pointer to array to be initialized [CU ~> conc]
   type(param_file_type),      intent(in)    :: PF  !< parameter file
   character(len=*),           intent(in)    :: src_file !< source filename
   character(len=*),           intent(in)    :: src_var_nam !< variable name in file
-  real,             optional, intent(in)    :: src_var_unit_conversion !< optional multiplicative unit conversion,
+  real(wp),             optional, intent(in)    :: src_var_unit_conversion !< optional multiplicative unit conversion,
                                                    !! often used for rescaling into model units [CU conc-1 ~> 1]
   integer,          optional, intent(in)    :: src_var_record  !< record to read for multiple time-level files
   logical,          optional, intent(in)    :: homogenize !< optionally homogenize to mean value
@@ -66,8 +68,8 @@ subroutine MOM_initialize_tracer_from_Z(h, tr, G, GV, US, PF, src_file, src_var_
                                                             !! only extrapolation is performed by
                                                             !! horiz_interp_and_extrap_tracer()
   ! Local variables
-  real :: land_fill = 0.0  ! A value to use to replace missing values [CU ~> conc]
-  real :: convert ! A conversion factor into the model's internal units [CU conc-1 ~> 1]
+  real(wp) :: land_fill = 0.0_wp  ! A value to use to replace missing values [CU ~> conc]
+  real(wp) :: convert ! A conversion factor into the model's internal units [CU conc-1 ~> 1]
   integer            :: recnum
   character(len=64)  :: remapScheme
   logical            :: homog, useALE
@@ -80,25 +82,25 @@ subroutine MOM_initialize_tracer_from_Z(h, tr, G, GV, US, PF, src_file, src_var_
   integer :: is, ie, js, je, nz ! compute domain indices
   integer :: isd, ied, jsd, jed ! data domain indices
   integer :: i, j, k, kd
-  real, allocatable, dimension(:,:,:), target :: tr_z   ! Tracer array on the horizontal model grid
+  real(wp), allocatable, dimension(:,:,:), target :: tr_z   ! Tracer array on the horizontal model grid
                                                         ! and input-file vertical levels [CU ~> conc]
-  real, allocatable, dimension(:,:,:), target :: mask_z ! Missing value mask on the horizontal model grid
+  real(wp), allocatable, dimension(:,:,:), target :: mask_z ! Missing value mask on the horizontal model grid
                                                         ! and input-file vertical levels [nondim]
-  real, allocatable, dimension(:), target :: z_edges_in ! Cell edge depths for input data [Z ~> m]
-  real, allocatable, dimension(:), target :: z_in       ! Cell center depths for input data [Z ~> m]
+  real(wp), allocatable, dimension(:), target :: z_edges_in ! Cell edge depths for input data [Z ~> m]
+  real(wp), allocatable, dimension(:), target :: z_in       ! Cell center depths for input data [Z ~> m]
 
   ! Local variables for ALE remapping
-  real, dimension(:,:,:), allocatable :: dzSrc ! Source thicknesses in height units [Z ~> m]
-  real, dimension(:,:,:), allocatable :: hSrc  ! Source thicknesses [H ~> m or kg m-2]
-  real, dimension(:), allocatable :: h1 ! A 1-d column of source thicknesses [Z ~> m].
-  real :: zTopOfCell, zBottomOfCell, z_bathy  ! Heights [Z ~> m].
+  real(wp), dimension(:,:,:), allocatable :: dzSrc ! Source thicknesses in height units [Z ~> m]
+  real(wp), dimension(:,:,:), allocatable :: hSrc  ! Source thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(:), allocatable :: h1 ! A 1-d column of source thicknesses [Z ~> m].
+  real(wp) :: zTopOfCell, zBottomOfCell, z_bathy  ! Heights [Z ~> m].
   type(remapping_CS) :: remapCS ! Remapping parameters and work arrays
   type(verticalGrid_type) :: GV_loc ! A temporary vertical grid structure
 
-  real :: missing_value ! A value indicating that there is no valid input data at this point [CU ~> conc]
-  real :: dz_neglect              ! A negligibly small vertical layer extent used in
+  real(wp) :: missing_value ! A value indicating that there is no valid input data at this point [CU ~> conc]
+  real(wp) :: dz_neglect              ! A negligibly small vertical layer extent used in
                                   ! remapping cell reconstructions [Z ~> m] or [H ~> m or kg m-2]
-  real :: dz_neglect_edge         ! A negligibly small vertical layer extent used in
+  real(wp) :: dz_neglect_edge         ! A negligibly small vertical layer extent used in
                                   ! remapping edge value calculations [Z ~> m] or [H ~> m or kg m-2]
   logical :: om4_remap_via_sub_cells ! If true, use the OM4 remapping algorithm
   integer :: nPoints    ! The number of valid input data points in a column
@@ -163,7 +165,7 @@ subroutine MOM_initialize_tracer_from_Z(h, tr, G, GV, US, PF, src_file, src_var_
   if (PRESENT(remappingScheme)) remapScheme=remappingScheme
   recnum = 1
   if (PRESENT(src_var_record)) recnum = src_var_record
-  convert = 1.0
+  convert = 1.0_wp
   if (PRESENT(src_var_unit_conversion)) convert = src_var_unit_conversion
 
   h_is_in_Z_units = .false. ; if (present(h_in_Z_units)) h_is_in_Z_units = h_in_Z_units
@@ -197,23 +199,23 @@ subroutine MOM_initialize_tracer_from_Z(h, tr, G, GV, US, PF, src_file, src_var_
     ! Next we initialize the regridding package so that it knows about the target grid
 
     do j = js, je ; do i = is, ie
-      if (G%mask2dT(i,j)>0.) then
+      if (G%mask2dT(i,j)>0._wp) then
         ! Build the source grid
-        zTopOfCell = 0. ; zBottomOfCell = 0. ; nPoints = 0
+        zTopOfCell = 0._wp ; zBottomOfCell = 0._wp ; nPoints = 0
         z_bathy = G%bathyT(i,j) + G%Z_ref
         do k = 1, kd
-          if (mask_z(i,j,k) > 0.) then
+          if (mask_z(i,j,k) > 0._wp) then
             zBottomOfCell = -min( z_edges_in(k+1), z_bathy )
           elseif (k>1) then
             zBottomOfCell = -z_bathy
           endif
           h1(k) = zTopOfCell - zBottomOfCell
-          if (h1(k)>0.) nPoints = nPoints + 1
+          if (h1(k)>0._wp) nPoints = nPoints + 1
           zTopOfCell = zBottomOfCell ! Bottom becomes top for next value of k
         enddo
         h1(kd) = h1(kd) + ( zTopOfCell + z_bathy ) ! In case data is deeper than model
       else
-        tr(i,j,:) = 0.
+        tr(i,j,:) = 0._wp
       endif ! mask2dT
       dzSrc(i,j,:) = h1(:)
     enddo ; enddo

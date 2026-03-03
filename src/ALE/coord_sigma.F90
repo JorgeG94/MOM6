@@ -5,6 +5,8 @@ module coord_sigma
 
 use MOM_error_handler, only : MOM_error, FATAL
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 !> Control structure containing required parameters for the sigma coordinate
@@ -14,10 +16,10 @@ type, public :: sigma_CS ; private
   integer :: nk
 
   !> Minimum thickness allowed for layers [H ~> m or kg m-2]
-  real :: min_thickness
+  real(wp) :: min_thickness
 
   !> Target coordinate resolution [nondim]
-  real, allocatable, dimension(:) :: coordinateResolution
+  real(wp), allocatable, dimension(:) :: coordinateResolution
 end type sigma_CS
 
 public init_coord_sigma, set_sigma_params, build_sigma_column, end_coord_sigma
@@ -28,7 +30,7 @@ contains
 subroutine init_coord_sigma(CS, nk, coordinateResolution)
   type(sigma_CS),     pointer    :: CS !< Unassociated pointer to hold the control structure
   integer,            intent(in) :: nk !< Number of layers in the grid
-  real, dimension(:), intent(in) :: coordinateResolution !< Nominal coordinate resolution [nondim]
+  real(wp), dimension(:), intent(in) :: coordinateResolution !< Nominal coordinate resolution [nondim]
 
   if (associated(CS)) call MOM_error(FATAL, "init_coord_sigma: CS already associated!")
   allocate(CS)
@@ -51,7 +53,7 @@ end subroutine end_coord_sigma
 !> This subroutine can be used to set the parameters for the coord_sigma module
 subroutine set_sigma_params(CS, min_thickness)
   type(sigma_CS), pointer    :: CS !< Coordinate control structure
-  real, optional, intent(in) :: min_thickness !< Minimum allowed thickness [H ~> m or kg m-2]
+  real(wp), optional, intent(in) :: min_thickness !< Minimum allowed thickness [H ~> m or kg m-2]
 
   if (.not. associated(CS)) call MOM_error(FATAL, "set_sigma_params: CS not associated")
 
@@ -62,9 +64,9 @@ end subroutine set_sigma_params
 !> Build a sigma coordinate column
 subroutine build_sigma_column(CS, depth, totalThickness, zInterface)
   type(sigma_CS),           intent(in)    :: CS !< Coordinate control structure
-  real,                     intent(in)    :: depth !< Depth of ocean bottom (positive [H ~> m or kg m-2])
-  real,                     intent(in)    :: totalThickness !< Column thickness (positive [H ~> m or kg m-2])
-  real, dimension(CS%nk+1), intent(inout) :: zInterface !< Absolute positions of interfaces [H ~> m or kg m-2]
+  real(wp),                     intent(in)    :: depth !< Depth of ocean bottom (positive [H ~> m or kg m-2])
+  real(wp),                     intent(in)    :: totalThickness !< Column thickness (positive [H ~> m or kg m-2])
+  real(wp), dimension(CS%nk+1), intent(inout) :: zInterface !< Absolute positions of interfaces [H ~> m or kg m-2]
 
   ! Local variables
   integer :: k

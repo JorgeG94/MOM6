@@ -9,6 +9,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : ocean_grid_type, thermo_var_ptrs
 use MOM_verticalGrid,  only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -20,25 +22,25 @@ type, public :: adapt_CS ; private
   integer :: nk
 
   !> Nominal near-surface resolution [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: coordinateResolution
+  real(wp), allocatable, dimension(:) :: coordinateResolution
 
   !> Ratio of optimisation and diffusion timescales [nondim]
-  real :: adaptTimeRatio
+  real(wp) :: adaptTimeRatio
 
   !> Nondimensional coefficient determining how much optimisation to apply [nondim]
-  real :: adaptAlpha
+  real(wp) :: adaptAlpha
 
   !> Near-surface zooming depth [H ~> m or kg m-2]
-  real :: adaptZoom
+  real(wp) :: adaptZoom
 
   !> Near-surface zooming coefficient [nondim]
-  real :: adaptZoomCoeff
+  real(wp) :: adaptZoomCoeff
 
   !> Stratification-dependent diffusion coefficient [nondim]
-  real :: adaptBuoyCoeff
+  real(wp) :: adaptBuoyCoeff
 
   !> Reference density difference for stratification-dependent diffusion [R ~> kg m-3]
-  real :: adaptDrho0
+  real(wp) :: adaptDrho0
 
   !> If true, form a HYCOM1-like mixed layet by preventing interfaces
   !! from becoming shallower than the depths set by coordinateResolution
@@ -53,11 +55,11 @@ contains
 subroutine init_coord_adapt(CS, nk, coordinateResolution, m_to_H, kg_m3_to_R)
   type(adapt_CS),     pointer    :: CS !< Unassociated pointer to hold the control structure
   integer,            intent(in) :: nk !< Number of layers in the grid
-  real, dimension(:), intent(in) :: coordinateResolution !< Nominal near-surface resolution [m] or
+  real(wp), dimension(:), intent(in) :: coordinateResolution !< Nominal near-surface resolution [m] or
                                        !! other units specified with m_to_H
-  real,               intent(in) :: m_to_H !< A conversion factor from m to the units of thicknesses,
+  real(wp),               intent(in) :: m_to_H !< A conversion factor from m to the units of thicknesses,
                                        !! perhaps in units of [H m-1 ~> 1 or kg m-3]
-  real,               intent(in) :: kg_m3_to_R !< A conversion factor from kg m-3 to the units of density,
+  real(wp),               intent(in) :: kg_m3_to_R !< A conversion factor from kg m-3 to the units of density,
                                        !! perhaps in units of [R m3 kg-1 ~> 1]
 
   if (associated(CS)) call MOM_error(FATAL, "init_coord_adapt: CS already associated")
@@ -68,12 +70,12 @@ subroutine init_coord_adapt(CS, nk, coordinateResolution, m_to_H, kg_m3_to_R)
   CS%coordinateResolution(:) = coordinateResolution(:)
 
   ! Set real parameter default values
-  CS%adaptTimeRatio = 1e-1 ! Nondim.
-  CS%adaptAlpha     = 1.0  ! Nondim.
-  CS%adaptZoom      = 200.0 * m_to_H    ! [H ~> m or kg m-2]
-  CS%adaptZoomCoeff = 0.0  ! Nondim.
-  CS%adaptBuoyCoeff = 0.0  ! Nondim.
-  CS%adaptDrho0     = 0.5 * kg_m3_to_R  ! [R ~> kg m-3]
+  CS%adaptTimeRatio = 1e-1_wp ! Nondim.
+  CS%adaptAlpha     = 1.0_wp  ! Nondim.
+  CS%adaptZoom      = 200.0_wp * m_to_H    ! [H ~> m or kg m-2]
+  CS%adaptZoomCoeff = 0.0_wp  ! Nondim.
+  CS%adaptBuoyCoeff = 0.0_wp  ! Nondim.
+  CS%adaptDrho0     = 0.5_wp * kg_m3_to_R  ! [R ~> kg m-3]
 
 end subroutine init_coord_adapt
 
@@ -91,13 +93,13 @@ end subroutine end_coord_adapt
 subroutine set_adapt_params(CS, adaptTimeRatio, adaptAlpha, adaptZoom, adaptZoomCoeff, &
                             adaptBuoyCoeff, adaptDrho0, adaptDoMin)
   type(adapt_CS),    pointer    :: CS  !< The control structure for this module
-  real,    optional, intent(in) :: adaptTimeRatio !< Ratio of optimisation and diffusion timescales [nondim]
-  real,    optional, intent(in) :: adaptAlpha     !< Nondimensional coefficient determining
+  real(wp),    optional, intent(in) :: adaptTimeRatio !< Ratio of optimisation and diffusion timescales [nondim]
+  real(wp),    optional, intent(in) :: adaptAlpha     !< Nondimensional coefficient determining
                                                   !! how much optimisation to apply [nondim]
-  real,    optional, intent(in) :: adaptZoom      !< Near-surface zooming depth [H ~> m or kg m-2]
-  real,    optional, intent(in) :: adaptZoomCoeff !< Near-surface zooming coefficient [nondim]
-  real,    optional, intent(in) :: adaptBuoyCoeff !< Stratification-dependent diffusion coefficient [nondim]
-  real,    optional, intent(in) :: adaptDrho0  !< Reference density difference for
+  real(wp),    optional, intent(in) :: adaptZoom      !< Near-surface zooming depth [H ~> m or kg m-2]
+  real(wp),    optional, intent(in) :: adaptZoomCoeff !< Near-surface zooming coefficient [nondim]
+  real(wp),    optional, intent(in) :: adaptBuoyCoeff !< Stratification-dependent diffusion coefficient [nondim]
+  real(wp),    optional, intent(in) :: adaptDrho0  !< Reference density difference for
                                                !! stratification-dependent diffusion [R ~> kg m-3]
   logical, optional, intent(in) :: adaptDoMin  !< If true, form a HYCOM1-like mixed layer by
                                                !! preventing interfaces from becoming shallower than
@@ -123,56 +125,56 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
                                                                      !! thermodynamic variables
   integer,                                     intent(in)    :: i    !< The i-index of the column to work on
   integer,                                     intent(in)    :: j    !< The j-index of the column to work on
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: zInt !< Interface heights [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: tInt !< Interface temperatures [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: sInt !< Interface salinities [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),   intent(in)    :: h    !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: nom_depth_H !< The bathymetric depth of this column
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: zInt !< Interface heights [H ~> m or kg m-2].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: tInt !< Interface temperatures [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: sInt !< Interface salinities [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),   intent(in)    :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G)),            intent(in)    :: nom_depth_H !< The bathymetric depth of this column
                                                                      !! relative to mean sea level or another locally
                                                                      !! valid reference height, converted to thickness
                                                                      !! units [H ~> m or kg m-2]
-  real, dimension(SZK_(GV)+1),                 intent(inout) :: zNext !< updated interface positions [H ~> m or kg m-2]
+  real(wp), dimension(SZK_(GV)+1),                 intent(inout) :: zNext !< updated interface positions [H ~> m or kg m-2]
 
   ! Local variables
   integer :: k, nz
-  real :: h_up        ! The upwind source grid thickness based on the direction of the
+  real(wp) :: h_up        ! The upwind source grid thickness based on the direction of the
                       ! adjustive fluxes [H ~> m or kg m-2]
-  real :: b1          ! The inverse of the tridiagonal denominator [nondim]
-  real :: b_denom_1   ! The leading term in the tridiagonal denominator [nondim]
-  real :: d1          ! A term in the tridiagonal expressions [nondim]
-  real :: depth       ! Depth in thickness units [H ~> m or kg m-2]
-  real :: nominal_z   ! A nominal interface position in thickness units [H ~> m or kg m-2]
-  real :: stretching  ! A stretching factor for the water column [nondim]
-  real :: drdz  ! The vertical density gradient [R H-1 ~> kg m-4 or m-1]
-  real, dimension(SZK_(GV)+1) :: alpha ! drho/dT [R C-1 ~> kg m-3 degC-1]
-  real, dimension(SZK_(GV)+1) :: beta  ! drho/dS [R S-1 ~> kg m-3 ppt-1]
-  real, dimension(SZK_(GV)+1) :: del2sigma ! Laplacian of in situ density times grid spacing [R ~> kg m-3]
-  real, dimension(SZK_(GV)+1) :: dh_d2s ! Thickness change in response to del2sigma [H ~> m or kg m-2]
-  real, dimension(SZK_(GV)) :: kGrid ! grid diffusivity on layers [nondim]
-  real, dimension(SZK_(GV)) :: c1 ! A tridiagonal work array [nondim]
+  real(wp) :: b1          ! The inverse of the tridiagonal denominator [nondim]
+  real(wp) :: b_denom_1   ! The leading term in the tridiagonal denominator [nondim]
+  real(wp) :: d1          ! A term in the tridiagonal expressions [nondim]
+  real(wp) :: depth       ! Depth in thickness units [H ~> m or kg m-2]
+  real(wp) :: nominal_z   ! A nominal interface position in thickness units [H ~> m or kg m-2]
+  real(wp) :: stretching  ! A stretching factor for the water column [nondim]
+  real(wp) :: drdz  ! The vertical density gradient [R H-1 ~> kg m-4 or m-1]
+  real(wp), dimension(SZK_(GV)+1) :: alpha ! drho/dT [R C-1 ~> kg m-3 degC-1]
+  real(wp), dimension(SZK_(GV)+1) :: beta  ! drho/dS [R S-1 ~> kg m-3 ppt-1]
+  real(wp), dimension(SZK_(GV)+1) :: del2sigma ! Laplacian of in situ density times grid spacing [R ~> kg m-3]
+  real(wp), dimension(SZK_(GV)+1) :: dh_d2s ! Thickness change in response to del2sigma [H ~> m or kg m-2]
+  real(wp), dimension(SZK_(GV)) :: kGrid ! grid diffusivity on layers [nondim]
+  real(wp), dimension(SZK_(GV)) :: c1 ! A tridiagonal work array [nondim]
 
   nz = CS%nk
 
   ! set bottom and surface of zNext
-  zNext(1) = 0.
+  zNext(1) = 0._wp
   zNext(nz+1) = zInt(i,j,nz+1)
 
   ! local depth for scaling diffusivity
   depth = nom_depth_H(i,j)
 
   ! initialize del2sigma and the thickness change response to it zero
-  del2sigma(:) = 0.0 ; dh_d2s(:) = 0.0
+  del2sigma(:) = 0.0_wp ; dh_d2s(:) = 0.0_wp
 
   ! calculate del-squared of neutral density by a
   ! stencilled finite difference
   ! TODO: this needs to be adjusted to account for vanished layers near topography
 
   ! up (j-1)
-  if (G%mask2dT(i,j-1) > 0.0) then
+  if (G%mask2dT(i,j-1) > 0.0_wp) then
     call calculate_density_derivs( &
-         0.5 * (tInt(i,j,2:nz) + tInt(i,j-1,2:nz)), &
-         0.5 * (sInt(i,j,2:nz) + sInt(i,j-1,2:nz)), &
-         0.5 * (zInt(i,j,2:nz) + zInt(i,j-1,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
+         0.5_wp * (tInt(i,j,2:nz) + tInt(i,j-1,2:nz)), &
+         0.5_wp * (sInt(i,j,2:nz) + sInt(i,j-1,2:nz)), &
+         0.5_wp * (zInt(i,j,2:nz) + zInt(i,j-1,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
          alpha, beta, tv%eqn_of_state, (/2,nz/) )
 
     del2sigma(2:nz) = del2sigma(2:nz) + &
@@ -180,11 +182,11 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
           beta(2:nz)  * (sInt(i,j-1,2:nz) - sInt(i,j,2:nz)))
   endif
   ! down (j+1)
-  if (G%mask2dT(i,j+1) > 0.0) then
+  if (G%mask2dT(i,j+1) > 0.0_wp) then
     call calculate_density_derivs( &
-         0.5 * (tInt(i,j,2:nz) + tInt(i,j+1,2:nz)), &
-         0.5 * (sInt(i,j,2:nz) + sInt(i,j+1,2:nz)), &
-         0.5 * (zInt(i,j,2:nz) + zInt(i,j+1,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
+         0.5_wp * (tInt(i,j,2:nz) + tInt(i,j+1,2:nz)), &
+         0.5_wp * (sInt(i,j,2:nz) + sInt(i,j+1,2:nz)), &
+         0.5_wp * (zInt(i,j,2:nz) + zInt(i,j+1,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
          alpha, beta, tv%eqn_of_state, (/2,nz/) )
 
     del2sigma(2:nz) = del2sigma(2:nz) + &
@@ -192,11 +194,11 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
           beta(2:nz)  * (sInt(i,j+1,2:nz) - sInt(i,j,2:nz)))
   endif
   ! left (i-1)
-  if (G%mask2dT(i-1,j) > 0.0) then
+  if (G%mask2dT(i-1,j) > 0.0_wp) then
     call calculate_density_derivs( &
-         0.5 * (tInt(i,j,2:nz) + tInt(i-1,j,2:nz)), &
-         0.5 * (sInt(i,j,2:nz) + sInt(i-1,j,2:nz)), &
-         0.5 * (zInt(i,j,2:nz) + zInt(i-1,j,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
+         0.5_wp * (tInt(i,j,2:nz) + tInt(i-1,j,2:nz)), &
+         0.5_wp * (sInt(i,j,2:nz) + sInt(i-1,j,2:nz)), &
+         0.5_wp * (zInt(i,j,2:nz) + zInt(i-1,j,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
          alpha, beta, tv%eqn_of_state, (/2,nz/) )
 
     del2sigma(2:nz) = del2sigma(2:nz) + &
@@ -204,11 +206,11 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
           beta(2:nz)  * (sInt(i-1,j,2:nz) - sInt(i,j,2:nz)))
   endif
   ! right (i+1)
-  if (G%mask2dT(i+1,j) > 0.0) then
+  if (G%mask2dT(i+1,j) > 0.0_wp) then
     call calculate_density_derivs( &
-         0.5 * (tInt(i,j,2:nz) + tInt(i+1,j,2:nz)), &
-         0.5 * (sInt(i,j,2:nz) + sInt(i+1,j,2:nz)), &
-         0.5 * (zInt(i,j,2:nz) + zInt(i+1,j,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
+         0.5_wp * (tInt(i,j,2:nz) + tInt(i+1,j,2:nz)), &
+         0.5_wp * (sInt(i,j,2:nz) + sInt(i+1,j,2:nz)), &
+         0.5_wp * (zInt(i,j,2:nz) + zInt(i+1,j,2:nz)) * (GV%H_to_RZ * GV%g_Earth), &
          alpha, beta, tv%eqn_of_state, (/2,nz/) )
 
     del2sigma(2:nz) = del2sigma(2:nz) + &
@@ -226,16 +228,16 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
        alpha, beta, tv%eqn_of_state, (/1,nz+1/) )
   do K = 2, nz
     ! TODO make lower bound here configurable
-    dh_d2s(K) = del2sigma(K) * (0.5 * (h(i,j,k-1) + h(i,j,k))) / &
+    dh_d2s(K) = del2sigma(K) * (0.5_wp * (h(i,j,k-1) + h(i,j,k))) / &
          max(alpha(K) * (tv%T(i,j,k) - tv%T(i,j,k-1)) + &
-             beta(K)  * (tv%S(i,j,k) - tv%S(i,j,k-1)), 1e-20*US%kg_m3_to_R)
+             beta(K)  * (tv%S(i,j,k) - tv%S(i,j,k-1)), 1e-20_wp*US%kg_m3_to_R)
 
     ! don't move the interface so far that it would tangle with another
     ! interface in the direction we're moving (or exceed a Nyquist limit
     ! that could cause oscillations of the interface)
-    h_up = merge(h(i,j,k), h(i,j,k-1), dh_d2s(K) > 0.)
-    dh_d2s(K) = 0.5 * CS%adaptAlpha * &
-         sign(min(abs(del2sigma(K)), 0.5 * h_up), dh_d2s(K))
+    h_up = merge(h(i,j,k), h(i,j,k-1), dh_d2s(K) > 0._wp)
+    dh_d2s(K) = 0.5_wp * CS%adaptAlpha * &
+         sign(min(abs(del2sigma(K)), 0.5_wp * h_up), dh_d2s(K))
 
     ! update interface positions so we can diffuse them
     zNext(K) = zInt(i,j,K) + dh_d2s(K)
@@ -249,30 +251,30 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
   ! first, calculate the diffusivities within layers
   do k = 1, nz
     ! calculate the dr bit of drdz
-    drdz = 0.5 * (alpha(K) + alpha(K+1)) * (tInt(i,j,K+1) - tInt(i,j,K)) + &
-           0.5 * (beta(K)  + beta(K+1))  * (sInt(i,j,K+1) - sInt(i,j,K))
+    drdz = 0.5_wp * (alpha(K) + alpha(K+1)) * (tInt(i,j,K+1) - tInt(i,j,K)) + &
+           0.5_wp * (beta(K)  + beta(K+1))  * (sInt(i,j,K+1) - sInt(i,j,K))
     ! divide by dz from the new interface positions
     drdz = drdz / (zNext(K) - zNext(K+1) + GV%H_subroundoff)
     ! don't do weird stuff in unstably-stratified regions
-    drdz = max(drdz, 0.)
+    drdz = max(drdz, 0._wp)
 
     ! set vertical grid diffusivity
     kGrid(k) = (CS%adaptTimeRatio * nz**2 * depth) * &
-         ( CS%adaptZoomCoeff / (CS%adaptZoom + 0.5*(zNext(K) + zNext(K+1))) + &
+         ( CS%adaptZoomCoeff / (CS%adaptZoom + 0.5_wp*(zNext(K) + zNext(K+1))) + &
            (CS%adaptBuoyCoeff * drdz / CS%adaptDrho0) + &
-           max(1.0 - CS%adaptZoomCoeff - CS%adaptBuoyCoeff, 0.0) / depth)
+           max(1.0_wp - CS%adaptZoomCoeff - CS%adaptBuoyCoeff, 0.0_wp) / depth)
   enddo
 
   ! initial denominator (first diagonal element)
-  b1 = 1.0
+  b1 = 1.0_wp
   ! initial Q_1 = 1 - q_1 = 1 - 0/1
-  d1 = 1.0
+  d1 = 1.0_wp
   ! work on all interior interfaces
   do K = 2, nz
     ! calculate numerator of Q_k
-    b_denom_1 = 1. + d1 * kGrid(k-1)
+    b_denom_1 = 1._wp + d1 * kGrid(k-1)
     ! update denominator for k
-    b1 = 1.0 / (b_denom_1 + kGrid(k))
+    b1 = 1.0_wp / (b_denom_1 + kGrid(k))
 
     ! calculate q_k
     c1(K) = kGrid(k) * b1
@@ -288,7 +290,7 @@ subroutine build_adapt_column(CS, G, GV, US, tv, i, j, zInt, tInt, sInt, h, nom_
   enddo
 
   if (CS%adaptDoMin) then
-    nominal_z = 0.
+    nominal_z = 0._wp
     stretching = zInt(i,j,nz+1) / depth
 
     do k = 2, nz+1

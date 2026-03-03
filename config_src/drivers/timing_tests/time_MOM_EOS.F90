@@ -7,6 +7,8 @@ use MOM_EOS, only : EOS_manual_init
 use MOM_EOS, only : calculate_density, calculate_spec_vol
 use MOM_EOS, only : list_of_eos, get_EOS_name
 
+use MOM_datatypes, only : wp
+
 implicit none
 
 ! This macro is used to write out timings of a single test rather than conduct
@@ -28,12 +30,12 @@ integer, parameter :: nic=26, halo=4, nits=10000, nsamp=400
 integer, parameter :: nic=23, halo=4, nits=1000, nsamp=400
 #endif
 
-real :: times(nsamp) ! CPU times for observing the PDF [seconds]
+real(wp) :: times(nsamp) ! CPU times for observing the PDF [seconds]
 
 ! Arrays to hold timings in [seconds]:
 !  first axis corresponds to the form of EOS
 !  second axis corresponds to the function being timed
-real, dimension(:,:), allocatable :: timings, tmean, tstd, tmin, tmax
+real(wp), dimension(:,:), allocatable :: timings, tmean, tstd, tmin, tmax
 integer :: n_eos, i, j
 
 n_eos = size(list_of_eos)
@@ -45,10 +47,10 @@ fn_labels(2) = 'calculate_density_array()'
 fn_labels(3) = 'calculate_spec_vol_scalar()'
 fn_labels(4) = 'calculate_spec_vol_array()'
 
-tmean(:,:) = 0.
-tstd(:,:) = 0.
-tmin(:,:) = 1.e9
-tmax(:,:) = 0.
+tmean(:,:) = 0._wp
+tstd(:,:) = 0._wp
+tmin(:,:) = 1.e9_wp
+tmax(:,:) = 0._wp
 do i = 1, nsamp
 #ifdef PDF_ONLY
   call run_one(list_of_EOS, nic, halo, nits, times(i))
@@ -60,10 +62,10 @@ do i = 1, nsamp
   tmax(:,:) = max( tmax(:,:), timings(:,:) )
 #endif
 enddo
-tmean(:,:) = tmean(:,:) / real(nsamp)
-tstd(:,:) = tstd(:,:) / real(nsamp) ! convert to mean of squares
+tmean(:,:) = tmean(:,:) / real(nsamp, wp)
+tstd(:,:) = tstd(:,:) / real(nsamp, wp) ! convert to mean of squares
 tstd(:,:) = tstd(:,:) - tmean(:,:)**2 ! convert to variance
-tstd(:,:) = sqrt( tstd(:,:) * ( real(nsamp) / real(nsamp-1) ) ) ! Standard deviation
+tstd(:,:) = sqrt( tstd(:,:) * ( real(nsamp, wp) / real(nsamp-1, wp) ) ) ! Standard deviation
 
 #ifdef PDF_ONLY
 open(newunit=i, file='times.txt', status='replace', action='write')
@@ -100,42 +102,42 @@ subroutine run_suite(EOS_list, nic, halo, nits, timings)
   integer, intent(in)  :: nits         !< Number of calls to sample
                                        !! (large enough that the CPU timers can resolve
                                        !! the loop)
-  real,    intent(out) :: timings(n_eos,n_fns) !< The average time taken for nits calls [seconds]
+  real(wp),    intent(out) :: timings(n_eos,n_fns) !< The average time taken for nits calls [seconds]
                                        !! First index corresponds to EOS
                                        !! Second index: 1 = scalar args,
                                        !! 2 = array args without halo,
                                        !! 3 = array args with halo and "dom".
   type(EOS_type) :: EOS
   integer :: e, i, dom(2)
-  real :: start, finish  ! CPU times [seconds]
-  real :: T  ! A potential or conservative temperature [degC]
-  real :: S  ! A practical salinity or absolute salinity [ppt]
-  real :: P  ! A pressure [Pa]
-  real :: rho ! A density [kg m-3] or specific volume [m3 kg-1]
-  real, dimension(nic+2*halo) :: T1, S1, P1, rho1
+  real(wp) :: start, finish  ! CPU times [seconds]
+  real(wp) :: T  ! A potential or conservative temperature [degC]
+  real(wp) :: S  ! A practical salinity or absolute salinity [ppt]
+  real(wp) :: P  ! A pressure [Pa]
+  real(wp) :: rho ! A density [kg m-3] or specific volume [m3 kg-1]
+  real(wp), dimension(nic+2*halo) :: T1, S1, P1, rho1
 
-  T = 10.
-  S = 35.
-  P = 2000.e4
+  T = 10._wp
+  S = 35._wp
+  P = 2000.e4_wp
 
   ! Time the scalar interface
   do e = 1, n_eos
     call EOS_manual_init(EOS, form_of_EOS=EOS_list(e), &
-                         Rho_T0_S0=1030., dRho_dT=0.2, dRho_dS=-0.7)
+                         Rho_T0_S0=1030._wp, dRho_dT=0.2_wp, dRho_dS=-0.7_wp)
 
     call cpu_time(start)
     do i = 1, nits*nic ! Calling nic* to make similar cost to array call
       call calculate_density(T, S, P, rho, EOS)
     enddo
     call cpu_time(finish)
-    timings(e,1) = (finish - start) / real(nits)
+    timings(e,1) = (finish - start) / real(nits, wp)
 
     call cpu_time(start)
     do i = 1, nits*nic ! Calling nic* to make similar cost to array call
       call calculate_spec_vol(T, S, P, rho, EOS)
     enddo
     call cpu_time(finish)
-    timings(e,2) = (finish - start) / real(nits)
+    timings(e,2) = (finish - start) / real(nits, wp)
 
   enddo
 
@@ -147,21 +149,21 @@ subroutine run_suite(EOS_list, nic, halo, nits, timings)
 
   do e = 1, n_eos
     call EOS_manual_init(EOS, form_of_EOS=EOS_list(e), &
-                         Rho_T0_S0=1030., dRho_dT=0.2, dRho_dS=-0.7)
+                         Rho_T0_S0=1030._wp, dRho_dT=0.2_wp, dRho_dS=-0.7_wp)
 
     call cpu_time(start)
     do i = 1, nits
       call calculate_density(T1, S1, P1, rho1, EOS, dom)
     enddo
     call cpu_time(finish)
-    timings(e,3) = (finish - start) / real(nits)
+    timings(e,3) = (finish - start) / real(nits, wp)
 
     call cpu_time(start)
     do i = 1, nits
       call calculate_spec_vol(T1, S1, P1, rho1, EOS, dom)
     enddo
     call cpu_time(finish)
-    timings(e,4) = (finish - start) / real(nits)
+    timings(e,4) = (finish - start) / real(nits, wp)
 
   enddo
 
@@ -175,38 +177,38 @@ subroutine run_one(EOS_list, nic, halo, nits, timing)
   integer, intent(in)  :: nits         !< Number of calls to sample
                                        !! (large enough that the CPU timers can resolve
                                        !! the loop)
-  real,    intent(out) :: timing       !< The average time taken for nits calls [seconds]
+  real(wp),    intent(out) :: timing       !< The average time taken for nits calls [seconds]
                                        !! First index corresponds to EOS
                                        !! Second index: 1 = scalar args,
                                        !! 2 = array args without halo,
                                        !! 3 = array args with halo and "dom".
   type(EOS_type) :: EOS
   integer :: i, dom(2)
-  real :: start, finish  ! CPU times [seconds]
-  real, dimension(nic+2*halo) :: T1   ! Potential or conservative temperatures [degC]
-  real, dimension(nic+2*halo) :: S1   ! A practical salinities or absolute salinities [ppt]
-  real, dimension(nic+2*halo) :: P1   ! Pressures [Pa]
-  real, dimension(nic+2*halo) :: rho1 ! Densities [kg m-3] or specific volumes [m3 kg-1]
+  real(wp) :: start, finish  ! CPU times [seconds]
+  real(wp), dimension(nic+2*halo) :: T1   ! Potential or conservative temperatures [degC]
+  real(wp), dimension(nic+2*halo) :: S1   ! A practical salinities or absolute salinities [ppt]
+  real(wp), dimension(nic+2*halo) :: P1   ! Pressures [Pa]
+  real(wp), dimension(nic+2*halo) :: rho1 ! Densities [kg m-3] or specific volumes [m3 kg-1]
 
   ! Time the scalar interface
   call EOS_manual_init(EOS, form_of_EOS=EOS_list(5), &
-                       Rho_T0_S0=1030., dRho_dT=0.2, dRho_dS=-0.7)
+                       Rho_T0_S0=1030._wp, dRho_dT=0.2_wp, dRho_dS=-0.7_wp)
 
   ! Time the "dom" interface, 1D array + halos
-  T1(:) = 10.
-  S1(:) = 35.
-  P1(:) = 2000.e4
+  T1(:) = 10._wp
+  S1(:) = 35._wp
+  P1(:) = 2000.e4_wp
   dom(:) = [1+halo,nic+halo]
 
   call EOS_manual_init(EOS, form_of_EOS=EOS_list(5), &
-                       Rho_T0_S0=1030., dRho_dT=0.2, dRho_dS=-0.7)
+                       Rho_T0_S0=1030._wp, dRho_dT=0.2_wp, dRho_dS=-0.7_wp)
 
   call cpu_time(start)
   do i = 1, nits
     call calculate_density(T1, S1, P1, rho1, EOS, dom)
   enddo
   call cpu_time(finish)
-  timing = (finish-start)/real(nits)
+  timing = (finish-start)/real(nits, wp)
 
 end subroutine run_one
 

@@ -40,6 +40,8 @@ use MOM_unit_scaling,         only : unit_scale_type
 use MOM_variables,            only : thermo_var_ptrs
 use MOM_verticalGrid,         only : verticalGrid_type, get_thickness_units
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include "MOM_memory.h"
@@ -113,17 +115,17 @@ type, public :: offline_transport_CS ; private
   integer :: num_off_iter   !< Number of advection iterations per offline step
   integer :: num_vert_iter  !< Number of vertical iterations per offline step
   integer :: off_ale_mod    !< Sets how frequently the ALE step is done during the advection
-  real :: dt_offline        !< Timestep used for offline tracers [T ~> s]
-  real :: dt_offline_vertical !< Timestep used for calls to tracer vertical physics [T ~> s]
-  real :: evap_CFL_limit    !< Limit on the fraction of the water that can be fluxed out of the top
+  real(wp) :: dt_offline        !< Timestep used for offline tracers [T ~> s]
+  real(wp) :: dt_offline_vertical !< Timestep used for calls to tracer vertical physics [T ~> s]
+  real(wp) :: evap_CFL_limit    !< Limit on the fraction of the water that can be fluxed out of the top
                             !! layer in a timestep [nondim].  This is Copied from diabatic_CS controlling
                             !! how tracers follow freshwater fluxes
-  real :: minimum_forcing_depth !< The smallest depth over which fluxes can be applied [H ~> m or kg m-2].
+  real(wp) :: minimum_forcing_depth !< The smallest depth over which fluxes can be applied [H ~> m or kg m-2].
                             !! This is copied from diabatic_CS controlling how tracers follow freshwater fluxes
 
-  real :: Kd_max        !< Runtime parameter specifying the maximum value of vertical diffusivity
+  real(wp) :: Kd_max        !< Runtime parameter specifying the maximum value of vertical diffusivity
                         !! [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
-  real :: min_residual  !< The minimum amount of total mass flux before exiting the main advection
+  real(wp) :: min_residual  !< The minimum amount of total mass flux before exiting the main advection
                         !! routine [H L2 ~> m3 or kg]
   !>@{ Diagnostic manager IDs for some fields that may be of interest when doing offline transport
   integer :: &
@@ -158,29 +160,29 @@ type, public :: offline_transport_CS ; private
   integer :: id_clock_redistribute = -1  !< A CPU time clock
 
   !> Zonal transport that may need to be stored between calls to step_MOM [H L2 ~> m3 or kg]
-  real, allocatable, dimension(:,:,:) :: uhtr
+  real(wp), allocatable, dimension(:,:,:) :: uhtr
   !> Meridional transport that may need to be stored between calls to step_MOM [H L2 ~> m3 or kg]
-  real, allocatable, dimension(:,:,:) :: vhtr
+  real(wp), allocatable, dimension(:,:,:) :: vhtr
 
   ! Fields at T-point
-  real, allocatable, dimension(:,:,:) :: eatr
+  real(wp), allocatable, dimension(:,:,:) :: eatr
                    !< Amount of fluid entrained from the layer above within
                    !! one time step [H ~> m or kg m-2]
-  real, allocatable, dimension(:,:,:) :: ebtr
+  real(wp), allocatable, dimension(:,:,:) :: ebtr
                    !< Amount of fluid entrained from the layer below within
                    !! one time step [H ~> m or kg m-2]
   ! Fields at T-points on interfaces
-  real, allocatable, dimension(:,:,:) :: Kd     !< Vertical diffusivity [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
-  real, allocatable, dimension(:,:,:) :: h_end  !< Thicknesses at the end of offline timestep [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:,:,:) :: Kd     !< Vertical diffusivity [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
+  real(wp), allocatable, dimension(:,:,:) :: h_end  !< Thicknesses at the end of offline timestep [H ~> m or kg m-2]
 
-  real, allocatable, dimension(:,:) :: mld        !< Mixed layer depths at thickness points [Z ~> m]
+  real(wp), allocatable, dimension(:,:) :: mld        !< Mixed layer depths at thickness points [Z ~> m]
 
   ! Allocatable arrays to read in entire fields during initialization
-  real, allocatable, dimension(:,:,:,:) :: uhtr_all !< Entire field of zonal transport [H L2 ~> m3 or kg]
-  real, allocatable, dimension(:,:,:,:) :: vhtr_all !< Entire field of meridional transport [H L2 ~> m3 or kg]
-  real, allocatable, dimension(:,:,:,:) :: hend_all !< Entire field of layer thicknesses [H ~> m or kg m-2]
-  real, allocatable, dimension(:,:,:,:) :: temp_all !< Entire field of temperatures [C ~> degC]
-  real, allocatable, dimension(:,:,:,:) :: salt_all !< Entire field of salinities [S ~> ppt]
+  real(wp), allocatable, dimension(:,:,:,:) :: uhtr_all !< Entire field of zonal transport [H L2 ~> m3 or kg]
+  real(wp), allocatable, dimension(:,:,:,:) :: vhtr_all !< Entire field of meridional transport [H L2 ~> m3 or kg]
+  real(wp), allocatable, dimension(:,:,:,:) :: hend_all !< Entire field of layer thicknesses [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:,:,:,:) :: temp_all !< Entire field of temperatures [C ~> degC]
+  real(wp), allocatable, dimension(:,:,:,:) :: salt_all !< Entire field of salinities [S ~> ppt]
 
 end type offline_transport_CS
 
@@ -207,45 +209,45 @@ subroutine offline_advection_ale(fluxes, Time_start, time_interval, G, GV, US, C
                                  h_pre, uhtr, vhtr, converged)
   type(forcing),           intent(inout) :: fluxes        !< pointers to forcing fields
   type(time_type),         intent(in)    :: Time_start    !< starting time of a segment, as a time type
-  real,                    intent(in)    :: time_interval !< time interval covered by this call [T ~> s]
+  real(wp),                    intent(in)    :: time_interval !< time interval covered by this call [T ~> s]
   type(ocean_grid_type),   intent(inout) :: G             !< Ocean grid structure
   type(verticalGrid_type), intent(in)    :: GV            !< Vertical grid structure
   type(unit_scale_type),   intent(in)    :: US            !< A dimensional unit scaling type
   type(offline_transport_CS), pointer    :: CS            !< control structure for offline module
   integer,                 intent(in)    :: id_clock_ALE  !< Clock for ALE routines
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h_pre         !< layer thicknesses before advection
                                                           !! [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: uhtr          !< Zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout) :: vhtr          !< Meridional mass transport [H L2 ~> m3 or kg]
   logical,                 intent(  out) :: converged     !< True if the iterations have converged
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV))   :: uhtr_sub ! Substep zonal mass transports [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV))   :: vhtr_sub ! Substep meridional mass transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV))   :: uhtr_sub ! Substep zonal mass transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV))   :: vhtr_sub ! Substep meridional mass transports [H L2 ~> m3 or kg]
 
-  real :: prev_tot_residual, tot_residual  ! Used to keep track of how close to convergence we are [H L2 ~> m3 or kg]
+  real(wp) :: prev_tot_residual, tot_residual  ! Used to keep track of how close to convergence we are [H L2 ~> m3 or kg]
 
   ! Variables used to keep track of layer thicknesses at various points in the code
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
       h_new, &   ! Updated layer thicknesses [H ~> m or kg m-2]
       h_post_remap, &   ! Layer thicknesses after remapping [H ~> m or kg m-2]
       h_vol      ! Layer volumes [H L2 ~> m3 or kg]
-  real :: dzRegrid(SZI_(G),SZJ_(G),SZK_(GV)+1) ! The change in grid interface positions due to regridding,
+  real(wp) :: dzRegrid(SZI_(G),SZJ_(G),SZK_(GV)+1) ! The change in grid interface positions due to regridding,
                                                ! in the same units as thicknesses [H ~> m or kg m-2]
   integer :: niter, iter
-  real    :: Inum_iter    ! The inverse of the number of iterations [nondim]
+  real(wp)    :: Inum_iter    ! The inverse of the number of iterations [nondim]
   character(len=256) :: mesg  ! The text of an error message
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz
   integer :: IsdB, IedB, JsdB, JedB
   logical :: x_before_y
-  real :: evap_CFL_limit  ! Limit on the fraction of the water that can be fluxed out of the
+  real(wp) :: evap_CFL_limit  ! Limit on the fraction of the water that can be fluxed out of the
                           ! top layer in a timestep [nondim]
-  real :: minimum_forcing_depth ! The smallest depth over which fluxes can be applied [H ~> m or kg m-2]
-  real :: dt_iter    ! The timestep to use for each iteration [T ~> s]
-  real :: HL2_to_kg_scale ! Unit conversion factors to cell mass [kg H-1 L-2 ~> kg m-3 or 1]
+  real(wp) :: minimum_forcing_depth ! The smallest depth over which fluxes can be applied [H ~> m or kg m-2]
+  real(wp) :: dt_iter    ! The timestep to use for each iteration [T ~> s]
+  real(wp) :: HL2_to_kg_scale ! Unit conversion factors to cell mass [kg H-1 L-2 ~> kg m-3 or 1]
   character(len=20) :: debug_msg
   call cpu_clock_begin(CS%id_clock_offline_adv)
 
@@ -263,14 +265,14 @@ subroutine offline_advection_ale(fluxes, Time_start, time_interval, G, GV, US, C
 
   HL2_to_kg_scale = US%L_to_m**2*GV%H_to_kg_m2
   niter = CS%num_off_iter
-  Inum_iter = 1./real(niter)
+  Inum_iter = 1._wp/real(niter, wp)
   dt_iter = CS%dt_offline*Inum_iter
 
   ! Initialize working arrays
-  h_new(:,:,:) = 0.0
-  h_vol(:,:,:) = 0.0
-  uhtr_sub(:,:,:) = 0.0
-  vhtr_sub(:,:,:) = 0.0
+  h_new(:,:,:) = 0.0_wp
+  h_vol(:,:,:) = 0.0_wp
+  uhtr_sub(:,:,:) = 0.0_wp
+  vhtr_sub(:,:,:) = 0.0_wp
 
   ! converged should only be true if there are no remaining mass fluxes
   converged = .false.
@@ -394,7 +396,7 @@ subroutine offline_advection_ale(fluxes, Time_start, time_interval, G, GV, US, C
       call MOM_mesg(mesg)
     endif
     ! If all the mass transports have been used u, then quit
-    if (tot_residual == 0.0) then
+    if (tot_residual == 0.0_wp) then
       write(mesg,*) "Converged after iteration ", iter
       call MOM_mesg(mesg)
       converged = .true.
@@ -433,29 +435,29 @@ subroutine offline_redistribute_residual(CS, G, GV, US, h_pre, uhtr, vhtr, conve
   type(ocean_grid_type),      intent(inout) :: G     !< Ocean grid structure
   type(verticalGrid_type),    intent(in)    :: GV    !< Vertical grid structure
   type(unit_scale_type),      intent(in)    :: US    !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h_pre !< layer thicknesses before advection [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: uhtr  !< Zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                               intent(inout) :: vhtr  !< Meridional mass transport [H L2 ~> m3 or kg]
   logical,                    intent(in   ) :: converged !< True if the iterations have converged
 
   logical :: x_before_y
   ! Variables used to keep track of layer thicknesses at various points in the code
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
       h_new, &   ! New layer thicknesses [H ~> m or kg m-2]
       h_vol      ! Cell volume [H L2 ~> m3 or kg]
 
   ! Used to calculate the eta diagnostics
-  real, dimension(SZI_(G),SZJ_(G)) :: eta_work  ! The total column thickness [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: uhr  !< Remaining zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vhr  !< Remaining meridional mass transport [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: eta_work  ! The total column thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: uhr  !< Remaining zonal mass transport [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vhr  !< Remaining meridional mass transport [H L2 ~> m3 or kg]
 
   character(len=256) :: mesg  ! The text of an error message
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz, iter
-  real :: HL2_to_kg_scale ! Unit conversion factors to cell mass [kg H-1 L-2 ~> kg m-3 or 1]
-  real :: prev_tot_residual, tot_residual ! The absolute value of the remaining transports [H L2 ~> m3 or kg]
+  real(wp) :: HL2_to_kg_scale ! Unit conversion factors to cell mass [kg H-1 L-2 ~> kg m-3 or 1]
+  real(wp) :: prev_tot_residual, tot_residual ! The absolute value of the remaining transports [H L2 ~> m3 or kg]
 
   is  = G%isc ; ie  = G%iec ; js  = G%jsc ; je  = G%jec ; nz = GV%ke
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -464,7 +466,7 @@ subroutine offline_redistribute_residual(CS, G, GV, US, h_pre, uhtr, vhtr, conve
   HL2_to_kg_scale = US%L_to_m**2*GV%H_to_kg_m2
 
   if (CS%id_eta_pre_distribute>0) then
-    eta_work(:,:) = 0.0
+    eta_work(:,:) = 0.0_wp
     do k=1,nz ; do j=js,je ; do i=is,ie
       if (h_pre(i,j,k) > GV%Angstrom_H) then
         eta_work(i,j) = eta_work(i,j) + h_pre(i,j,k)
@@ -578,7 +580,7 @@ subroutine offline_redistribute_residual(CS, G, GV, US, h_pre, uhtr, vhtr, conve
         call MOM_mesg(mesg)
       endif
       ! If the remaining residual is 0, then this return is done
-      if (tot_residual==0.0 ) then
+      if (tot_residual==0.0_wp ) then
         exit
       endif
 
@@ -589,7 +591,7 @@ subroutine offline_redistribute_residual(CS, G, GV, US, h_pre, uhtr, vhtr, conve
   endif ! If one of the redistribution routines is requested
 
   if (CS%id_eta_post_distribute>0) then
-    eta_work(:,:) = 0.0
+    eta_work(:,:) = 0.0_wp
     do k=1,nz ; do j=js,je ; do i=is,ie
       if (h_pre(i,j,k)>GV%Angstrom_H) then
         eta_work(i,j) = eta_work(i,j) + h_pre(i,j,k)
@@ -612,36 +614,36 @@ subroutine offline_redistribute_residual(CS, G, GV, US, h_pre, uhtr, vhtr, conve
 end subroutine offline_redistribute_residual
 
 !> Returns the sums of any non-negligible remaining transport [H L2 ~> m3 or kg] to check for advection convergence
-real function remaining_transport_sum(G, GV, US, uhtr, vhtr, h_new)
+real(wp) function remaining_transport_sum(G, GV, US, uhtr, vhtr, h_new)
   type(ocean_grid_type),      intent(in)    :: G     !< Ocean grid structure
   type(verticalGrid_type),    intent(in)    :: GV    !< Vertical grid structure
   type(unit_scale_type),      intent(in)    :: US    !< A dimensional unit scaling type
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                               intent(in   ) :: uhtr  !< Zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                               intent(in   ) :: vhtr  !< Meridional mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(in   ) :: h_new !< Layer thicknesses [H ~> m or kg m-2]
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: trans_rem_col !< The vertical sum of the absolute value of
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: trans_rem_col !< The vertical sum of the absolute value of
                      !! transports through the faces of a column [R Z L2 ~> kg].
-  real :: trans_cell !< The sum of the absolute value of the remaining transports through the faces
+  real(wp) :: trans_cell !< The sum of the absolute value of the remaining transports through the faces
                      !! of a tracer cell [H L2 ~> m3 or kg]
   integer :: i, j, k, is, ie, js, je, nz
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  trans_rem_col(:,:) = 0.0
+  trans_rem_col(:,:) = 0.0_wp
   do k=1,nz ; do j=js,je ; do i=is,ie
     trans_cell = (ABS(uhtr(I-1,j,k)) + ABS(uhtr(I,j,k))) + &
                  (ABS(vhtr(i,J-1,k)) + ABS(vhtr(i,J,k)))
-    if (trans_cell > max(1.0e-16*h_new(i,j,k), GV%H_subroundoff) * G%areaT(i,j)) &
+    if (trans_cell > max(1.0e-16_wp*h_new(i,j,k), GV%H_subroundoff) * G%areaT(i,j)) &
       trans_rem_col(i,j) =  trans_rem_col(i,j) + GV%H_to_RZ * trans_cell
   enddo ; enddo ; enddo
 
   ! The factor of 0.5 here is to avoid double-counting because two cells share a face.
-  remaining_transport_sum = 0.5 * GV%RZ_to_H * reproducing_sum(trans_rem_col, &
+  remaining_transport_sum = 0.5_wp * GV%RZ_to_H * reproducing_sum(trans_rem_col, &
                              is+(1-G%isd), ie+(1-G%isd), js+(1-G%jsd), je+(1-G%jsd), unscale=US%RZL2_to_kg)
 
 end function remaining_transport_sum
@@ -658,22 +660,22 @@ subroutine offline_diabatic_ale(fluxes, Time_start, Time_end, G, GV, US, CS, h_p
   type(verticalGrid_type), intent(in)    :: GV         !< Vertical grid structure
   type(unit_scale_type),   intent(in)    :: US         !< A dimensional unit scaling type
   type(offline_transport_CS), pointer    :: CS         !< control structure from initialize_MOM
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h_pre      !< layer thicknesses before advection [H ~> m or kg m-2]
   type(thermo_var_ptrs),   intent(in   ) :: tv         !< A structure pointing to various thermodynamic variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: eatr       !< Entrainment from layer above [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: ebtr       !< Entrainment from layer below [H ~> m or kg m-2]
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     sw, sw_vis, sw_nir !< Save old values of shortwave radiation [Q R Z T-1 ~> W m-2]
-  real :: dz(SZI_(G),SZJ_(G),SZK_(GV)) ! Vertical distance across layers [Z ~> m]
-  real :: I_dZval  ! An inverse distance between layer centers [Z-1 ~> m-1]
+  real(wp) :: dz(SZI_(G),SZJ_(G),SZK_(GV)) ! Vertical distance across layers [Z ~> m]
+  real(wp) :: I_dZval  ! An inverse distance between layer centers [Z-1 ~> m-1]
   integer :: i, j, k, is, ie, js, je, nz
   integer :: k_nonzero
-  real :: Kd_bot  ! Near-bottom diffusivity [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
+  real(wp) :: Kd_bot  ! Near-bottom diffusivity [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
   nz = GV%ke
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
@@ -690,8 +692,8 @@ subroutine offline_diabatic_ale(fluxes, Time_start, Time_end, G, GV, US, CS, h_p
 
   call thickness_to_dz(h_pre, tv, dz, G, GV, US)
 
-  eatr(:,:,:) = 0.
-  ebtr(:,:,:) = 0.
+  eatr(:,:,:) = 0._wp
+  ebtr(:,:,:) = 0._wp
   ! Calculate eatr and ebtr if vertical diffusivity is read
   ! Because the saved remapped diagnostics from the online run assume a zero minimum thickness
   ! but ALE may have a minimum thickness. Flood the diffusivities for all layers with the value
@@ -700,7 +702,7 @@ subroutine offline_diabatic_ale(fluxes, Time_start, Time_end, G, GV, US, CS, h_p
     k_nonzero = nz+1
     ! Find the nonzero bottom Kd
     do k=nz+1,1,-1
-      if (CS%Kd(i,j,k)>0.) then
+      if (CS%Kd(i,j,k)>0._wp) then
         Kd_bot = CS%Kd(i,j,k)
         k_nonzero = k
         exit
@@ -713,15 +715,15 @@ subroutine offline_diabatic_ale(fluxes, Time_start, Time_end, G, GV, US, CS, h_p
   enddo ; enddo
 
   do j=js,je ; do i=is,ie
-    eatr(i,j,1) = 0.
+    eatr(i,j,1) = 0._wp
   enddo ; enddo
   do k=2,nz ; do j=js,je ; do i=is,ie
-    I_dZval = 1.0 / (GV%dZ_subroundoff + 0.5*(dz(i,j,k-1) + dz(i,j,k)))
+    I_dZval = 1.0_wp / (GV%dZ_subroundoff + 0.5_wp*(dz(i,j,k-1) + dz(i,j,k)))
     eatr(i,j,k) = CS%dt_offline_vertical * I_dZval * CS%Kd(i,j,k)
     ebtr(i,j,k-1) = eatr(i,j,k)
   enddo ; enddo ; enddo
   do j=js,je ; do i=is,ie
-    ebtr(i,j,nz) = 0.
+    ebtr(i,j,nz) = 0._wp
   enddo ; enddo
 
   ! Add diurnal cycle for shortwave radiation (only used if run in ocean-only mode)
@@ -765,28 +767,28 @@ subroutine offline_fw_fluxes_into_ocean(G, GV, CS, fluxes, h, in_flux_optional)
   type(ocean_grid_type),      intent(in)    :: G  !< Grid structure
   type(verticalGrid_type),    intent(in)    :: GV !< ocean vertical grid structure
   type(forcing),              intent(inout) :: fluxes !< Surface fluxes container
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h  !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                     optional, intent(in)    :: in_flux_optional !< The total time-integrated amount
                                                   !! of tracer that leaves with freshwater
                                                   !! [CU H ~> Conc m or Conc kg m-2]
 
   integer :: i, j, m
-  real, dimension(SZI_(G),SZJ_(G)) :: negative_fw !< store all negative fluxes [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: negative_fw !< store all negative fluxes [H ~> m or kg m-2]
   logical :: update_h !< Flag for whether h should be updated
 
   if ( present(in_flux_optional) ) &
     call MOM_error(WARNING, "Positive freshwater fluxes with non-zero tracer concentration not supported yet")
 
   ! Set all fluxes to 0
-  negative_fw(:,:) = 0.
+  negative_fw(:,:) = 0._wp
 
   ! Sort fluxes into positive and negative
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    if (fluxes%netMassOut(i,j)<0.0) then
+    if (fluxes%netMassOut(i,j)<0.0_wp) then
       negative_fw(i,j) = fluxes%netMassOut(i,j)
-      fluxes%netMassOut(i,j) = 0.
+      fluxes%netMassOut(i,j) = 0._wp
     endif
   enddo ; enddo
 
@@ -816,9 +818,9 @@ subroutine offline_fw_fluxes_out_ocean(G, GV, CS, fluxes, h, out_flux_optional)
   type(ocean_grid_type),      intent(in)    :: G  !< Grid structure
   type(verticalGrid_type),    intent(in)    :: GV !< ocean vertical grid structure
   type(forcing),              intent(inout) :: fluxes !< Surface fluxes container
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h  !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                     optional, intent(in)    :: out_flux_optional !< The total time-integrated amount
                                                   !! of tracer that leaves with freshwater
                                                   !! [CU H ~> Conc m or Conc kg m-2]
@@ -851,42 +853,42 @@ end subroutine offline_fw_fluxes_out_ocean
 subroutine offline_advection_layer(fluxes, Time_start, time_interval, G, GV, US, CS, h_pre, eatr, ebtr, uhtr, vhtr)
   type(forcing),              intent(inout) :: fluxes        !< pointers to forcing fields
   type(time_type),            intent(in)    :: Time_start    !< starting time of a segment, as a time type
-  real,                       intent(in)    :: time_interval !< Offline transport time interval [T ~> s]
+  real(wp),                       intent(in)    :: time_interval !< Offline transport time interval [T ~> s]
   type(ocean_grid_type),      intent(inout) :: G             !< Ocean grid structure
   type(verticalGrid_type),    intent(in)    :: GV            !< Vertical grid structure
   type(unit_scale_type),      intent(in)    :: US            !< A dimensional unit scaling type
   type(offline_transport_CS), pointer       :: CS            !< Control structure for offline module
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h_pre !< layer thicknesses before advection [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: eatr !< Entrainment from layer above [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: ebtr !< Entrainment from layer below [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: uhtr  !< Zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                               intent(inout) :: vhtr  !< Meridional mass transport [H L2 ~> m3 or kg]
 
   ! Local variables
 
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: uhtr_sub ! Remaining zonal mass transports [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vhtr_sub ! Remaining meridional mass transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: uhtr_sub ! Remaining zonal mass transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: vhtr_sub ! Remaining meridional mass transports [H L2 ~> m3 or kg]
 
-  real, dimension(SZI_(G),SZJB_(G)) :: rem_col_flux ! The summed absolute value of the remaining
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: rem_col_flux ! The summed absolute value of the remaining
                          ! mass fluxes through the faces of a column or within a column [R Z L2 ~> kg]
-  real :: sum_flux       ! Globally summed absolute value of fluxes [R Z L2 ~> kg], which is
+  real(wp) :: sum_flux       ! Globally summed absolute value of fluxes [R Z L2 ~> kg], which is
                          ! used to keep track of how close to convergence we are.
 
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
       eatr_sub, &  ! Layer entrainment rate from above for this sub-cycle [H ~> m or kg m-2]
       ebtr_sub     ! Layer entrainment rate from below for this sub-cycle [H ~> m or kg m-2]
   ! Variables used to keep track of layer thicknesses at various points in the code
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
       h_new, &  ! Updated thicknesses [H ~> m or kg m-2]
       h_vol     ! Cell volumes [H L2 ~> m3 or kg]
   ! Work arrays for temperature and salinity
   integer :: iter
-  real    :: dt_iter  ! The timestep of each iteration [T ~> s]
+  real(wp)    :: dt_iter  ! The timestep of each iteration [T ~> s]
   character(len=160) :: mesg  ! The text of an error message
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz
   integer :: IsdB, IedB, JsdB, JedB
@@ -896,7 +898,7 @@ subroutine offline_advection_layer(fluxes, Time_start, time_interval, G, GV, US,
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
-  dt_iter = time_interval / real(max(1, CS%num_off_iter))
+  dt_iter = time_interval / real(max(1, CS%num_off_iter), wp)
   x_before_y = CS%x_before_y
 
   do iter=1,CS%num_off_iter
@@ -989,7 +991,7 @@ subroutine offline_advection_layer(fluxes, Time_start, time_interval, G, GV, US,
     call pass_vector(uhtr,vhtr,G%Domain)
 
     ! Calculate how close we are to converging by summing the remaining fluxes at each point
-    rem_col_flux(:,:) = 0.0
+    rem_col_flux(:,:) = 0.0_wp
     do k=1,nz ; do j=js,je ; do i=is,ie
       rem_col_flux(i,j) = rem_col_flux(i,j) + GV%H_to_RZ * &
           ( (abs(eatr(i,j,k)) + abs(ebtr(i,j,k))) + &
@@ -1022,14 +1024,14 @@ subroutine update_offline_fields(CS, G, GV, US, h, fluxes, do_ale)
   type(ocean_grid_type),      intent(inout) :: G  !< Ocean grid structure
   type(verticalGrid_type),    intent(in)    :: GV !< Vertical grid structure
   type(unit_scale_type),      intent(in)    :: US !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h !< The regridded layer thicknesses [H ~> m or kg m-2]
   type(forcing),              intent(inout) :: fluxes !< Pointers to forcing fields
   logical,                    intent(in   ) :: do_ale !< True if using ALE
   ! Local variables
   integer :: stencil
   integer :: i, j, k, is, ie, js, je, nz
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_start ! Initial thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_start ! Initial thicknesses [H ~> m or kg m-2]
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   call cpu_clock_begin(CS%id_clock_read_fields)
@@ -1101,27 +1103,27 @@ subroutine update_offline_fields(CS, G, GV, US, h, fluxes, do_ale)
 
   ! Apply masks/factors at T, U, and V points
   do k=1,nz ; do j=js,je ; do i=is,ie
-    if (G%mask2dT(i,j)<1.0) then
+    if (G%mask2dT(i,j)<1.0_wp) then
       CS%h_end(i,j,k) = GV%Angstrom_H
     endif
   enddo ; enddo ; enddo
 
   do k=1,nz+1 ; do j=js,je ; do i=is,ie
-    CS%Kd(i,j,k) = max(0.0, CS%Kd(i,j,k))
-    if (CS%Kd_max>0.) then
+    CS%Kd(i,j,k) = max(0.0_wp, CS%Kd(i,j,k))
+    if (CS%Kd_max>0._wp) then
       CS%Kd(i,j,k) = MIN(CS%Kd_max, CS%Kd(i,j,k))
     endif
   enddo ; enddo ; enddo
 
   do k=1,nz ; do J=js-1,je ; do i=is,ie
-    if (G%mask2dCv(i,J)<1.0) then
-      CS%vhtr(i,J,k) = 0.0
+    if (G%mask2dCv(i,J)<1.0_wp) then
+      CS%vhtr(i,J,k) = 0.0_wp
     endif
   enddo ; enddo ; enddo
 
   do k=1,nz ; do j=js,je ; do I=is-1,ie
-    if (G%mask2dCu(I,j)<1.0) then
-      CS%uhtr(I,j,k) = 0.0
+    if (G%mask2dCu(I,j)<1.0_wp) then
+      CS%uhtr(I,j,k) = 0.0_wp
     endif
   enddo ; enddo ; enddo
 
@@ -1216,21 +1218,21 @@ subroutine post_offline_convergence_diags(G, GV, CS, h_off, h_end, uhtr, vhtr)
   type(ocean_grid_type),      intent(in)    :: G      !< Ocean grid structure
   type(verticalGrid_type),    intent(in)    :: GV     !< Vertical grid structure
   type(offline_transport_CS), intent(in   ) :: CS     !< Offline control structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h_off  !< Thicknesses at end of offline step [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: h_end  !< Stored thicknesses [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                               intent(inout) :: uhtr   !< Remaining zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                               intent(inout) :: vhtr   !< Remaining meridional mass transport [H L2 ~> m3 or kg]
 
-  real, dimension(SZI_(G),SZJ_(G)) :: eta_diff ! Differences in column thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: eta_diff ! Differences in column thickness [H ~> m or kg m-2]
   integer :: i, j, k
 
   if (CS%id_eta_diff_end>0) then
     ! Calculate difference in column thickness
-    eta_diff = 0.
+    eta_diff = 0._wp
     do k=1,GV%ke ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
       eta_diff(i,j) = eta_diff(i,j) + h_off(i,j,k)
     enddo ; enddo ; enddo
@@ -1254,20 +1256,20 @@ subroutine extract_offline_main(CS, uhtr, vhtr, eatr, ebtr, h_end, accumulated_t
                                 dt_offline, dt_offline_vertical, skip_diffusion)
   type(offline_transport_CS), target, intent(in   ) :: CS !< Offline control structure
   ! Returned optional arguments
-  real, dimension(:,:,:), optional, pointer       :: uhtr !< Remaining zonal mass transport [H L2 ~> m3 or kg]
-  real, dimension(:,:,:), optional, pointer       :: vhtr !< Remaining meridional mass transport [H L2 ~> m3 or kg]
-  real, dimension(:,:,:), optional, pointer       :: eatr !< Amount of fluid entrained from the layer above within
+  real(wp), dimension(:,:,:), optional, pointer       :: uhtr !< Remaining zonal mass transport [H L2 ~> m3 or kg]
+  real(wp), dimension(:,:,:), optional, pointer       :: vhtr !< Remaining meridional mass transport [H L2 ~> m3 or kg]
+  real(wp), dimension(:,:,:), optional, pointer       :: eatr !< Amount of fluid entrained from the layer above within
                                                           !! one time step [H ~> m or kg m-2]
-  real, dimension(:,:,:), optional, pointer       :: ebtr !< Amount of fluid entrained from the layer below within
+  real(wp), dimension(:,:,:), optional, pointer       :: ebtr !< Amount of fluid entrained from the layer below within
                                                           !! one time step [H ~> m or kg m-2]
-  real, dimension(:,:,:), optional, pointer       :: h_end !< Thicknesses at the end of offline timestep
+  real(wp), dimension(:,:,:), optional, pointer       :: h_end !< Thicknesses at the end of offline timestep
                                                           !! [H ~> m or kg m-2]
   type(time_type),        optional, pointer       :: accumulated_time !< Length of time accumulated in the
                                                           !! current offline interval
   type(time_type),        optional, pointer       :: vertical_time !< The next value of accumulate_time at which to
                                                           !! vertical processes
-  real,                   optional, intent(  out) :: dt_offline !< Timestep used for offline tracers [T ~> s]
-  real,                   optional, intent(  out) :: dt_offline_vertical !< Timestep used for calls to tracer
+  real(wp),                   optional, intent(  out) :: dt_offline !< Timestep used for offline tracers [T ~> s]
+  real(wp),                   optional, intent(  out) :: dt_offline_vertical !< Timestep used for calls to tracer
                                                           !! vertical physics [T ~> s]
   logical,                optional, intent(  out) :: skip_diffusion !< Skips horizontal diffusion of tracers
 
@@ -1418,11 +1420,11 @@ subroutine offline_transport_init(param_file, CS, diabatic_CSp, G, GV, US)
   call get_param(param_file, mdl, "KD_MAX", CS%Kd_max, &
     "The maximum permitted increment for the diapycnal "//&
     "diffusivity from TKE-based parameterizations, or a "//&
-    "negative value for no limit.", units="m2 s-1", default=-1.0, scale=GV%m2_s_to_HZ_T)
+    "negative value for no limit.", units="m2 s-1", default=-1.0_wp, scale=GV%m2_s_to_HZ_T)
   call get_param(param_file, mdl, "MIN_RESIDUAL_TRANSPORT", CS%min_residual, &
     "How much remaining transport before the main offline advection is exited. "//&
     "The default value corresponds to about 1 meter of difference in a grid cell", &
-    default=1.e9, units="m3", scale=GV%m_to_H*US%m_to_L**2)
+    default=1.e9_wp, units="m3", scale=GV%m_to_H*US%m_to_L**2)
   call get_param(param_file, mdl, "READ_ALL_TS_UVH", CS%read_all_ts_uvh,  &
     "Reads all time levels of a subset of the fields necessary to run "    //      &
     "the model offline. This can require a large amount of memory "//      &
@@ -1455,7 +1457,7 @@ subroutine offline_transport_init(param_file, CS, diabatic_CSp, G, GV, US)
   end select
 
   ! Set the accumulated time to zero
-  CS%accumulated_time = real_to_time(0.0)
+  CS%accumulated_time = real_to_time(0.0_wp)
   CS%vertical_time = CS%accumulated_time
   ! Set the starting read index for time-averaged and snapshotted fields
   CS%ridx_sum = CS%start_index
@@ -1469,13 +1471,13 @@ subroutine offline_transport_init(param_file, CS, diabatic_CSp, G, GV, US)
                                minimum_forcing_depth=CS%minimum_forcing_depth)
 
   ! Allocate arrays
-  allocate(CS%uhtr(IsdB:IedB,jsd:jed,nz), source=0.0)
-  allocate(CS%vhtr(isd:ied,JsdB:JedB,nz), source=0.0)
-  allocate(CS%eatr(isd:ied,jsd:jed,nz), source=0.0)
-  allocate(CS%ebtr(isd:ied,jsd:jed,nz), source=0.0)
-  allocate(CS%h_end(isd:ied,jsd:jed,nz), source=0.0)
-  allocate(CS%Kd(isd:ied,jsd:jed,nz+1), source=0.0)
-  if (CS%read_mld) allocate(CS%mld(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+  allocate(CS%uhtr(IsdB:IedB,jsd:jed,nz), source=0.0_wp)
+  allocate(CS%vhtr(isd:ied,JsdB:JedB,nz), source=0.0_wp)
+  allocate(CS%eatr(isd:ied,jsd:jed,nz), source=0.0_wp)
+  allocate(CS%ebtr(isd:ied,jsd:jed,nz), source=0.0_wp)
+  allocate(CS%h_end(isd:ied,jsd:jed,nz), source=0.0_wp)
+  allocate(CS%Kd(isd:ied,jsd:jed,nz+1), source=0.0_wp)
+  if (CS%read_mld) allocate(CS%mld(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
 
   if (CS%read_all_ts_uvh) then
     call read_all_input(CS, G, GV, US)
@@ -1514,11 +1516,11 @@ subroutine read_all_input(CS, G, GV, US)
     if (allocated(CS%temp_all)) call MOM_error(FATAL, "temp_all is already allocated")
     if (allocated(CS%salt_all)) call MOM_error(FATAL, "salt_all is already allocated")
 
-    allocate(CS%uhtr_all(IsdB:IedB,jsd:jed,nz,ntime), source=0.0)
-    allocate(CS%vhtr_all(isd:ied,JsdB:JedB,nz,ntime), source=0.0)
-    allocate(CS%hend_all(isd:ied,jsd:jed,nz,ntime), source=0.0)
-    allocate(CS%temp_all(isd:ied,jsd:jed,nz,1:ntime), source=0.0)
-    allocate(CS%salt_all(isd:ied,jsd:jed,nz,1:ntime), source=0.0)
+    allocate(CS%uhtr_all(IsdB:IedB,jsd:jed,nz,ntime), source=0.0_wp)
+    allocate(CS%vhtr_all(isd:ied,JsdB:JedB,nz,ntime), source=0.0_wp)
+    allocate(CS%hend_all(isd:ied,jsd:jed,nz,ntime), source=0.0_wp)
+    allocate(CS%temp_all(isd:ied,jsd:jed,nz,1:ntime), source=0.0_wp)
+    allocate(CS%salt_all(isd:ied,jsd:jed,nz,1:ntime), source=0.0_wp)
 
     call MOM_mesg("Reading in uhtr, vhtr, h_start, h_end, temp, salt")
     do t = 1,ntime

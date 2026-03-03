@@ -5,6 +5,8 @@ module Recon1d_PLM_WLS
 
 use Recon1d_type, only : Recon1d, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public PLM_WLS, testing
@@ -25,9 +27,9 @@ public PLM_WLS, testing
 !! - reconstruct_parent()   -> reconstruct()
 type, extends (Recon1d) :: PLM_WLS
 
-  real, allocatable :: ul(:) !< Left edge value [A]
-  real, allocatable :: ur(:) !< Right edge value [A]
-  real, allocatable, private :: slp(:) !< Difference across cell, ur - ul [A].
+  real(wp), allocatable :: ul(:) !< Left edge value [A]
+  real(wp), allocatable :: ur(:) !< Right edge value [A]
+  real(wp), allocatable, private :: slp(:) !< Difference across cell, ur - ul [A].
                               !! This is redundant with ul and ur and not used
                               !! in any evaluations, but is needed for testing.
 
@@ -62,7 +64,7 @@ contains
 subroutine init(this, n, h_neglect, check)
   class(PLM_WLS),    intent(out) :: this      !< This reconstruction
   integer,           intent(in)  :: n         !< Number of cells in this column
-  real, optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+  real(wp), optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
   logical, optional, intent(in)  :: check     !< If true, enable some consistency checking
 
   this%n = n
@@ -82,15 +84,15 @@ end subroutine init
 !> Calculate a 1D PLM_WLS reconstruction based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(PLM_WLS), intent(inout) :: this !< This reconstruction
-  real,           intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,           intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),           intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),           intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp ! The PLM slopes (difference across cell) [A]
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
-  real :: h_l0, h_r0 ! Thickness of left and right cells with h_neglect added [H]
-  real :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
-  real :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
+  real(wp) :: slp ! The PLM slopes (difference across cell) [A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
+  real(wp) :: h_l0, h_r0 ! Thickness of left and right cells with h_neglect added [H]
+  real(wp) :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
+  real(wp) :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
   integer :: n, km1, k, kp1
 
   n = this%n
@@ -103,9 +105,9 @@ subroutine reconstruct(this, h, u)
     u_c = u(k)
     u_r = u(kp1)
 
-    h_l = h(km1) * real( k - km1 ) ! This zeroes h_l at k==1
+    h_l = h(km1) * real( k - km1 , wp) ! This zeroes h_l at k==1
     h_c = h(k)
-    h_r = h(kp1) * real( kp1 - k ) ! This zeroes h_r at k==n
+    h_r = h(kp1) * real( kp1 - k , wp) ! This zeroes h_r at k==n
 
     ! This is the slope that minimizes the error
     !  sum_l={-1,1} h(k+l) * [ u(k+l) - u(k) + slp * ( z(k+l) - z(k) ) ]
@@ -116,16 +118,16 @@ subroutine reconstruct(this, h, u)
     hxyr = ( h_r * ( h_c + h_r ) ) * ( u_r - u_c )
     hx2l = h_l0 * ( h_c + h_l0 )**2
     hx2r = h_r0 * ( h_c + h_r0 )**2
-    slp = 2. * h_c * ( hxyr + hxyl ) / ( hx2l + hx2r )
+    slp = 2._wp * h_c * ( hxyr + hxyl ) / ( hx2l + hx2r )
 
     ! Mean value
     this%u_mean(k) = u_c
 
     ! Left edge
-    this%ul(k) = u_c - 0.5 * slp
+    this%ul(k) = u_c - 0.5_wp * slp
 
     ! Right edge
-    this%ur(k) = u_c + 0.5 * slp
+    this%ur(k) = u_c + 0.5_wp * slp
 
     ! Store slope
     this%slp(k) = slp
@@ -134,11 +136,11 @@ subroutine reconstruct(this, h, u)
 end subroutine reconstruct
 
 !> Value of PLM_WLS reconstruction at a point in cell k [A]
-real function f(this, k, x)
+real(wp) function f(this, k, x)
   class(PLM_WLS), intent(in) :: this !< This reconstruction
   integer,        intent(in) :: k    !< Cell number
-  real,           intent(in) :: x    !< Non-dimensional position within element [nondim]
-  real :: du ! Difference across cell [A]
+  real(wp),           intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp) :: du ! Difference across cell [A]
 
   du = this%ur(k) - this%ul(k)
 
@@ -146,41 +148,41 @@ real function f(this, k, x)
   ! LS errors. In other PLM implementations x is bounded to the
   ! element and the expressions are constructed to not exceed
   ! bounds. There are no such constraints for PLM_WLS.
-  f = this%u_mean(k) + du * ( x - 0.5)
+  f = this%u_mean(k) + du * ( x - 0.5_wp)
   !f = this%u_mean(k) + this%slp(k) * ( x - 0.5)
 
 end function f
 
 !> Derivative of PLM_WLS reconstruction at a point in cell k [A]
-real function dfdx(this, k, x)
+real(wp) function dfdx(this, k, x)
   class(PLM_WLS), intent(in) :: this !< This reconstruction
   integer,        intent(in) :: k    !< Cell number
-  real,           intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp),           intent(in) :: x    !< Non-dimensional position within element [nondim]
 
   dfdx = this%ur(k) - this%ul(k)
 
 end function dfdx
 
 !> Average between xa and xb for cell k of a 1D PLM reconstruction [A]
-real function average(this, k, xa, xb)
+real(wp) function average(this, k, xa, xb)
   class(PLM_WLS), intent(in) :: this !< This reconstruction
   integer,        intent(in) :: k    !< Cell number
-  real,           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-  real,           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
-  real :: xmab ! Mid-point between xa and xb (0 to 1)
-  real :: u_a, u_b ! Values at xa and xb [A]
+  real(wp),           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+  real(wp),           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+  real(wp) :: xmab ! Mid-point between xa and xb (0 to 1)
+  real(wp) :: u_a, u_b ! Values at xa and xb [A]
 
   ! Mid-point between xa and xb
-  xmab = 0.5 * ( xa + xb )
+  xmab = 0.5_wp * ( xa + xb )
 
   ! This expression for u_a can overshoot u_r but is good for xmab<<1
   u_a = this%ul(k) + ( this%ur(k)  - this%ul(k) ) * xmab
   ! This expression for u_b can overshoot u_l but is good for 1-xmab<<1
-  u_b = this%ur(k) + ( this%ul(k)  - this%ur(k) ) * ( 1. - xmab )
+  u_b = this%ur(k) + ( this%ul(k)  - this%ur(k) ) * ( 1._wp - xmab )
 
   ! Since u_a and u_b are both bounded, this will perserve uniformity but will the
   ! sum be bounded? Emperically it seems to work...
-  average = 0.5 * ( u_a + u_b )
+  average = 0.5_wp * ( u_a + u_b )
 
 end function average
 
@@ -195,38 +197,38 @@ end subroutine destroy
 !> Checks the PLM_WLS reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(PLM_WLS), intent(in) :: this !< This reconstruction
-  real,           intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,           intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),           intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),           intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
-  real :: slp ! Cell slope [A]
+  real(wp) :: slp ! Cell slope [A]
   type(PLM_WLS) :: perturbed !< A perturbed reconstruction
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
-  real :: h_l0, h_r0, h_c0 ! Thickness of left, right, center cells with h_neglect added [H]
-  real :: x_l, x_r ! Positions of left and right cells [H]
-  real :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
-  real :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
-  real :: hy2l, hy2r ! Contributions to error, <h y^2> [H3]
-  real :: y_l, y_r ! Left, right, value differencess [A]
-  real :: b_h, bp_h ! slp / h_c [A H-1]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
+  real(wp) :: h_l0, h_r0, h_c0 ! Thickness of left, right, center cells with h_neglect added [H]
+  real(wp) :: x_l, x_r ! Positions of left and right cells [H]
+  real(wp) :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
+  real(wp) :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
+  real(wp) :: hy2l, hy2r ! Contributions to error, <h y^2> [H3]
+  real(wp) :: y_l, y_r ! Left, right, value differencess [A]
+  real(wp) :: b_h, bp_h ! slp / h_c [A H-1]
   integer :: km1, kp1
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell reconstruction is monotonic within each cell (it should be as a straight line)
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell is a straight line (to within machine precision)
   do k = 1, this%n
-    if ( abs(2. * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
-         max(abs(2. * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
+    if ( abs(2._wp * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
+         max(abs(2._wp * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
   enddo
 
   ! Create a perturbable reconstruction
@@ -234,23 +236,23 @@ logical function check_reconstruction(this, h, u)
   call perturbed%reconstruct( h, u ) ! Should reproduce "this"
   ! Check the copy is identical
   do k = 1, this%n
-    if ( abs( perturbed%u_mean(k) - this%u_mean(k) ) > 0. ) check_reconstruction = .true.
-    if ( abs( perturbed%ul(k) - this%ul(k) ) > 0. ) check_reconstruction = .true.
-    if ( abs( perturbed%ur(k) - this%ur(k) ) > 0. ) check_reconstruction = .true.
-    if ( abs( perturbed%slp(k) - this%slp(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( perturbed%u_mean(k) - this%u_mean(k) ) > 0._wp ) check_reconstruction = .true.
+    if ( abs( perturbed%ul(k) - this%ul(k) ) > 0._wp ) check_reconstruction = .true.
+    if ( abs( perturbed%ur(k) - this%ur(k) ) > 0._wp ) check_reconstruction = .true.
+    if ( abs( perturbed%slp(k) - this%slp(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
   ! Now perturb the slope. The local error should not decrease.
   do k = 1, this%n
-    slp = this%slp(k) * ( 1.0 + 1. * epsilon(slp) )
+    slp = this%slp(k) * ( 1.0_wp + 1._wp * epsilon(slp) )
     perturbed%slp(k) = slp
-    perturbed%ul(k) = u(k) - 0.5 * slp
-    perturbed%ur(k) = u(k) + 0.5 * slp
+    perturbed%ul(k) = u(k) - 0.5_wp * slp
+    perturbed%ur(k) = u(k) + 0.5_wp * slp
     if ( LS_error(perturbed, k, h, u) < LS_error(this, k, h, u) ) check_reconstruction = .true.
 
-    slp = this%slp(k) * ( 1.0 - 1. * epsilon(slp) )
+    slp = this%slp(k) * ( 1.0_wp - 1._wp * epsilon(slp) )
     perturbed%slp(k) = slp
-    perturbed%ul(k) = u(k) - 0.5 * slp
-    perturbed%ur(k) = u(k) + 0.5 * slp
+    perturbed%ul(k) = u(k) - 0.5_wp * slp
+    perturbed%ur(k) = u(k) + 0.5_wp * slp
     if ( LS_error(perturbed, k, h, u) < LS_error(this, k, h, u) ) check_reconstruction = .true.
   enddo
 
@@ -260,17 +262,17 @@ end function check_reconstruction
 !!
 !! Note that this is the error relative to the minimum of the loss function so that at the
 !! true solution this function returns zero. See module documentation.
-real function LS_error(this, k, h, u)
+real(wp) function LS_error(this, k, h, u)
   type(PLM_WLS), intent(in) :: this !< This reconstruction
   integer,        intent(in) :: k    !< Cell number
-  real,           intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,           intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),           intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),           intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
-  real :: h_l0, h_r0, hc0 ! Thickness of left, right, center cells with h_neglect added [H]
-  real :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
-  real :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
+  real(wp) :: h_l0, h_r0, hc0 ! Thickness of left, right, center cells with h_neglect added [H]
+  real(wp) :: hx2l, hx2r ! Contributions to denominator, <h x^2> [H3]
+  real(wp) :: hxyl, hxyr ! Contributions to numerator, <h x y> [H2 A]
   integer :: km1, kp1
 
   km1 = max(1, k-1)
@@ -279,17 +281,17 @@ real function LS_error(this, k, h, u)
   u_c = u(k)
   u_r = u(kp1)
 
-  h_l = h(km1) * real( k - km1 ) ! This zeroes h_l at k==1
-  h_r = h(kp1) * real( kp1 - k ) ! This zeroes h_r at k==n
+  h_l = h(km1) * real( k - km1 , wp) ! This zeroes h_l at k==1
+  h_r = h(kp1) * real( kp1 - k , wp) ! This zeroes h_r at k==n
   h_c = h(k)
   hc0 = h_c + this%h_neglect
 
   h_l0 = h_l + this%h_neglect
   h_r0 = h_r + this%h_neglect
-  hxyl = ( h_l * 0.5 * ( h_c + h_l ) ) * ( u_c - u_l )
-  hxyr = ( h_r * 0.5 * ( h_c + h_r ) ) * ( u_r - u_c )
-  hx2l = h_l0 * 0.25 * ( h_c + h_l0 )**2
-  hx2r = h_r0 * 0.25 * ( h_c + h_r0 )**2
+  hxyl = ( h_l * 0.5_wp * ( h_c + h_l ) ) * ( u_c - u_l )
+  hxyr = ( h_r * 0.5_wp * ( h_c + h_r ) ) * ( u_r - u_c )
+  hx2l = h_l0 * 0.25_wp * ( h_c + h_l0 )**2
+  hx2r = h_r0 * 0.25_wp * ( h_c + h_r0 )**2
   LS_error = h_c * ( ( hx2l + hx2r ) * this%slp(k) - h(k) * ( hxyl + hxyr ) )**2
   LS_error = LS_error / ( hc0 * ( hx2l + hx2r ) )
 end function LS_error
@@ -301,8 +303,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,        intent(in)    :: stdout  !< I/O channel for stdout
   integer,        intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -310,66 +312,66 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%set( stderr=stderr ) ! Sets the stderr channel in test
   call test%set( verbose=verbose ) ! Sets the verbosity flag in test
 
-  call this%init(3, h_neglect=1.e-20)
+  call this%init(3, h_neglect=1.e-20_wp)
   call test%test( this%n /= 3, "Setting number of levels")
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/1.,1.,1./), (/-1.,0.,2./) )
-  call test%real_arr(3, this%slp, (/1.,1.5,2./), "(1,1,1)(-1,0,2) slope")
+  call this%reconstruct( (/1._wp,1._wp,1._wp/), (/-1._wp,0._wp,2._wp/) )
+  call test%real_arr(3, this%slp, (/1._wp,1.5_wp,2._wp/), "(1,1,1)(-1,0,2) slope")
 
   do k = 1, 3
-    um(k) = LS_error(this, k, (/1.,1.,1./), (/-1.,0.,2./) )
+    um(k) = LS_error(this, k, (/1._wp,1._wp,1._wp/), (/-1._wp,0._wp,2._wp/) )
   enddo
-  call test%real_arr(3, um, (/0.,0.,0./), "(1,1,1)(-1,0,2) LS' rel error")
+  call test%real_arr(3, um, (/0._wp,0._wp,0._wp/), "(1,1,1)(-1,0,2) LS' rel error")
 
-  call this%reconstruct( (/0.,1.,1./), (/-1.,0.,2./) )
-  call test%real_arr(3, this%slp, (/0.,2.,2./), "(0,1,1)(-1,0,2) slope")
+  call this%reconstruct( (/0._wp,1._wp,1._wp/), (/-1._wp,0._wp,2._wp/) )
+  call test%real_arr(3, this%slp, (/0._wp,2._wp,2._wp/), "(0,1,1)(-1,0,2) slope")
 
   do k = 1, 3
-    um(k) = LS_error(this, k, (/0.,1.,1./), (/-1.,0.,2./) )
+    um(k) = LS_error(this, k, (/0._wp,1._wp,1._wp/), (/-1._wp,0._wp,2._wp/) )
   enddo
-  call test%real_arr(3, um, (/0.,0.,0./), "(0,1,1)(-1,0,2) LS' rel error")
+  call test%real_arr(3, um, (/0._wp,0._wp,0._wp/), "(0,1,1)(-1,0,2) LS' rel error")
 
-  call this%reconstruct( (/1.,1.,1./), (/-2.,0.,1./) )
-  call test%real_arr(3, this%slp, (/2.,1.5,1./), "(1,1,1)(-2,0,1) slope")
+  call this%reconstruct( (/1._wp,1._wp,1._wp/), (/-2._wp,0._wp,1._wp/) )
+  call test%real_arr(3, this%slp, (/2._wp,1.5_wp,1._wp/), "(1,1,1)(-2,0,1) slope")
 
-  call this%reconstruct( (/1.,1.,0./), (/-2.,0.,1./) )
-  call test%real_arr(3, this%slp, (/2.,2.,0./), "(1,1,0)(-2,0,1) slope")
+  call this%reconstruct( (/1._wp,1._wp,0._wp/), (/-2._wp,0._wp,1._wp/) )
+  call test%real_arr(3, this%slp, (/2._wp,2._wp,0._wp/), "(1,1,0)(-2,0,1) slope")
 
   call this%destroy()
   call this%init(3) ! Reset to defaults
 
   ! Straight line data on uniform grid
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), "Straight line data")
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), "Straight line data")
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,4./), "Evaluation on left edge")
-  call test%real_arr(3, um, (/1.,3.,5./), "Evaluation in center")
-  call test%real_arr(3, ur, (/2.,4.,6./), "Evaluation on right edge")
+  call test%real_arr(3, ul, (/0._wp,2._wp,4._wp/), "Evaluation on left edge")
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), "Evaluation in center")
+  call test%real_arr(3, ur, (/2._wp,4._wp,6._wp/), "Evaluation on right edge")
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/2.,2.,2./), "dfdx on left edge")
-  call test%real_arr(3, um, (/2.,2.,2./), "dfdx in center")
-  call test%real_arr(3, ur, (/2.,2.,2./), "dfdx on right edge")
+  call test%real_arr(3, ul, (/2._wp,2._wp,2._wp/), "dfdx on left edge")
+  call test%real_arr(3, um, (/2._wp,2._wp,2._wp/), "dfdx in center")
+  call test%real_arr(3, ur, (/2._wp,2._wp,2._wp/), "dfdx on right edge")
 
   do k = 1, 3
-    um(k) = LS_error(this, k, (/2.,2.,2./), (/1.,3.,5./) )
+    um(k) = LS_error(this, k, (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
   enddo
-  call test%real_arr(3, um, (/0.,0.,0./), "Rel error is 0")
+  call test%real_arr(3, um, (/0._wp,0._wp,0._wp/), "Rel error is 0")
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.5 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.5 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.25,3.25,5.25/), "Return interval average")
+  call test%real_arr(3, um, (/1.25_wp,3.25_wp,5.25_wp/), "Return interval average")
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )

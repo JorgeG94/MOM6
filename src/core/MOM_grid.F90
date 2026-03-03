@@ -10,6 +10,8 @@ use MOM_error_handler, only : MOM_error, MOM_mesg, FATAL
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_unit_scaling, only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -73,7 +75,7 @@ type, public :: ocean_grid_type
                              !! during the course of the run via calls to
                              !! set_first_direction.
 
-  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     mask2dT, &   !< 0 for land points and 1 for ocean points on the h-grid [nondim].
     geoLatT, &   !< The geographic latitude at tracer (h) points [degrees_N] or [km] or [m]
     geoLonT, &   !< The geographic longitude at tracer (h) points [degrees_E] or [km] or [m]
@@ -88,7 +90,7 @@ type, public :: ocean_grid_type
     cos_rot      !< The cosine of the angular rotation between the local model grid's northward
                  !! and the true northward directions [nondim].
 
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid [nondim].
     OBCmaskCu, & !< 0 for boundary or OBC points and 1 for ocean points on the u grid [nondim].
     geoLatCu, &  !< The geographic latitude at u points [degrees_N] or [km] or [m]
@@ -102,7 +104,7 @@ type, public :: ocean_grid_type
     IareaCu, &   !< The masked inverse areas of u-grid cells [L-2 ~> m-2].
     areaCu       !< The areas of the u-grid cells [L2 ~> m2].
 
-  real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid [nondim].
     OBCmaskCv, & !< 0 for boundary or OBC points and 1 for ocean points on the v grid [nondim].
     geoLatCv, &  !< The geographic latitude at v points [degrees_N] or [km] or [m]
@@ -116,17 +118,17 @@ type, public :: ocean_grid_type
     IareaCv, &   !< The masked inverse areas of v-grid cells [L-2 ~> m-2].
     areaCv       !< The areas of the v-grid cells [L2 ~> m2].
 
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     porous_DminU, & !< minimum topographic height (deepest) of U-face [Z ~> m]
     porous_DmaxU, & !< maximum topographic height (shallowest) of U-face [Z ~> m]
     porous_DavgU    !< average topographic height of U-face [Z ~> m]
 
-  real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     porous_DminV, & !< minimum topographic height (deepest) of V-face [Z ~> m]
     porous_DmaxV, & !< maximum topographic height (shallowest) of V-face [Z ~> m]
     porous_DavgV    !< average topographic height of V-face [Z ~> m]
 
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     mask2dBu, &  !< 0 for boundary points and 1 for ocean points on the q grid [nondim].
     geoLatBu, &  !< The geographic latitude at q points [degrees_N] or [km] or [m]
     geoLonBu, &  !< The geographic longitude at q points [degrees_E] or [km] or [m].
@@ -137,14 +139,14 @@ type, public :: ocean_grid_type
     areaBu, &    !< areaBu is the area of a q-cell [L2 ~> m2]
     IareaBu      !< IareaBu = 1/areaBu [L-2 ~> m-2].
 
-  real, pointer, dimension(:) :: &
+  real(wp), pointer, dimension(:) :: &
     gridLatT => NULL(), & !< The latitude of T points for the purpose of labeling the output axes,
                           !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
                           !! On many grids this is the same as geoLatT.
     gridLatB => NULL()    !< The latitude of B points for the purpose of labeling the output axes,
                           !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
                           !! On many grids this is the same as geoLatBu.
-  real, pointer, dimension(:) :: &
+  real(wp), pointer, dimension(:) :: &
     gridLonT => NULL(), & !< The longitude of T points for the purpose of labeling the output axes,
                           !! often in units of [degrees_E] or [km] or [m] or [gridpoints].
                           !! On many grids this is the same as geoLonT.
@@ -159,10 +161,10 @@ type, public :: ocean_grid_type
     x_ax_unit_short, &  !< A short description of the x-axis units for documenting parameter units
     y_ax_unit_short     !< A short description of the y-axis units for documenting parameter units
 
-  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     bathyT           !< Ocean bottom depth, referenced to Z_ref at tracer points. bathyT is in
                      !! depth units and positive *below* Z_ref [Z ~> m].
-  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     meanSL           !< Spatially varying time mean sea level, referenced to Z_ref at tracer points.
                      !! meanSL is in height units and positive *above* Z_ref. It is used
                      !! a) as the height where p = p_atm or zero;
@@ -170,27 +172,27 @@ type, public :: ocean_grid_type
                      !!    mean thickness = max(meanSL + bathyT, 0.0).
                      !! meanSL is 2D for the consideration of a domain with spatically varying mean
                      !! height, e.g. the Great Lakes system [Z ~> m].
-  real    :: Z_ref   !< A reference value for all geometric height fields, such as bathyT [Z ~> m].
+  real(wp)    :: Z_ref   !< A reference value for all geometric height fields, such as bathyT [Z ~> m].
 
   logical :: bathymetry_at_vel  !< If true, there are separate values for the
                   !! basin depths at velocity points.  Otherwise the effects of
                   !! of topography are entirely determined from thickness points.
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     Dblock_u, &   !< Topographic depths at u-points at which the flow is blocked [Z ~> m].
     Dopen_u       !< Topographic depths at u-points at which the flow is open at width dy_Cu [Z ~> m].
-  real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     Dblock_v, &   !< Topographic depths at v-points at which the flow is blocked [Z ~> m].
     Dopen_v       !< Topographic depths at v-points at which the flow is open at width dx_Cv [Z ~> m].
-  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu, & !< The Coriolis parameter at corner points [T-1 ~> s-1].
     Coriolis2Bu   !< The square of the Coriolis parameter at corner points [T-2 ~> s-2].
-  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+  real(wp) ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     df_dx, &      !< Derivative d/dx f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
     df_dy         !< Derivative d/dy f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
 
   ! These variables are global sums that are useful for 1-d diagnostics.
-  real :: areaT_global  !< Global sum of h-cell area [L2 ~> m2]
-  real :: IareaT_global !< Global sum of inverse h-cell area (1/areaT_global) [L-2 ~> m-2].
+  real(wp) :: areaT_global  !< Global sum of h-cell area [L2 ~> m2]
+  real(wp) :: IareaT_global !< Global sum of inverse h-cell area (1/areaT_global) [L-2 ~> m-2].
 
   type(unit_scale_type), pointer :: US => NULL() !< A dimensional unit scaling type
 
@@ -201,16 +203,16 @@ type, public :: ocean_grid_type
 
   ! These parameters are run-time parameters that are used during some
   ! initialization routines (but not all)
-  real :: grid_unit_to_L !< A factor that converts a the geoLat and geoLon variables and related
+  real(wp) :: grid_unit_to_L !< A factor that converts a the geoLat and geoLon variables and related
                         !! variables like len_lat and len_lon into rescaled horizontal distance
                         !! units on a Cartesian grid, in [L km ~> 1000] or [L m-1 ~> 1] or
                         !! is 0 for a non-Cartesian grid.
-  real :: south_lat     !< The latitude (or y-coordinate) of the first v-line [degrees_N] or [km] or [m]
-  real :: west_lon      !< The longitude (or x-coordinate) of the first u-line [degrees_E] or [km] or [m]
-  real :: len_lat       !< The latitudinal (or y-coord) extent of physical domain [degrees_N] or [km] or [m]
-  real :: len_lon       !< The longitudinal (or x-coord) extent of physical domain [degrees_E] or [km] or [m]
-  real :: Rad_Earth_L   !< The radius of the planet in rescaled units [L ~> m]
-  real :: max_depth     !< The maximum depth of the ocean in depth units [Z ~> m]
+  real(wp) :: south_lat     !< The latitude (or y-coordinate) of the first v-line [degrees_N] or [km] or [m]
+  real(wp) :: west_lon      !< The longitude (or x-coordinate) of the first u-line [degrees_E] or [km] or [m]
+  real(wp) :: len_lat       !< The latitudinal (or y-coord) extent of physical domain [degrees_N] or [km] or [m]
+  real(wp) :: len_lon       !< The longitudinal (or x-coord) extent of physical domain [degrees_E] or [km] or [m]
+  real(wp) :: Rad_Earth_L   !< The radius of the planet in rescaled units [L ~> m]
+  real(wp) :: max_depth     !< The maximum depth of the ocean in depth units [Z ~> m]
 end type ocean_grid_type
 
 contains
@@ -231,7 +233,7 @@ subroutine MOM_grid_init(G, param_file, US, HI, global_indexing, bathymetry_at_v
                              !! are entirely determined from thickness points.
 
   ! Local variables
-  real :: mean_SeaLev_scale ! A scaling factor for the reference height variable [1] or [Z m-1 ~> 1]
+  real(wp) :: mean_SeaLev_scale ! A scaling factor for the reference height variable [1] or [Z m-1 ~> 1]
   integer :: isd, ied, jsd, jed
   integer :: IsdB, IedB, JsdB, JedB
   integer :: ied_max, jed_max
@@ -244,14 +246,14 @@ subroutine MOM_grid_init(G, param_file, US, HI, global_indexing, bathymetry_at_v
   integer, allocatable, dimension(:) :: ibegin, iend, jbegin, jend
   character(len=40)  :: mod_nm  = "MOM_grid" ! This module's name.
 
-  mean_SeaLev_scale = 1.0 ;  if (associated(G%US)) mean_SeaLev_scale = G%US%m_to_Z
+  mean_SeaLev_scale = 1.0_wp ;  if (associated(G%US)) mean_SeaLev_scale = G%US%m_to_Z
 
   ! Read all relevant parameters and write them to the model log.
   call get_param(param_file, mod_nm, "REFERENCE_HEIGHT", G%Z_ref, &
-                 units="m", default=0.0, scale=mean_SeaLev_scale, do_not_log=.true.)
+                 units="m", default=0.0_wp, scale=mean_SeaLev_scale, do_not_log=.true.)
   call log_version(param_file, mod_nm, version, &
                    "Parameters providing information about the lateral grid.", &
-                   log_to_all=.true., layout=.true., all_default=(G%Z_ref==0.0))
+                   log_to_all=.true., layout=.true., all_default=(G%Z_ref==0.0_wp))
 
   call get_param(param_file, mod_nm, "NIBLOCK", niblock, "The number of blocks "// &
                  "in the x-direction on each processor (for openmp).", default=1, &
@@ -263,7 +265,7 @@ subroutine MOM_grid_init(G, param_file, US, HI, global_indexing, bathymetry_at_v
 
   call get_param(param_file, mod_nm, "REFERENCE_HEIGHT", G%Z_ref, &
                  "A reference value for geometric height fields, such as bathyT.", &
-                 units="m", default=0.0, scale=mean_SeaLev_scale)
+                 units="m", default=0.0_wp, scale=mean_SeaLev_scale)
 
   if (present(HI)) then
     G%HI = HI
@@ -432,47 +434,47 @@ subroutine set_derived_metrics(G, US)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
   do j=jsd,jed ; do i=isd,ied
-    if (G%dxT(i,j) < 0.0) G%dxT(i,j) = 0.0
-    if (G%dyT(i,j) < 0.0) G%dyT(i,j) = 0.0
+    if (G%dxT(i,j) < 0.0_wp) G%dxT(i,j) = 0.0_wp
+    if (G%dyT(i,j) < 0.0_wp) G%dyT(i,j) = 0.0_wp
     G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
     G%IdyT(i,j) = Adcroft_reciprocal(G%dyT(i,j))
     G%IareaT(i,j) = Adcroft_reciprocal(G%areaT(i,j))
   enddo ; enddo
 
   do j=jsd,jed ; do I=IsdB,IedB
-    if (G%dxCu(I,j) < 0.0) G%dxCu(I,j) = 0.0
-    if (G%dyCu(I,j) < 0.0) G%dyCu(I,j) = 0.0
+    if (G%dxCu(I,j) < 0.0_wp) G%dxCu(I,j) = 0.0_wp
+    if (G%dyCu(I,j) < 0.0_wp) G%dyCu(I,j) = 0.0_wp
     G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
     G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
     G%IdxCu_OBCmask(I,j) = G%OBCmaskCu(I,j) * G%IdxCu(I,j) ! This may be reset if masks are reset.
   enddo ; enddo
 
   do J=JsdB,JedB ; do i=isd,ied
-    if (G%dxCv(i,J) < 0.0) G%dxCv(i,J) = 0.0
-    if (G%dyCv(i,J) < 0.0) G%dyCv(i,J) = 0.0
+    if (G%dxCv(i,J) < 0.0_wp) G%dxCv(i,J) = 0.0_wp
+    if (G%dyCv(i,J) < 0.0_wp) G%dyCv(i,J) = 0.0_wp
     G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
     G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
     G%IdyCv_OBCmask(i,J) = G%OBCmaskCv(i,J) * G%IdyCv(i,J) ! This may be reset if masks are reset.
   enddo ; enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB
-    if (G%dxBu(I,J) < 0.0) G%dxBu(I,J) = 0.0
-    if (G%dyBu(I,J) < 0.0) G%dyBu(I,J) = 0.0
+    if (G%dxBu(I,J) < 0.0_wp) G%dxBu(I,J) = 0.0_wp
+    if (G%dyBu(I,J) < 0.0_wp) G%dyBu(I,J) = 0.0_wp
 
     G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
     G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
     ! areaBu has usually been set to a positive area elsewhere.
-    if (G%areaBu(I,J) <= 0.0) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    if (G%areaBu(I,J) <= 0.0_wp) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
     G%IareaBu(I,J) =  Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 end subroutine set_derived_metrics
 
 !> Adcroft_reciprocal(x) = 1/x for |x|>0 or 0 for x=0.
 function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val  !< The value being inverted [A].
-  real :: I_val            !< The Adcroft reciprocal of val [A-1].
+  real(wp), intent(in) :: val  !< The value being inverted [A].
+  real(wp) :: I_val            !< The Adcroft reciprocal of val [A-1].
 
-  I_val = 0.0 ; if (val /= 0.0) I_val = 1.0/val
+  I_val = 0.0_wp ; if (val /= 0.0_wp) I_val = 1.0_wp/val
 end function Adcroft_reciprocal
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
@@ -480,13 +482,13 @@ logical function isPointInCell(G, i, j, x, y)
   type(ocean_grid_type), intent(in) :: G !< Grid type
   integer,               intent(in) :: i !< i index of cell to test
   integer,               intent(in) :: j !< j index of cell to test
-  real,                  intent(in) :: x !< x coordinate of point [degrees_E]
-  real,                  intent(in) :: y !< y coordinate of point [degrees_N]
+  real(wp),                  intent(in) :: x !< x coordinate of point [degrees_E]
+  real(wp),                  intent(in) :: y !< y coordinate of point [degrees_N]
   ! Local variables
-  real :: xNE, xNW, xSE, xSW ! Longitudes of cell corners [degrees_E]
-  real :: yNE, yNW, ySE, ySW ! Latitudes of cell corners [degrees_N]
-  real :: l0, l1, l2, l3 ! Crossed products of differences in position [degrees_E degrees_N]
-  real :: p0, p1, p2, p3 ! Trinary unitary values reflecting the signs of the crossed products [nondim]
+  real(wp) :: xNE, xNW, xSE, xSW ! Longitudes of cell corners [degrees_E]
+  real(wp) :: yNE, yNW, ySE, ySW ! Latitudes of cell corners [degrees_N]
+  real(wp) :: l0, l1, l2, l3 ! Crossed products of differences in position [degrees_E degrees_N]
+  real(wp) :: p0, p1, p2, p3 ! Trinary unitary values reflecting the signs of the crossed products [nondim]
   isPointInCell = .false.
   xNE = G%geoLonBu(i  ,j  ) ; yNE = G%geoLatBu(i  ,j  )
   xNW = G%geoLonBu(i-1,j  ) ; yNW = G%geoLatBu(i-1,j  )
@@ -502,10 +504,10 @@ logical function isPointInCell(G, i, j, x, y)
   l2 = (x-xNE)*(yNW-yNE) - (y-yNE)*(xNW-xNE)
   l3 = (x-xNW)*(ySW-yNW) - (y-yNW)*(xSW-xNW)
 
-  p0 = sign(1., l0) ; if (l0 == 0.) p0=0.
-  p1 = sign(1., l1) ; if (l1 == 0.) p1=0.
-  p2 = sign(1., l2) ; if (l2 == 0.) p2=0.
-  p3 = sign(1., l3) ; if (l3 == 0.) p3=0.
+  p0 = sign(1._wp, l0) ; if (l0 == 0._wp) p0=0._wp
+  p1 = sign(1._wp, l1) ; if (l1 == 0._wp) p1=0._wp
+  p2 = sign(1._wp, l2) ; if (l2 == 0._wp) p2=0._wp
+  p3 = sign(1._wp, l3) ; if (l3 == 0._wp) p3=0._wp
 
   if ( (abs(p0)+abs(p2)) + (abs(p1)+abs(p3)) == abs((p0+p2) + (p1+p3)) ) then
     isPointInCell=.true.
@@ -542,76 +544,76 @@ subroutine allocate_metrics(G)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
   isg = G%isg ; ieg = G%ieg ; jsg = G%jsg ; jeg = G%jeg
 
-  ALLOC_(G%dxT(isd:ied,jsd:jed))       ; G%dxT(:,:) = 0.0
-  ALLOC_(G%dxCu(IsdB:IedB,jsd:jed))    ; G%dxCu(:,:) = 0.0
-  ALLOC_(G%dxCv(isd:ied,JsdB:JedB))    ; G%dxCv(:,:) = 0.0
-  ALLOC_(G%dxBu(IsdB:IedB,JsdB:JedB))  ; G%dxBu(:,:) = 0.0
-  ALLOC_(G%IdxT(isd:ied,jsd:jed))      ; G%IdxT(:,:) = 0.0
-  ALLOC_(G%IdxCu(IsdB:IedB,jsd:jed))   ; G%IdxCu(:,:) = 0.0
-  ALLOC_(G%IdxCu_OBCmask(IsdB:IedB,jsd:jed)) ; G%IdxCu_OBCmask(:,:) = 0.0
-  ALLOC_(G%IdxCv(isd:ied,JsdB:JedB))   ; G%IdxCv(:,:) = 0.0
-  ALLOC_(G%IdxBu(IsdB:IedB,JsdB:JedB)) ; G%IdxBu(:,:) = 0.0
+  ALLOC_(G%dxT(isd:ied,jsd:jed))       ; G%dxT(:,:) = 0.0_wp
+  ALLOC_(G%dxCu(IsdB:IedB,jsd:jed))    ; G%dxCu(:,:) = 0.0_wp
+  ALLOC_(G%dxCv(isd:ied,JsdB:JedB))    ; G%dxCv(:,:) = 0.0_wp
+  ALLOC_(G%dxBu(IsdB:IedB,JsdB:JedB))  ; G%dxBu(:,:) = 0.0_wp
+  ALLOC_(G%IdxT(isd:ied,jsd:jed))      ; G%IdxT(:,:) = 0.0_wp
+  ALLOC_(G%IdxCu(IsdB:IedB,jsd:jed))   ; G%IdxCu(:,:) = 0.0_wp
+  ALLOC_(G%IdxCu_OBCmask(IsdB:IedB,jsd:jed)) ; G%IdxCu_OBCmask(:,:) = 0.0_wp
+  ALLOC_(G%IdxCv(isd:ied,JsdB:JedB))   ; G%IdxCv(:,:) = 0.0_wp
+  ALLOC_(G%IdxBu(IsdB:IedB,JsdB:JedB)) ; G%IdxBu(:,:) = 0.0_wp
 
-  ALLOC_(G%dyT(isd:ied,jsd:jed))       ; G%dyT(:,:) = 0.0
-  ALLOC_(G%dyCu(IsdB:IedB,jsd:jed))    ; G%dyCu(:,:) = 0.0
-  ALLOC_(G%dyCv(isd:ied,JsdB:JedB))    ; G%dyCv(:,:) = 0.0
-  ALLOC_(G%dyBu(IsdB:IedB,JsdB:JedB))  ; G%dyBu(:,:) = 0.0
-  ALLOC_(G%IdyT(isd:ied,jsd:jed))      ; G%IdyT(:,:) = 0.0
-  ALLOC_(G%IdyCu(IsdB:IedB,jsd:jed))   ; G%IdyCu(:,:) = 0.0
-  ALLOC_(G%IdyCv(isd:ied,JsdB:JedB))   ; G%IdyCv(:,:) = 0.0
-  ALLOC_(G%IdyCv_OBCmask(isd:ied,JsdB:JedB)) ; G%IdyCv_OBCmask(:,:) = 0.0
-  ALLOC_(G%IdyBu(IsdB:IedB,JsdB:JedB)) ; G%IdyBu(:,:) = 0.0
+  ALLOC_(G%dyT(isd:ied,jsd:jed))       ; G%dyT(:,:) = 0.0_wp
+  ALLOC_(G%dyCu(IsdB:IedB,jsd:jed))    ; G%dyCu(:,:) = 0.0_wp
+  ALLOC_(G%dyCv(isd:ied,JsdB:JedB))    ; G%dyCv(:,:) = 0.0_wp
+  ALLOC_(G%dyBu(IsdB:IedB,JsdB:JedB))  ; G%dyBu(:,:) = 0.0_wp
+  ALLOC_(G%IdyT(isd:ied,jsd:jed))      ; G%IdyT(:,:) = 0.0_wp
+  ALLOC_(G%IdyCu(IsdB:IedB,jsd:jed))   ; G%IdyCu(:,:) = 0.0_wp
+  ALLOC_(G%IdyCv(isd:ied,JsdB:JedB))   ; G%IdyCv(:,:) = 0.0_wp
+  ALLOC_(G%IdyCv_OBCmask(isd:ied,JsdB:JedB)) ; G%IdyCv_OBCmask(:,:) = 0.0_wp
+  ALLOC_(G%IdyBu(IsdB:IedB,JsdB:JedB)) ; G%IdyBu(:,:) = 0.0_wp
 
-  ALLOC_(G%areaT(isd:ied,jsd:jed))       ; G%areaT(:,:) = 0.0
-  ALLOC_(G%IareaT(isd:ied,jsd:jed))      ; G%IareaT(:,:) = 0.0
-  ALLOC_(G%areaBu(IsdB:IedB,JsdB:JedB))  ; G%areaBu(:,:) = 0.0
-  ALLOC_(G%IareaBu(IsdB:IedB,JsdB:JedB)) ; G%IareaBu(:,:) = 0.0
+  ALLOC_(G%areaT(isd:ied,jsd:jed))       ; G%areaT(:,:) = 0.0_wp
+  ALLOC_(G%IareaT(isd:ied,jsd:jed))      ; G%IareaT(:,:) = 0.0_wp
+  ALLOC_(G%areaBu(IsdB:IedB,JsdB:JedB))  ; G%areaBu(:,:) = 0.0_wp
+  ALLOC_(G%IareaBu(IsdB:IedB,JsdB:JedB)) ; G%IareaBu(:,:) = 0.0_wp
 
-  ALLOC_(G%mask2dT(isd:ied,jsd:jed))      ; G%mask2dT(:,:) = 0.0
-  ALLOC_(G%mask2dCu(IsdB:IedB,jsd:jed))   ; G%mask2dCu(:,:) = 0.0
-  ALLOC_(G%OBCmaskCu(IsdB:IedB,jsd:jed))  ; G%OBCmaskCu(:,:) = 0.0
-  ALLOC_(G%mask2dCv(isd:ied,JsdB:JedB))   ; G%mask2dCv(:,:) = 0.0
-  ALLOC_(G%OBCmaskCv(isd:ied,JsdB:JedB))  ; G%OBCmaskCv(:,:) = 0.0
-  ALLOC_(G%mask2dBu(IsdB:IedB,JsdB:JedB)) ; G%mask2dBu(:,:) = 0.0
-  ALLOC_(G%geoLatT(isd:ied,jsd:jed))      ; G%geoLatT(:,:) = 0.0
-  ALLOC_(G%geoLatCu(IsdB:IedB,jsd:jed))   ; G%geoLatCu(:,:) = 0.0
-  ALLOC_(G%geoLatCv(isd:ied,JsdB:JedB))   ; G%geoLatCv(:,:) = 0.0
-  ALLOC_(G%geoLatBu(IsdB:IedB,JsdB:JedB)) ; G%geoLatBu(:,:) = 0.0
-  ALLOC_(G%geoLonT(isd:ied,jsd:jed))      ; G%geoLonT(:,:) = 0.0
-  ALLOC_(G%geoLonCu(IsdB:IedB,jsd:jed))   ; G%geoLonCu(:,:) = 0.0
-  ALLOC_(G%geoLonCv(isd:ied,JsdB:JedB))   ; G%geoLonCv(:,:) = 0.0
-  ALLOC_(G%geoLonBu(IsdB:IedB,JsdB:JedB)) ; G%geoLonBu(:,:) = 0.0
+  ALLOC_(G%mask2dT(isd:ied,jsd:jed))      ; G%mask2dT(:,:) = 0.0_wp
+  ALLOC_(G%mask2dCu(IsdB:IedB,jsd:jed))   ; G%mask2dCu(:,:) = 0.0_wp
+  ALLOC_(G%OBCmaskCu(IsdB:IedB,jsd:jed))  ; G%OBCmaskCu(:,:) = 0.0_wp
+  ALLOC_(G%mask2dCv(isd:ied,JsdB:JedB))   ; G%mask2dCv(:,:) = 0.0_wp
+  ALLOC_(G%OBCmaskCv(isd:ied,JsdB:JedB))  ; G%OBCmaskCv(:,:) = 0.0_wp
+  ALLOC_(G%mask2dBu(IsdB:IedB,JsdB:JedB)) ; G%mask2dBu(:,:) = 0.0_wp
+  ALLOC_(G%geoLatT(isd:ied,jsd:jed))      ; G%geoLatT(:,:) = 0.0_wp
+  ALLOC_(G%geoLatCu(IsdB:IedB,jsd:jed))   ; G%geoLatCu(:,:) = 0.0_wp
+  ALLOC_(G%geoLatCv(isd:ied,JsdB:JedB))   ; G%geoLatCv(:,:) = 0.0_wp
+  ALLOC_(G%geoLatBu(IsdB:IedB,JsdB:JedB)) ; G%geoLatBu(:,:) = 0.0_wp
+  ALLOC_(G%geoLonT(isd:ied,jsd:jed))      ; G%geoLonT(:,:) = 0.0_wp
+  ALLOC_(G%geoLonCu(IsdB:IedB,jsd:jed))   ; G%geoLonCu(:,:) = 0.0_wp
+  ALLOC_(G%geoLonCv(isd:ied,JsdB:JedB))   ; G%geoLonCv(:,:) = 0.0_wp
+  ALLOC_(G%geoLonBu(IsdB:IedB,JsdB:JedB)) ; G%geoLonBu(:,:) = 0.0_wp
 
-  ALLOC_(G%dx_Cv(isd:ied,JsdB:JedB))     ; G%dx_Cv(:,:) = 0.0
-  ALLOC_(G%dy_Cu(IsdB:IedB,jsd:jed))     ; G%dy_Cu(:,:) = 0.0
+  ALLOC_(G%dx_Cv(isd:ied,JsdB:JedB))     ; G%dx_Cv(:,:) = 0.0_wp
+  ALLOC_(G%dy_Cu(IsdB:IedB,jsd:jed))     ; G%dy_Cu(:,:) = 0.0_wp
 
-  ALLOC_(G%porous_DminU(IsdB:IedB,jsd:jed)); G%porous_DminU(:,:) = 0.0
-  ALLOC_(G%porous_DmaxU(IsdB:IedB,jsd:jed)); G%porous_DmaxU(:,:) = 0.0
-  ALLOC_(G%porous_DavgU(IsdB:IedB,jsd:jed)); G%porous_DavgU(:,:) = 0.0
+  ALLOC_(G%porous_DminU(IsdB:IedB,jsd:jed)); G%porous_DminU(:,:) = 0.0_wp
+  ALLOC_(G%porous_DmaxU(IsdB:IedB,jsd:jed)); G%porous_DmaxU(:,:) = 0.0_wp
+  ALLOC_(G%porous_DavgU(IsdB:IedB,jsd:jed)); G%porous_DavgU(:,:) = 0.0_wp
 
-  ALLOC_(G%porous_DminV(isd:ied,JsdB:JedB)); G%porous_DminV(:,:) = 0.0
-  ALLOC_(G%porous_DmaxV(isd:ied,JsdB:JedB)); G%porous_DmaxV(:,:) = 0.0
-  ALLOC_(G%porous_DavgV(isd:ied,JsdB:JedB)); G%porous_DavgV(:,:) = 0.0
+  ALLOC_(G%porous_DminV(isd:ied,JsdB:JedB)); G%porous_DminV(:,:) = 0.0_wp
+  ALLOC_(G%porous_DmaxV(isd:ied,JsdB:JedB)); G%porous_DmaxV(:,:) = 0.0_wp
+  ALLOC_(G%porous_DavgV(isd:ied,JsdB:JedB)); G%porous_DavgV(:,:) = 0.0_wp
 
-  ALLOC_(G%areaCu(IsdB:IedB,jsd:jed))  ; G%areaCu(:,:) = 0.0
-  ALLOC_(G%areaCv(isd:ied,JsdB:JedB))  ; G%areaCv(:,:) = 0.0
-  ALLOC_(G%IareaCu(IsdB:IedB,jsd:jed)) ; G%IareaCu(:,:) = 0.0
-  ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0
+  ALLOC_(G%areaCu(IsdB:IedB,jsd:jed))  ; G%areaCu(:,:) = 0.0_wp
+  ALLOC_(G%areaCv(isd:ied,JsdB:JedB))  ; G%areaCv(:,:) = 0.0_wp
+  ALLOC_(G%IareaCu(IsdB:IedB,jsd:jed)) ; G%IareaCu(:,:) = 0.0_wp
+  ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0_wp
 
   ALLOC_(G%bathyT(isd:ied, jsd:jed)) ; G%bathyT(:,:) = -G%Z_ref
   ALLOC_(G%meanSL(isd:ied, jsd:jed)) ; G%meanSL(:,:) = G%Z_ref
-  ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
-  ALLOC_(G%Coriolis2Bu(IsdB:IedB, JsdB:JedB)) ; G%Coriolis2Bu(:,:) = 0.0
-  ALLOC_(G%dF_dx(isd:ied, jsd:jed)) ; G%dF_dx(:,:) = 0.0
-  ALLOC_(G%dF_dy(isd:ied, jsd:jed)) ; G%dF_dy(:,:) = 0.0
+  ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0_wp
+  ALLOC_(G%Coriolis2Bu(IsdB:IedB, JsdB:JedB)) ; G%Coriolis2Bu(:,:) = 0.0_wp
+  ALLOC_(G%dF_dx(isd:ied, jsd:jed)) ; G%dF_dx(:,:) = 0.0_wp
+  ALLOC_(G%dF_dy(isd:ied, jsd:jed)) ; G%dF_dy(:,:) = 0.0_wp
 
-  ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
-  ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
+  ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0_wp
+  ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0_wp
 
-  allocate(G%gridLonT(isg:ieg), source=0.0)
-  allocate(G%gridLonB(G%IsgB:G%IegB), source=0.0)
-  allocate(G%gridLatT(jsg:jeg), source=0.0)
-  allocate(G%gridLatB(G%JsgB:G%JegB), source=0.0)
+  allocate(G%gridLonT(isg:ieg), source=0.0_wp)
+  allocate(G%gridLonB(G%IsgB:G%IegB), source=0.0_wp)
+  allocate(G%gridLatT(jsg:jeg), source=0.0_wp)
+  allocate(G%gridLatB(G%JsgB:G%JegB), source=0.0_wp)
 
 end subroutine allocate_metrics
 

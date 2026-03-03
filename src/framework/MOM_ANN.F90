@@ -7,6 +7,8 @@ use MOM_io, only : MOM_read_data, field_exists
 use MOM_error_handler, only : MOM_error, FATAL, MOM_mesg
 use numerical_testing_type, only : testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 !#include <MOM_memory.h>
@@ -31,9 +33,9 @@ type, private :: layer_type; private
   integer :: input_width         !< Number of columns in matrix A
   logical :: activation = .True. !< If true, apply the default activation function
 
-  real, allocatable :: A(:,:) !< Matrix in column-major order
+  real(wp), allocatable :: A(:,:) !< Matrix in column-major order
                               !! of size A(output_width, input_width) [nondim]
-  real, allocatable :: b(:)   !< bias vector of size output_width [nondim]
+  real(wp), allocatable :: b(:)   !< bias vector of size output_width [nondim]
 end type layer_type
 
 !> Control structure/type for ANN
@@ -49,7 +51,7 @@ type, public :: ANN_CS ; private
           :: layers(:)           !< Array of length num_layers-1, where each element is the Linear
                                  !! transformation between layers defined by Matrix A and vias b.
 
-  real, allocatable :: &
+  real(wp), allocatable :: &
     input_means(:), &  !< Array of length layer_sizes(1) containing the mean of each input feature
                        !! prior to normalization by input_norms [arbitrary].
     input_norms(:), &  !< Array of length layer_sizes(1) containing the *inverse* of the standard
@@ -100,7 +102,7 @@ subroutine ANN_init(CS, NNfile)
   if (field_exists(NNfile, 'input_norms')) then
     call MOM_read_data(NNfile, 'input_norms', CS%input_norms)
     ! We calculate the reciprocal here to avoid repeated divisions later
-    CS%input_norms(:) = 1.  / CS%input_norms(:)
+    CS%input_norms(:) = 1._wp  / CS%input_norms(:)
   endif
   if (field_exists(NNfile, 'output_means')) &
     call MOM_read_data(NNfile, 'output_means', CS%output_means)
@@ -154,10 +156,10 @@ subroutine ANN_allocate(CS, num_layers, layer_sizes)
   CS%layer_sizes(:) = layer_sizes(:)
 
   ! Input and output normalization values
-  allocate( CS%input_means(CS%layer_sizes(1)), source=0. ) ! Assume zero mean by default
-  allocate( CS%input_norms(CS%layer_sizes(1)), source=1. ) ! Assume unit variance by default
-  allocate( CS%output_means(CS%layer_sizes(CS%num_layers)), source=0. ) ! Assume zero mean by default
-  allocate( CS%output_norms(CS%layer_sizes(CS%num_layers)), source=1. ) ! Assume unit variance by default
+  allocate( CS%input_means(CS%layer_sizes(1)), source=0._wp ) ! Assume zero mean by default
+  allocate( CS%input_norms(CS%layer_sizes(1)), source=1._wp ) ! Assume unit variance by default
+  allocate( CS%output_means(CS%layer_sizes(CS%num_layers)), source=0._wp ) ! Assume zero mean by default
+  allocate( CS%output_norms(CS%layer_sizes(CS%num_layers)), source=1._wp ) ! Assume unit variance by default
 
   ! Allocate the Linear transformations between layers
   allocate(CS%layers(CS%num_layers-1))
@@ -185,8 +187,8 @@ subroutine ANN_test(CS, NNfile)
   type(ANN_CS), intent(inout) :: CS     !< ANN control structure.
   character(*), intent(in)    :: NNfile !< The name of NetCDF file having neural network parameters
   ! Local variables
-  real, dimension(:), allocatable :: x_test, y_test, y_pred ! [arbitrary]
-  real :: relative_error ! [arbitrary]
+  real(wp), dimension(:), allocatable :: x_test, y_test, y_pred ! [arbitrary]
+  real(wp) :: relative_error ! [arbitrary]
   character(len=200) :: relative_error_str
 
   ! Allocate data
@@ -203,7 +205,7 @@ subroutine ANN_test(CS, NNfile)
 
   relative_error = maxval(abs(y_pred(:) - y_test(:))) / maxval(abs(y_test(:)))
 
-  if (relative_error > 1e-5) then
+  if (relative_error > 1e-5_wp) then
     write(relative_error_str, '(ES12.4)') relative_error
     call MOM_error(FATAL, 'Relative error in ANN prediction is too large: ' // trim(relative_error_str))
   endif
@@ -235,10 +237,10 @@ end subroutine ANN_end
 
 !> The default activation function
 pure elemental function activation_fn(x) result (y)
-  real, intent(in) :: x !< Scalar input value [nondim]
-  real             :: y !< Scalar output value [nondim]
+  real(wp), intent(in) :: x !< Scalar input value [nondim]
+  real(wp)             :: y !< Scalar output value [nondim]
 
-  y = max(x, 0.0) ! ReLU activation
+  y = max(x, 0.0_wp) ! ReLU activation
 
 end function activation_fn
 
@@ -248,10 +250,10 @@ end function activation_fn
 !! of temporary arrays
 subroutine ANN_apply_vector_orig(x, y, CS)
   type(ANN_CS), intent(in)    :: CS                               !< ANN instance
-  real,         intent(in)    :: x(CS%layer_sizes(1))             !< Inputs [arbitrary]
-  real,         intent(inout) :: y(CS%layer_sizes(CS%num_layers)) !< Outputs [arbitrary]
+  real(wp),         intent(in)    :: x(CS%layer_sizes(1))             !< Inputs [arbitrary]
+  real(wp),         intent(inout) :: y(CS%layer_sizes(CS%num_layers)) !< Outputs [arbitrary]
   ! Local variables
-  real, allocatable :: x_1(:), x_2(:) ! intermediate states [nondim]
+  real(wp), allocatable :: x_1(:), x_2(:) ! intermediate states [nondim]
   integer :: i, o ! Input, output indices
 
   ! Normalize input
@@ -284,8 +286,8 @@ subroutine ANN_apply_vector_orig(x, y, CS)
   !! overall operations is ReLU(A*x + b)
   subroutine layer_apply_orig(x, y, layer)
     type(layer_type), intent(in)    :: layer                 !< Linear layer
-    real,             intent(in)    :: x(layer%input_width)  !< Input vector [nondim]
-    real,             intent(inout) :: y(layer%output_width) !< Output vector [nondim]
+    real(wp),             intent(in)    :: x(layer%input_width)  !< Input vector [nondim]
+    real(wp),             intent(inout) :: y(layer%output_width) !< Output vector [nondim]
     ! Local variables
     integer :: i, o ! Input, output indices
 
@@ -309,10 +311,10 @@ end subroutine ANN_apply_vector_orig
 !! output index for the fastest (inner-most) loop in the layer matrix multiply.
 subroutine ANN_apply_vector_oi(x, y, CS)
   type(ANN_CS), intent(in)    :: CS                               !< ANN instance
-  real,         intent(in)    :: x(CS%layer_sizes(1))             !< Inputs [arbitrary]
-  real,         intent(inout) :: y(CS%layer_sizes(CS%num_layers)) !< Outputs [arbitrary]
+  real(wp),         intent(in)    :: x(CS%layer_sizes(1))             !< Inputs [arbitrary]
+  real(wp),         intent(inout) :: y(CS%layer_sizes(CS%num_layers)) !< Outputs [arbitrary]
   ! Local variables
-  real, allocatable :: x_1(:), x_2(:) ! intermediate states [nondim]
+  real(wp), allocatable :: x_1(:), x_2(:) ! intermediate states [nondim]
   integer :: i, o ! Input, output indices
 
   allocate( x_1( maxval( CS%layer_sizes(:) ) ) )
@@ -350,8 +352,8 @@ subroutine ANN_apply_vector_oi(x, y, CS)
   !! overall operations is ReLU(A*x + b)
   subroutine layer_apply_oi(x, y, layer)
     type(layer_type), intent(in)    :: layer                 !< Linear layer
-    real,             intent(in)    :: x(layer%input_width)  !< Input vector [nondim]
-    real,             intent(inout) :: y(layer%output_width) !< Output vector [nondim]
+    real(wp),             intent(in)    :: x(layer%input_width)  !< Input vector [nondim]
+    real(wp),             intent(inout) :: y(layer%output_width) !< Output vector [nondim]
     ! Local variables
     integer :: i, o ! Input, output indices
 
@@ -379,10 +381,10 @@ end subroutine ANN_apply_vector_oi
 subroutine ANN_apply_array_sio(nij, x, y, CS)
   type(ANN_CS), intent(in)    :: CS !< ANN control structure
   integer,      intent(in)    :: nij !< Size of spatial dimension
-  real,         intent(in)    :: x(nij, CS%layer_sizes(1)) !< input [arbitrary]
-  real,         intent(inout) :: y(nij, CS%layer_sizes(CS%num_layers)) !< output [arbitrary]
+  real(wp),         intent(in)    :: x(nij, CS%layer_sizes(1)) !< input [arbitrary]
+  real(wp),         intent(inout) :: y(nij, CS%layer_sizes(CS%num_layers)) !< output [arbitrary]
   ! Local variables
-  real, allocatable :: x_1(:,:), x_2(:,:) ! intermediate states [nondim]
+  real(wp), allocatable :: x_1(:,:), x_2(:,:) ! intermediate states [nondim]
   integer :: l, i, o ! Layer, input, output index
 
   allocate( x_1( nij, maxval( CS%layer_sizes(:) ) ) )
@@ -421,8 +423,8 @@ subroutine ANN_apply_array_sio(nij, x, y, CS)
   subroutine layer_apply_sio(nij, x, y, layer)
     type(layer_type), intent(in)    :: layer !< Linear layer
     integer,          intent(in)    :: nij   !< Size of spatial dimension
-    real,             intent(in)    :: x(nij, layer%input_width) !< Input vector [nondim]
-    real,             intent(inout) :: y(nij, layer%output_width) !< Output vector [nondim]
+    real(wp),             intent(in)    :: x(nij, layer%input_width) !< Input vector [nondim]
+    real(wp),             intent(inout) :: y(nij, layer%output_width) !< Output vector [nondim]
     ! Local variables
     integer :: i, o ! Input, output indices
 
@@ -444,8 +446,8 @@ end subroutine ANN_apply_array_sio
 subroutine set_layer(ANN, layer, weights, biases, activation)
   type(ANN_CS), intent(inout) :: ANN !< ANN control structure
   integer,      intent(in)    :: layer !< The number of the layer being adjusted
-  real,         intent(in)    :: weights(:,:) !< The weights to assign
-  real,         intent(in)    :: biases(:) !< The biases to assign
+  real(wp),         intent(in)    :: weights(:,:) !< The weights to assign
+  real(wp),         intent(in)    :: biases(:) !< The biases to assign
   logical,      intent(in)    :: activation !< Turn on the activation function
 
   if ( layer >= ANN%num_layers ) &
@@ -469,8 +471,8 @@ end subroutine set_layer
 !> Sets input normalization
 subroutine set_input_normalization(ANN, means, norms)
   type(ANN_CS),   intent(inout) :: ANN !< ANN control structure
-  real, optional, intent(in)    :: means(:) !< The mean of each input
-  real, optional, intent(in)    :: norms(:) !< The standard deviation of each input
+  real(wp), optional, intent(in)    :: means(:) !< The mean of each input
+  real(wp), optional, intent(in)    :: norms(:) !< The standard deviation of each input
 
   if (present(means)) then
     if ( size(means) /= size(ANN%input_means) ) &
@@ -489,8 +491,8 @@ end subroutine set_input_normalization
 !> Sets output normalization
 subroutine set_output_normalization(ANN, means, norms)
   type(ANN_CS),   intent(inout) :: ANN !< ANN control structure
-  real, optional, intent(in)    :: means(:) !< The mean of each output
-  real, optional, intent(in)    :: norms(:) !< The standard deviation of each output
+  real(wp), optional, intent(in)    :: means(:) !< The mean of each output
+  real(wp), optional, intent(in)    :: norms(:) !< The standard deviation of each output
 
   if (present(means)) then
     if ( size(means) /= size(ANN%output_means) ) &
@@ -529,14 +531,14 @@ subroutine randomize_layer(ANN, nlayers, layer, widths)
   integer,      intent(in)    :: layer !< Layer number to randomize
   integer,      intent(in)    :: widths(nlayers) !< Width of each layer
   ! Local variables
-  real :: weights(widths(layer+1),widths(layer)) ! Weights
-  real :: biases(widths(layer+1)) ! Biases
+  real(wp) :: weights(widths(layer+1),widths(layer)) ! Weights
+  real(wp) :: biases(widths(layer+1)) ! Biases
 
   call random_number(weights)
-  weights(:,:) = 2. * weights(:,:) - 1.
+  weights(:,:) = 2._wp * weights(:,:) - 1._wp
 
   call random_number(biases)
-  biases(:) = 2. * biases(:) - 1.
+  biases(:) = 2._wp * biases(:) - 1._wp
 
   call set_layer(ANN, layer, weights, biases, layer<nlayers-1)
 
@@ -551,7 +553,7 @@ logical function ANN_unit_tests(verbose)
   ! Local variables
   type(ANN_CS) :: ANN ! An ANN
   type(testing) :: test ! Manage tests
-  real, allocatable :: x(:), y(:), y_good(:), x2(:,:), y2(:,:) ! Inputs, outputs [arbitrary]
+  real(wp), allocatable :: x(:), y(:), y_good(:), x2(:,:), y2(:,:) ! Inputs, outputs [arbitrary]
   integer, parameter :: max_rand_nlay = 10 ! Deepest random ANN to generate
   integer :: widths(max_rand_nlay) ! Number of layers for random ANN
   integer :: nlay ! Number of layers for random ANN
@@ -564,40 +566,40 @@ logical function ANN_unit_tests(verbose)
   ! Identity ANN for one input
   allocate( y(1) )
   call ANN_allocate(ANN, 2, [1,1])
-  call set_layer(ANN, 1, reshape([1.],[1,1]), [0.], .false.)
-  call ANN_apply([1.], y, ANN)
-  call test%real_scalar(y(1), 1., 'Scalar identity')
+  call set_layer(ANN, 1, reshape([1._wp],[1,1]), [0._wp], .false.)
+  call ANN_apply([1._wp], y, ANN)
+  call test%real_scalar(y(1), 1._wp, 'Scalar identity')
   deallocate( y )
   call ANN_end(ANN)
 
   ! Summation ANN
   allocate( y(1) )
   call ANN_allocate(ANN, 2, [4,1])
-  call set_layer(ANN, 1, reshape([1.,1.,1.,1.], [1,4]), [0.], .false.)
-  call ANN_apply([-1.,0.,1.,2.], y, ANN)
-  call test%real_scalar(y(1), 2., 'Summation')
+  call set_layer(ANN, 1, reshape([1._wp,1._wp,1._wp,1._wp], [1,4]), [0._wp], .false.)
+  call ANN_apply([-1._wp,0._wp,1._wp,2._wp], y, ANN)
+  call test%real_scalar(y(1), 2._wp, 'Summation')
   deallocate( y )
   call ANN_end(ANN)
 
   ! Identity ANN for vector input/output
   call ANN_allocate(ANN, 2, [3,3])
   allocate( y(3) )
-  call set_layer(ANN, 1, reshape([1.,0.,0., &
-                                  0.,1.,0., &
-                                  0.,0.,1.], [3,3]), [0.,0.,0.], .false.)
-  call ANN_apply([-1.,0.,1.], y, ANN)
-  call test%real_arr(3, y, [-1.,0.,1.], 'Vector identity')
+  call set_layer(ANN, 1, reshape([1._wp,0._wp,0._wp, &
+                                  0._wp,1._wp,0._wp, &
+                                  0._wp,0._wp,1._wp], [3,3]), [0._wp,0._wp,0._wp], .false.)
+  call ANN_apply([-1._wp,0._wp,1._wp], y, ANN)
+  call test%real_arr(3, y, [-1._wp,0._wp,1._wp], 'Vector identity')
   deallocate( y )
   call ANN_end(ANN)
 
   ! Rectifying ANN for vector input/output
   allocate( y(3) )
   call ANN_allocate(ANN, 2, [3,3])
-  call set_layer(ANN, 1, reshape([1.,0.,0., &
-                                  0.,1.,0., &
-                                  0.,0.,1.], [3,3]), [0.,0.,0.], .true.)
-  call ANN_apply([-1.,0.,1.], y, ANN)
-  call test%real_arr(3, y, [0.,0.,1.], 'Rectifier')
+  call set_layer(ANN, 1, reshape([1._wp,0._wp,0._wp, &
+                                  0._wp,1._wp,0._wp, &
+                                  0._wp,0._wp,1._wp], [3,3]), [0._wp,0._wp,0._wp], .true.)
+  call ANN_apply([-1._wp,0._wp,1._wp], y, ANN)
+  call test%real_arr(3, y, [0._wp,0._wp,1._wp], 'Rectifier')
   deallocate( y )
   call ANN_end(ANN)
 
@@ -610,13 +612,13 @@ logical function ANN_unit_tests(verbose)
   ! Rectified: [0,0,1,2]
   ! Sum: 3
   ! Outputs: 3
-  call set_layer(ANN, 1, reshape([1.,0.,0.,0., &
-                                  0.,1.,0.,0., &
-                                  0.,0.,1.,0., &
-                                  0.,0.,0.,1.], [4,4]), [0.,0.,0.,0.], .true.)
-  call set_layer(ANN, 2, reshape([1.,1.,1.,1.], [1,4]), [0.], .false.)
-  call ANN_apply_vector_orig([-1.,0.,1.,2.], y, ANN)
-  call test%real_scalar(y(1), 3., 'Rectifier+summation')
+  call set_layer(ANN, 1, reshape([1._wp,0._wp,0._wp,0._wp, &
+                                  0._wp,1._wp,0._wp,0._wp, &
+                                  0._wp,0._wp,1._wp,0._wp, &
+                                  0._wp,0._wp,0._wp,1._wp], [4,4]), [0._wp,0._wp,0._wp,0._wp], .true.)
+  call set_layer(ANN, 2, reshape([1._wp,1._wp,1._wp,1._wp], [1,4]), [0._wp], .false.)
+  call ANN_apply_vector_orig([-1._wp,0._wp,1._wp,2._wp], y, ANN)
+  call test%real_scalar(y(1), 3._wp, 'Rectifier+summation')
 
   ! as above but with biases
   ! Inputs: [-2,-1,0,1]
@@ -625,23 +627,23 @@ logical function ANN_unit_tests(verbose)
   ! Sum: 3
   ! After bias: 6 with b=3
   ! Outputs: 6
-  call set_layer(ANN, 1, reshape([1.,0.,0.,0., &
-                                  0.,1.,0.,0., &
-                                  0.,0.,1.,0., &
-                                  0.,0.,0.,1.], [4,4]), [1.,1.,1.,1.], .true.)
-  call set_layer(ANN, 2, reshape([1.,1.,1.,1.], [1,4]), [3.], .false.)
-  call ANN_apply_vector_orig([-2.,-1.,0.,1.], y, ANN)
-  call test%real_scalar(y(1), 6., 'Rectifier+summation+bias')
+  call set_layer(ANN, 1, reshape([1._wp,0._wp,0._wp,0._wp, &
+                                  0._wp,1._wp,0._wp,0._wp, &
+                                  0._wp,0._wp,1._wp,0._wp, &
+                                  0._wp,0._wp,0._wp,1._wp], [4,4]), [1._wp,1._wp,1._wp,1._wp], .true.)
+  call set_layer(ANN, 2, reshape([1._wp,1._wp,1._wp,1._wp], [1,4]), [3._wp], .false.)
+  call ANN_apply_vector_orig([-2._wp,-1._wp,0._wp,1._wp], y, ANN)
+  call test%real_scalar(y(1), 6._wp, 'Rectifier+summation+bias')
 
   ! as above but with normalization of inputs and outputs
   ! Inputs: [0,2,4,6]
   ! Normalized inputs: [-2,-1,0,1] (using mean=-4, norm=2)
   ! Normalized outputs: 6
   ! De-normalized output: 2 (using mean=-10, norm=2)
-  call set_input_normalization(ANN, means=[4.,4.,4.,4.], norms=[0.5,0.5,0.5,0.5])
-  call set_output_normalization(ANN, norms=[2.], means=[-10.])
-  call ANN_apply_vector_orig([0.,2.,4.,6.], y, ANN)
-  call test%real_scalar(y(1), 2., 'Rectifier+summation+bias+norms')
+  call set_input_normalization(ANN, means=[4._wp,4._wp,4._wp,4._wp], norms=[0.5_wp,0.5_wp,0.5_wp,0.5_wp])
+  call set_output_normalization(ANN, norms=[2._wp], means=[-10._wp])
+  call ANN_apply_vector_orig([0._wp,2._wp,4._wp,6._wp], y, ANN)
+  call test%real_scalar(y(1), 2._wp, 'Rectifier+summation+bias+norms')
 
   deallocate( y )
   call ANN_end(ANN)
@@ -649,26 +651,26 @@ logical function ANN_unit_tests(verbose)
   ! as above with a 1x1 4th identity layer (to check loop combinations)
   allocate( y(1) )
   call ANN_allocate(ANN, 4, [4,4,1,1])
-  call set_layer(ANN, 1, reshape([1.,0.,0.,0., &
-                                  0.,1.,0.,0., &
-                                  0.,0.,1.,0., &
-                                  0.,0.,0.,1.], [4,4]), [1.,1.,1.,1.], .true.)
-  call set_layer(ANN, 2, reshape([1.,1.,1.,1.], [1,4]), [3.], .false.)
-  call set_layer(ANN, 3, reshape([1.],[1,1]), [0.], .false.)
-  call set_input_normalization(ANN, means=[4.,4.,4.,4.], norms=[0.5,0.5,0.5,0.5])
-  call set_output_normalization(ANN, norms=[2.], means=[-10.])
-  call ANN_apply_vector_orig([0.,2.,4.,6.], y, ANN)
-  call test%real_scalar(y(1), 2., 'Rectifier+summation+bias+norms 4-layer')
+  call set_layer(ANN, 1, reshape([1._wp,0._wp,0._wp,0._wp, &
+                                  0._wp,1._wp,0._wp,0._wp, &
+                                  0._wp,0._wp,1._wp,0._wp, &
+                                  0._wp,0._wp,0._wp,1._wp], [4,4]), [1._wp,1._wp,1._wp,1._wp], .true.)
+  call set_layer(ANN, 2, reshape([1._wp,1._wp,1._wp,1._wp], [1,4]), [3._wp], .false.)
+  call set_layer(ANN, 3, reshape([1._wp],[1,1]), [0._wp], .false.)
+  call set_input_normalization(ANN, means=[4._wp,4._wp,4._wp,4._wp], norms=[0.5_wp,0.5_wp,0.5_wp,0.5_wp])
+  call set_output_normalization(ANN, norms=[2._wp], means=[-10._wp])
+  call ANN_apply_vector_orig([0._wp,2._wp,4._wp,6._wp], y, ANN)
+  call test%real_scalar(y(1), 2._wp, 'Rectifier+summation+bias+norms 4-layer')
 
   ! as above with v2 of ANN_apply
-  call ANN_apply_vector_oi([0.,2.,4.,6.], y, ANN)
-  call test%real_scalar(y(1), 2., 'Rectifier+summation+bias+norms 4-layer v2')
+  call ANN_apply_vector_oi([0._wp,2._wp,4._wp,6._wp], y, ANN)
+  call test%real_scalar(y(1), 2._wp, 'Rectifier+summation+bias+norms 4-layer v2')
   deallocate( y )
 
   allocate( y2(1,2) )
   ! as above with v5 of ANN_apply applied to 2d inputs, x(space,feature)
-  call ANN_apply_array_sio(2, reshape([0.,1.,2.,3.,4.,5.,6.,7.],[2,4]), y2, ANN)
-  call test%real_arr(2, y2, [2.,5.], 'Rectifier+summation+bias+norms 4-layer array v2')
+  call ANN_apply_array_sio(2, reshape([0._wp,1._wp,2._wp,3._wp,4._wp,5._wp,6._wp,7._wp],[2,4]), y2, ANN)
+  call test%real_arr(2, y2, [2._wp,5._wp], 'Rectifier+summation+bias+norms 4-layer array v2')
   deallocate( y2 )
 
   call ANN_end(ANN)
@@ -687,14 +689,14 @@ logical function ANN_unit_tests(verbose)
     allocate( x(widths(1)), y(widths(nlay)), y_good(widths(nlay)) )
     call ANN_apply_vector_orig(x, y_good, ANN)
     call ANN_apply_vector_oi(x, y, ANN)
-    rand_res = rand_res .or. maxval( abs( y(:) - y_good(:) ) ) > 0. ! Check results from v2 = v1
+    rand_res = rand_res .or. maxval( abs( y(:) - y_good(:) ) ) > 0._wp ! Check results from v2 = v1
     allocate( x2(20,widths(1)), y2(20,widths(nlay)) ) ! 2D input, output
     do i = 1, 20
       x2(i,:) = x(:)
     enddo
     call ANN_apply_array_sio(20, x2, y2, ANN)
-    rand_res = rand_res .or. maxval( abs( maxval(y2(:,:),1) - y_good(:) ) ) > 0. ! Check results from array v2 = v1
-    rand_res = rand_res .or. maxval( abs( minval(y2(:,:),1) - y_good(:) ) ) > 0. ! Check results from array v2 = v1
+    rand_res = rand_res .or. maxval( abs( maxval(y2(:,:),1) - y_good(:) ) ) > 0._wp ! Check results from array v2 = v1
+    rand_res = rand_res .or. maxval( abs( minval(y2(:,:),1) - y_good(:) ) ) > 0._wp ! Check results from array v2 = v1
     deallocate( x, y, y_good, x2, y2 )
     call ANN_end(ANN)
   enddo

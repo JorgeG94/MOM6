@@ -8,6 +8,8 @@ use MOM_unique_scales,        only : check_scaling_uniqueness, scales_to_powers
 use MOM_unit_scaling,         only : unit_scale_type
 use MOM_verticalGrid,         only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 ! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
@@ -29,7 +31,7 @@ subroutine check_MOM6_scaling_factors(GV, US)
 
   ! Local variables
   integer, parameter :: ndims = 8 ! The number of rescalable dimensional factors.
-  real,    dimension(ndims) :: scales ! An array of scaling factors for each of the basic units [various].
+  real(wp),    dimension(ndims) :: scales ! An array of scaling factors for each of the basic units [various].
   integer, dimension(ndims) :: scale_pow2 ! The powers of 2 that give each element of scales.
   character(len=2), dimension(ndims) :: key
   integer, allocatable :: weights(:)
@@ -37,9 +39,9 @@ subroutine check_MOM6_scaling_factors(GV, US)
   integer :: n, ns, max_pow
 
   ! If no scaling is being done, simply return.
-  if ((US%Z_to_m == 1.) .and. (GV%H_to_MKS == 1.) .and. (US%L_to_m == 1.) .and. &
-      (US%T_to_s == 1.) .and. (US%R_to_kg_m3 == 1.) .and. (US%Q_to_J_kg == 1.) .and. &
-      (US%C_to_degC == 1.) .and. (US%S_to_ppt == 1.)) return
+  if ((US%Z_to_m == 1._wp) .and. (GV%H_to_MKS == 1._wp) .and. (US%L_to_m == 1._wp) .and. &
+      (US%T_to_s == 1._wp) .and. (US%R_to_kg_m3 == 1._wp) .and. (US%Q_to_J_kg == 1._wp) .and. &
+      (US%C_to_degC == 1._wp) .and. (US%S_to_ppt == 1._wp)) return
 
   ! Set the names and scaling factors of the dimensions being rescaled.
   key(:) = ["Z", "H", "L", "T", "R", "Q", "C", "S"]

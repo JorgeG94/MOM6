@@ -19,6 +19,8 @@ use MOM_unit_scaling,   only : unit_scale_type
 use MOM_verticalGrid,   only : verticalGrid_type
 use MOM_time_manager,   only : time_type, time_type_to_real
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -34,17 +36,17 @@ public register_Kelvin_OBC, Kelvin_OBC_end
 !> Control structure for Kelvin wave open boundaries.
 type, public :: Kelvin_OBC_CS ; private
   integer :: mode = 0          !< Vertical mode
-  real :: coast_angle = 0   !< Angle of coastline [rad]
-  real :: coast_offset1 = 0 !< Longshore distance to coastal angle [L ~> m]
-  real :: coast_offset2 = 0 !< Offshore distance to coastal angle [L ~> m]
-  real :: H0 = 0            !< Bottom depth [Z ~> m]
-  real :: F_0               !< Coriolis parameter [T-1 ~> s-1]
-  real :: rho_range         !< Density range [R ~> kg m-3]
-  real :: rho_0             !< Mean density [R ~> kg m-3]
-  real :: wave_period       !< Period of the mode-0 waves [T ~> s]
-  real :: ssh_amp           !< Amplitude of the sea surface height forcing for mode-0 waves [Z ~> m]
-  real :: inflow_amp        !< Amplitude of the boundary velocity forcing for internal waves [L T-1 ~> m s-1]
-  real :: OBC_nudging_time  !< The timescale with which the inflowing open boundary velocities are nudged toward
+  real(wp) :: coast_angle = 0   !< Angle of coastline [rad]
+  real(wp) :: coast_offset1 = 0 !< Longshore distance to coastal angle [L ~> m]
+  real(wp) :: coast_offset2 = 0 !< Offshore distance to coastal angle [L ~> m]
+  real(wp) :: H0 = 0            !< Bottom depth [Z ~> m]
+  real(wp) :: F_0               !< Coriolis parameter [T-1 ~> s-1]
+  real(wp) :: rho_range         !< Density range [R ~> kg m-3]
+  real(wp) :: rho_0             !< Mean density [R ~> kg m-3]
+  real(wp) :: wave_period       !< Period of the mode-0 waves [T ~> s]
+  real(wp) :: ssh_amp           !< Amplitude of the sea surface height forcing for mode-0 waves [Z ~> m]
+  real(wp) :: inflow_amp        !< Amplitude of the boundary velocity forcing for internal waves [L T-1 ~> m s-1]
+  real(wp) :: OBC_nudging_time  !< The timescale with which the inflowing open boundary velocities are nudged toward
                             !! their intended values with the Kelvin wave test case [T ~> s], or a negative
                             !! value to retain the value that is set when the OBC segments are initialized.
   logical :: indexing_bugs  !< If true, retain several horizontal indexing bugs that were in the
@@ -82,48 +84,48 @@ logical function register_Kelvin_OBC(param_file, CS, US, OBC_Reg)
                  "Vertical Kelvin wave mode imposed at upstream open boundary.", &
                  default=0)
   call get_param(param_file, mdl, "F_0", CS%F_0, &
-                 default=0.0, units="s-1", scale=US%T_to_s, do_not_log=.true.)
+                 default=0.0_wp, units="s-1", scale=US%T_to_s, do_not_log=.true.)
   call get_param(param_file, mdl, "TOPO_CONFIG", config, fail_if_missing=.true., do_not_log=.true.)
   if (trim(config) == "Kelvin") then
     call get_param(param_file, mdl, "ROTATED_COAST_OFFSET_1", CS%coast_offset1, &
                    "The distance along the southern and northern boundaries "//&
                    "at which the coasts angle in.", &
-                   units="km", default=100.0, scale=1.0e3*US%m_to_L)
+                   units="km", default=100.0_wp, scale=1.0e3_wp*US%m_to_L)
     call get_param(param_file, mdl, "ROTATED_COAST_OFFSET_2", CS%coast_offset2, &
                    "The distance from the southern and northern boundaries "//&
                    "at which the coasts angle in.", &
-                   units="km", default=10.0, scale=1.0e3*US%m_to_L)
+                   units="km", default=10.0_wp, scale=1.0e3_wp*US%m_to_L)
     call get_param(param_file, mdl, "ROTATED_COAST_ANGLE", CS%coast_angle, &
                    "The angle of the southern bondary beyond X=ROTATED_COAST_OFFSET.", &
-                   units="degrees", default=11.3, scale=atan(1.0)/45.) ! Convert to radians
+                   units="degrees", default=11.3_wp, scale=atan(1.0_wp)/45._wp) ! Convert to radians
   else
-    CS%coast_offset1 = 0.0 ; CS%coast_offset2 = 0.0 ; CS%coast_angle = 0.0
+    CS%coast_offset1 = 0.0_wp ; CS%coast_offset2 = 0.0_wp ; CS%coast_angle = 0.0_wp
   endif
   if (CS%mode == 0) then
     call get_param(param_file, mdl, "KELVIN_WAVE_PERIOD", CS%wave_period, &
                    "The period of the Kelvin wave forcing at the open boundaries.  "//&
                    "The default value is the M2 tide period.", &
-                   units="s", default=12.42*3600.0, scale=US%s_to_T)
+                   units="s", default=12.42_wp*3600.0_wp, scale=US%s_to_T)
     call get_param(param_file, mdl, "KELVIN_WAVE_SSH_AMP", CS%ssh_amp, &
                    "The amplitude of the Kelvin wave sea surface height anomaly forcing "//&
-                   "at the open boundaries.", units="m", default=1.0, scale=US%m_to_Z)
+                   "at the open boundaries.", units="m", default=1.0_wp, scale=US%m_to_Z)
   else
     call get_param(param_file, mdl, "DENSITY_RANGE", CS%rho_range, &
-                   units="kg m-3", default=2.0, scale=US%kg_m3_to_R, do_not_log=.true.)
+                   units="kg m-3", default=2.0_wp, scale=US%kg_m3_to_R, do_not_log=.true.)
     call get_param(param_file, mdl, "RHO_0", CS%rho_0, &
-                   units="kg m-3", default=1035.0, scale=US%kg_m3_to_R, do_not_log=.true.)
+                   units="kg m-3", default=1035.0_wp, scale=US%kg_m3_to_R, do_not_log=.true.)
     call get_param(param_file, mdl, "MAXIMUM_DEPTH", CS%H0, &
-                   units="m", default=1000.0, scale=US%m_to_Z, do_not_log=.true.)
+                   units="m", default=1000.0_wp, scale=US%m_to_Z, do_not_log=.true.)
     call get_param(param_file, mdl, "KELVIN_WAVE_INFLOW_AMP", CS%inflow_amp, &
                    "The amplitude of the Kelvin wave sea surface inflow velocity forcing "//&
-                   "at the open boundaries.", units="m s-1", default=1.0, scale=US%m_s_to_L_T)
+                   "at the open boundaries.", units="m s-1", default=1.0_wp, scale=US%m_s_to_L_T)
   endif
 
   call get_param(param_file, mdl, "KELVIN_WAVE_VEL_NUDGING_TIMESCALE", CS%OBC_nudging_time, &
                  "The timescale with which the inflowing open boundary velocities are nudged toward "//&
                  "their intended values with the Kelvin wave test case, or a negative value to keep "//&
                  "the value that is set when the OBC segments are initialized.", &
-                 units="s", default=-1.0, scale=US%s_to_T)
+                 units="s", default=-1.0_wp, scale=US%s_to_T)
   call get_param(param_file, mdl, "ENABLE_BUGS_BY_DEFAULT", enable_bugs, &
                  default=.true., do_not_log=.true.)  ! This is logged from MOM.F90.
   call get_param(param_file, mdl, "KELVIN_SET_OBC_INDEXING_BUGS", CS%indexing_bugs, &
@@ -153,30 +155,30 @@ end subroutine Kelvin_OBC_end
 !> This subroutine sets up the Kelvin topography and land mask
 subroutine Kelvin_initialize_topography(D, G, param_file, max_depth, US)
   type(dyn_horgrid_type),          intent(in)  :: G !< The dynamic horizontal grid type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                                    intent(out) :: D !< Ocean bottom depth [Z ~> m]
   type(param_file_type),           intent(in)  :: param_file !< Parameter file structure
-  real,                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
+  real(wp),                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
   type(unit_scale_type),           intent(in)  :: US !< A dimensional unit scaling type
 
   ! Local variables
   character(len=40)  :: mdl = "Kelvin_initialize_topography" ! This subroutine's name.
-  real :: min_depth     ! The minimum and maximum depths [Z ~> m].
-  real :: coast_angle   ! Angle of coastline [rad]
-  real :: coast_offset1 ! Longshore distance to coastal angle [L ~> m]
-  real :: coast_offset2 ! Offshore distance to coastal angle [L ~> m]
+  real(wp) :: min_depth     ! The minimum and maximum depths [Z ~> m].
+  real(wp) :: coast_angle   ! Angle of coastline [rad]
+  real(wp) :: coast_offset1 ! Longshore distance to coastal angle [L ~> m]
+  real(wp) :: coast_offset2 ! Offshore distance to coastal angle [L ~> m]
   integer :: i, j
 
   call MOM_mesg("  Kelvin_initialization.F90, Kelvin_initialize_topography: setting topography", 5)
 
   call get_param(param_file, mdl, "MINIMUM_DEPTH", min_depth, &
-                 "The minimum depth of the ocean.", units="m", default=0.0, scale=US%m_to_Z)
+                 "The minimum depth of the ocean.", units="m", default=0.0_wp, scale=US%m_to_Z)
   call get_param(param_file, mdl, "ROTATED_COAST_OFFSET_1", coast_offset1, &
-                 units="km", default=100.0, do_not_log=.true.)
+                 units="km", default=100.0_wp, do_not_log=.true.)
   call get_param(param_file, mdl, "ROTATED_COAST_OFFSET_2", coast_offset2, &
-                 units="km", default=10.0, do_not_log=.true.)
+                 units="km", default=10.0_wp, do_not_log=.true.)
   call get_param(param_file, mdl, "ROTATED_COAST_ANGLE", coast_angle, &
-                 units="degrees", default=11.3, scale=(atan(1.0)/45.), do_not_log=.true.) ! Convert to radians
+                 units="degrees", default=11.3_wp, scale=(atan(1.0_wp)/45._wp), do_not_log=.true.) ! Convert to radians
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     D(i,j) = max_depth
@@ -184,15 +186,15 @@ subroutine Kelvin_initialize_topography(D, G, param_file, max_depth, US)
     if ((G%geoLonT(i,j) - G%west_lon > coast_offset1) .AND. &
         (atan2(G%geoLatT(i,j) - G%south_lat + coast_offset2, &
                G%geoLonT(i,j) - G%west_lon - coast_offset1) < coast_angle)) &
-      D(i,j) = 0.5*min_depth
+      D(i,j) = 0.5_wp*min_depth
     ! Northern side
     if ((G%geoLonT(i,j) - G%west_lon < G%len_lon - coast_offset1) .AND. &
         (atan2(G%len_lat + G%south_lat + coast_offset2 - G%geoLatT(i,j), &
                G%len_lon + G%west_lon - coast_offset1 - G%geoLonT(i,j)) < coast_angle)) &
-      D(i,j) = 0.5*min_depth
+      D(i,j) = 0.5_wp*min_depth
 
     if (D(i,j) > max_depth) D(i,j) = max_depth
-    if (D(i,j) < min_depth) D(i,j) = 0.5*min_depth
+    if (D(i,j) < min_depth) D(i,j) = 0.5_wp*min_depth
   enddo ; enddo
 
 end subroutine Kelvin_initialize_topography
@@ -206,31 +208,31 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure.
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2].
   type(time_type),         intent(in) :: Time !< model time.
 
   ! The following variables are used to set up the transport in the Kelvin example.
-  real :: time_sec     ! The time in the run [T ~> s]
-  real :: cff          ! The wave speed [L T-1 ~> m s-1]
-  real :: N0           ! Brunt-Vaisala frequency times a rescaling of slopes [L Z-1 T-1 ~> s-1]
-  real :: lambda       ! Offshore decay scale, i.e. the inverse of the deformation radius of a mode [L-1 ~> m-1]
-  real :: omega        ! Wave frequency [T-1 ~> s-1]
-  real :: PI           ! The ratio of the circumference of a circle to its diameter [nondim]
-  real :: depth_tot(SZI_(G),SZJ_(G))  ! The total depth of the ocean [Z ~> m]
-  real :: depth_tot_vel ! The total depth of the ocean at a velocity point [Z ~> m]
-  real :: depth_tot_corner ! The total depth of the ocean at a vorticity point [Z ~> m]
-  real :: Cor_vel      ! The Coriolis parameter interpolated to a velocity point [T-1 ~> s-1]
-  real    :: mag_SSH ! An overall magnitude of the external wave sea surface height at the coastline [Z ~> m]
-  real    :: mag_int ! An overall magnitude of the internal wave at the coastline [L T-1 ~> m s-1]
-  real    :: x1, y1  ! Various positions [L ~> m]
-  real    :: x, y    ! Various positions [L ~> m]
-  real    :: sin_wt  ! The sine-based periodicity factor [nondim]
-  real    :: cos_wt  ! The cosine-based periodicity factor [nondim]
-  real    :: val2    ! The local wave amplitude [Z ~> m]
-  real    :: km_to_L_scale  ! A scaling factor from longitudes in km to L [L km-1 ~> 1e3]
-  real    :: sina, cosa  ! The sine and cosine of the coast angle [nondim]
-  real    :: normal_sign ! A variable that corrects the sign of normal velocities for rotation [nondim]
-  real    :: trans_sign  ! A variable that corrects the sign of transverse velocities for rotation [nondim]
+  real(wp) :: time_sec     ! The time in the run [T ~> s]
+  real(wp) :: cff          ! The wave speed [L T-1 ~> m s-1]
+  real(wp) :: N0           ! Brunt-Vaisala frequency times a rescaling of slopes [L Z-1 T-1 ~> s-1]
+  real(wp) :: lambda       ! Offshore decay scale, i.e. the inverse of the deformation radius of a mode [L-1 ~> m-1]
+  real(wp) :: omega        ! Wave frequency [T-1 ~> s-1]
+  real(wp) :: PI           ! The ratio of the circumference of a circle to its diameter [nondim]
+  real(wp) :: depth_tot(SZI_(G),SZJ_(G))  ! The total depth of the ocean [Z ~> m]
+  real(wp) :: depth_tot_vel ! The total depth of the ocean at a velocity point [Z ~> m]
+  real(wp) :: depth_tot_corner ! The total depth of the ocean at a vorticity point [Z ~> m]
+  real(wp) :: Cor_vel      ! The Coriolis parameter interpolated to a velocity point [T-1 ~> s-1]
+  real(wp)    :: mag_SSH ! An overall magnitude of the external wave sea surface height at the coastline [Z ~> m]
+  real(wp)    :: mag_int ! An overall magnitude of the internal wave at the coastline [L T-1 ~> m s-1]
+  real(wp)    :: x1, y1  ! Various positions [L ~> m]
+  real(wp)    :: x, y    ! Various positions [L ~> m]
+  real(wp)    :: sin_wt  ! The sine-based periodicity factor [nondim]
+  real(wp)    :: cos_wt  ! The cosine-based periodicity factor [nondim]
+  real(wp)    :: val2    ! The local wave amplitude [Z ~> m]
+  real(wp)    :: km_to_L_scale  ! A scaling factor from longitudes in km to L [L km-1 ~> 1e3]
+  real(wp)    :: sina, cosa  ! The sine and cosine of the coast angle [nondim]
+  real(wp)    :: normal_sign ! A variable that corrects the sign of normal velocities for rotation [nondim]
+  real(wp)    :: trans_sign  ! A variable that corrects the sign of transverse velocities for rotation [nondim]
   type(OBC_segment_type), pointer :: segment => NULL()
   integer :: unrot_dir ! The unrotated direction of the segment
   integer :: turns    ! Number of index quarter turns
@@ -243,11 +245,11 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
 
   if (.not.associated(OBC)) call MOM_error(FATAL, 'Kelvin_initialization.F90: '// &
         'Kelvin_set_OBC_data() was called but OBC type was not initialized!')
-  if (G%grid_unit_to_L <= 0.) call MOM_error(FATAL, 'Kelvin_initialization.F90: '// &
+  if (G%grid_unit_to_L <= 0._wp) call MOM_error(FATAL, 'Kelvin_initialization.F90: '// &
           "Kelvin_set_OBC_data() is only set to work with Cartesian axis units.")
 
   time_sec = US%s_to_T*time_type_to_real(Time)
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
 
   turns = modulo(G%HI%turns, 4)
 
@@ -255,7 +257,7 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
     "Kelvin_set_OBC_data does not support grid rotation when KELVIN_SET_OBC_INDEXING_BUGS is true.")
 
   do j=jsd,jed ; do i=isd,ied
-    depth_tot(i,j) = 0.0
+    depth_tot(i,j) = 0.0_wp
   enddo ; enddo
   do k=1,nz ; do j=jsd,jed ; do i=isd,ied
     depth_tot(i,j) = depth_tot(i,j) + GV%H_to_Z * h(i,j,k)
@@ -263,14 +265,14 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
 
   if (CS%mode == 0) then
     mag_SSH = CS%ssh_amp
-    omega = 2.0 * PI / CS%wave_period
+    omega = 2.0_wp * PI / CS%wave_period
     sin_wt = sin(omega * time_sec)
   else
     mag_int = CS%inflow_amp
     N0 = sqrt((CS%rho_range / CS%rho_0) * (GV%g_Earth / CS%H0))
     lambda = PI * CS%mode * CS%F_0 / (CS%H0 * N0)
     ! Two wavelengths in domain
-    omega = (4.0 * CS%H0 * N0)  / (CS%mode * (G%grid_unit_to_L*G%len_lon))
+    omega = (4.0_wp * CS%H0 * N0)  / (CS%mode * (G%grid_unit_to_L*G%len_lon))
     ! If the modal wave speed were calculated via wave_speeds(), we should have
     !   lambda = CS%F_0 / CS%cg_mode
     !   omega = (4.0 * PI / (G%grid_unit_to_L*G%len_lon)) * CS%cg_mode
@@ -290,13 +292,13 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
     if ((unrot_dir == OBC_DIRECTION_E) .or. (unrot_dir == OBC_DIRECTION_N)) cycle
 
     ! Set variables that correct for sign changes during rotation.
-    normal_sign = 1.0
+    normal_sign = 1.0_wp
     if ( (segment%is_E_or_W .and. ((turns == 1) .or. (turns == 2))) .or. &
-         (segment%is_N_or_S .and. ((turns == 2) .or. (turns == 3))) ) normal_sign = -1.0
+         (segment%is_N_or_S .and. ((turns == 2) .or. (turns == 3))) ) normal_sign = -1.0_wp
 
     ! If OBC_nudging_time is negative, the value of Velocity_nudging_timescale_in that was set
     ! when the segments are initialized is retained.
-    if (CS%OBC_nudging_time >= 0.0) segment%Velocity_nudging_timescale_in = CS%OBC_nudging_time
+    if (CS%OBC_nudging_time >= 0.0_wp) segment%Velocity_nudging_timescale_in = CS%OBC_nudging_time
 
     isd = segment%HI%isd ; ied = segment%HI%ied ; IsdB = segment%HI%IsdB ; IedB = segment%HI%IedB
     jsd = segment%HI%jsd ; jed = segment%HI%jed ; JsdB = segment%HI%JsdB ; JedB = segment%HI%JedB
@@ -321,16 +323,16 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
           ! Use inside bathymetry
           if (segment%direction == OBC_DIRECTION_W) then
             depth_tot_vel = depth_tot(i+1,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
           elseif (segment%direction == OBC_DIRECTION_S) then
             depth_tot_vel = depth_tot(i,j+1)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
           elseif (segment%direction == OBC_DIRECTION_E) then
             depth_tot_vel = depth_tot(i,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
           elseif (segment%direction == OBC_DIRECTION_N) then
             depth_tot_vel = depth_tot(i,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
           endif
           cff = sqrt(GV%g_Earth * depth_tot_vel )
           val2 = mag_SSH * exp(- Cor_vel * y / cff)
@@ -347,8 +349,8 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
           endif
         else
           ! Baroclinic, not rotated yet
-          segment%SSH(I,j) = 0.0
-          segment%normal_vel_bt(I,j) = 0.0
+          segment%SSH(I,j) = 0.0_wp
+          segment%normal_vel_bt(I,j) = 0.0_wp
           ! Use inside bathymetry
           if (segment%direction == OBC_DIRECTION_W) then
             depth_tot_vel = depth_tot(i+1,j)
@@ -370,12 +372,12 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
           if (segment%nudged) then
             do k=1,nz
               segment%nudged_normal_vel(I,j,k) = (normal_sign*mag_int) * &
-                   exp(-lambda * y) * cos(PI * CS%mode * (k - 0.5) / nz) * cos_wt
+                   exp(-lambda * y) * cos(PI * CS%mode * (k - 0.5_wp) / nz) * cos_wt
             enddo
           elseif (segment%specified) then
             do k=1,nz
               segment%normal_vel(I,j,k) = (normal_sign*mag_int) * &
-                   exp(-lambda * y) * cos(PI * CS%mode * (k - 0.5) / nz) * cos_wt
+                   exp(-lambda * y) * cos(PI * CS%mode * (k - 0.5_wp) / nz) * cos_wt
             enddo
           endif
           if (associated(segment%h_Reg)) then
@@ -411,16 +413,16 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
         if (CS%mode == 0) then
           if (segment%direction == OBC_DIRECTION_W) then
             depth_tot_vel = depth_tot(i+1,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
           elseif (segment%direction == OBC_DIRECTION_S) then
             depth_tot_vel = depth_tot(i,j+1)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
           elseif (segment%direction == OBC_DIRECTION_E) then
             depth_tot_vel = depth_tot(i,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1))
           elseif (segment%direction == OBC_DIRECTION_N) then
             depth_tot_vel = depth_tot(i,j)
-            Cor_vel = 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
+            Cor_vel = 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J))
           endif
           cff = sqrt(GV%g_Earth * depth_tot_vel )
           val2 = mag_SSH * exp(- Cor_vel * y / cff)
@@ -437,18 +439,18 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
           endif
         else
           ! Not rotated yet (also see the notes above on how this case might be improved)
-          segment%SSH(i,J) = 0.0
-          segment%normal_vel_bt(i,J) = 0.0
+          segment%SSH(i,J) = 0.0_wp
+          segment%normal_vel_bt(i,J) = 0.0_wp
           if (segment%nudged) then
             do k=1,nz
               segment%nudged_normal_vel(i,J,k) = (normal_sign*mag_int) * &
-                   exp(- lambda * y) * cos(PI * CS%mode * (k - 0.5) / nz) * cosa
+                   exp(- lambda * y) * cos(PI * CS%mode * (k - 0.5_wp) / nz) * cosa
               ! This is missing cos_wt
             enddo
           elseif (segment%specified) then
             do k=1,nz
               segment%normal_vel(i,J,k) = (normal_sign*mag_int) * &
-                   exp(- lambda * y) * cos(PI * CS%mode * (k - 0.5) / nz) * cosa
+                   exp(- lambda * y) * cos(PI * CS%mode * (k - 0.5_wp) / nz) * cosa
               ! This is missing cos_wt
             enddo
           endif
@@ -457,25 +459,25 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
     endif
 
     if (allocated(segment%tangential_vel)) then
-      trans_sign = 1.0
+      trans_sign = 1.0_wp
       if (segment%is_E_or_W) then
         Isq = IsdB ; Ieq = IedB ; Jsq = JsdB+1 ; Jeq = JedB-1
-        if ((turns == 2) .or. (turns == 3)) trans_sign = -1.0
+        if ((turns == 2) .or. (turns == 3)) trans_sign = -1.0_wp
       else
         Isq = IsdB+1 ; Ieq = IedB-1 ; Jsq = JsdB ; Jeq = JedB
-        if ((turns == 1) .or. (turns == 2)) trans_sign = -1.0
+        if ((turns == 1) .or. (turns == 2)) trans_sign = -1.0_wp
       endif
 
       if ((unrot_dir == OBC_DIRECTION_W) .or. (unrot_dir == OBC_DIRECTION_S)) then
         do J=Jsq,Jeq ; do I=Isq,Ieq
           if (segment%direction == OBC_DIRECTION_W) then
-            depth_tot_corner = 0.5*(depth_tot(i+1,j+1) + depth_tot(i+1,j))
+            depth_tot_corner = 0.5_wp*(depth_tot(i+1,j+1) + depth_tot(i+1,j))
           elseif (segment%direction == OBC_DIRECTION_E) then
-            depth_tot_corner = 0.5*(depth_tot(i,j+1) + depth_tot(i,j))
+            depth_tot_corner = 0.5_wp*(depth_tot(i,j+1) + depth_tot(i,j))
           elseif (segment%direction == OBC_DIRECTION_S) then
-            depth_tot_corner = 0.5*(depth_tot(i+1,j+1) + depth_tot(i,j+1))
+            depth_tot_corner = 0.5_wp*(depth_tot(i+1,j+1) + depth_tot(i,j+1))
           elseif (segment%direction == OBC_DIRECTION_N) then
-            depth_tot_corner = 0.5*(depth_tot(i+1,j) + depth_tot(i,j))
+            depth_tot_corner = 0.5_wp*(depth_tot(i+1,j) + depth_tot(i,j))
           endif
           x1 = G%grid_unit_to_L * G%geoLonBu(I,J)
           y1 = G%grid_unit_to_L * G%geoLatBu(I,J)
@@ -490,7 +492,7 @@ subroutine Kelvin_set_OBC_data(OBC, CS, G, GV, US, h, Time)
             endif
             if (unrot_dir == OBC_DIRECTION_S) then
               cff = sqrt(GV%g_Earth * depth_tot(i,j+1) )
-              val2 = (trans_sign*mag_SSH) * exp(- 0.5 * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J)) * y / cff)
+              val2 = (trans_sign*mag_SSH) * exp(- 0.5_wp * (G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J)) * y / cff)
             endif
           endif
           if (CS%mode == 0) then ; do k=1,nz

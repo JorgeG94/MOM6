@@ -4,6 +4,8 @@ module write_ocean_obs_mod
 use ocean_da_types_mod, only : ocean_profile_type
 use MOM_time_manager, only : time_type, get_time, set_date
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: open_profile_file, write_profile, close_profile_file, write_ocean_obs_init
@@ -14,8 +16,8 @@ contains
 integer function open_profile_file(name, nvar, grid_lon, grid_lat, thread, fset)
   character(len=*), intent(in) :: name !< File name
   integer, intent(in), optional :: nvar !< Number of variables
-  real, dimension(:), optional, intent(in) :: grid_lon !< Longitude [degreeE]
-  real, dimension(:), optional, intent(in) :: grid_lat !< Latitude [degreeN]
+  real(wp), dimension(:), optional, intent(in) :: grid_lon !< Longitude [degreeE]
+  real(wp), dimension(:), optional, intent(in) :: grid_lat !< Latitude [degreeN]
   integer, optional, intent(in) :: thread !< Thread number
   integer, optional, intent(in) :: fset !< File set
 

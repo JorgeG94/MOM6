@@ -18,6 +18,8 @@ use MOM_verticalGrid,   only : verticalGrid_type
 use CVMix_convection,   only : CVMix_init_conv, CVMix_coeffs_conv
 use CVMix_kpp,          only : CVMix_kpp_compute_kOBL_depth
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -28,11 +30,11 @@ public CVMix_conv_init, calculate_CVMix_conv, CVMix_conv_is_used
 type, public :: CVMix_conv_cs ; private
 
   ! Parameters
-  real    :: kd_conv_const !< diffusivity constant used in convective regime [Z2 T-1 ~> m2 s-1]
-  real    :: kv_conv_const !< viscosity constant used in convective regime [Z2 T-1 ~> m2 s-1]
-  real    :: bv_sqr_conv   !< Threshold for squared buoyancy frequency
+  real(wp)    :: kd_conv_const !< diffusivity constant used in convective regime [Z2 T-1 ~> m2 s-1]
+  real(wp)    :: kv_conv_const !< viscosity constant used in convective regime [Z2 T-1 ~> m2 s-1]
+  real(wp)    :: bv_sqr_conv   !< Threshold for squared buoyancy frequency
                            !! needed to trigger Brunt-Vaisala parameterization [T-2 ~> s-2]
-  real    :: min_thickness !< Minimum thickness allowed [Z ~> m]
+  real(wp)    :: min_thickness !< Minimum thickness allowed [Z ~> m]
   logical :: debug         !< If true, turn on debugging
 
   ! Diagnostic handles and pointers
@@ -58,7 +60,7 @@ logical function CVMix_conv_init(Time, G, GV, US, param_file, diag, CS)
   type(diag_ctrl), target, intent(inout) :: diag       !< Diagnostics control structure.
   type(CVMix_conv_cs),     intent(inout) :: CS         !< CVMix convection control structure
 
-  real    :: prandtl_conv !< Turbulent Prandtl number used in convective instabilities [nondim]
+  real(wp)    :: prandtl_conv !< Turbulent Prandtl number used in convective instabilities [nondim]
   logical :: useEPBL      !< If True, use the ePBL boundary layer scheme.
 
   ! This include declares and sets the variable "version".
@@ -92,24 +94,24 @@ logical function CVMix_conv_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, 'DEBUG', CS%debug, default=.False., do_not_log=.True.)
 
   call get_param(param_file, mdl, 'MIN_THICKNESS', CS%min_thickness, &
-                 units="m", scale=US%m_to_Z, default=0.001, do_not_log=.True.)
+                 units="m", scale=US%m_to_Z, default=0.001_wp, do_not_log=.True.)
 
   call openParameterBlock(param_file,'CVMix_CONVECTION')
 
   call get_param(param_file, mdl, "PRANDTL_CONV", prandtl_conv, &
                  "The turbulent Prandtl number applied to convective "//&
                  "instabilities (i.e., used to convert KD_CONV into KV_CONV)", &
-                 units="nondim", default=1.0)
+                 units="nondim", default=1.0_wp)
 
   call get_param(param_file, mdl, 'KD_CONV', CS%kd_conv_const, &
                  "Diffusivity used in convective regime. Corresponding viscosity "//&
                  "(KV_CONV) will be set to KD_CONV * PRANDTL_CONV.", &
-                 units='m2/s', default=1.00, scale=US%m2_s_to_Z2_T)
+                 units='m2/s', default=1.00_wp, scale=US%m2_s_to_Z2_T)
 
   call get_param(param_file, mdl, 'BV_SQR_CONV', CS%bv_sqr_conv, &
                  "Threshold for squared buoyancy frequency needed to trigger "//&
                  "Brunt-Vaisala parameterization.", &
-                 units='1/s^2', default=0.0, scale=US%T_to_s**2)
+                 units='1/s^2', default=0.0_wp, scale=US%T_to_s**2)
 
   call closeParameterBlock(param_file)
 
@@ -139,45 +141,45 @@ subroutine calculate_CVMix_conv(h, tv, G, GV, US, CS, hbl, Kd, Kv, Kd_aux)
   type(ocean_grid_type),                     intent(in)  :: G  !< Grid structure.
   type(verticalGrid_type),                   intent(in)  :: GV !< Vertical grid structure.
   type(unit_scale_type),                     intent(in)  :: US !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h  !< Layer thickness [H ~> m or kg m-2].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h  !< Layer thickness [H ~> m or kg m-2].
   type(thermo_var_ptrs),                     intent(in)  :: tv !< Thermodynamics structure.
   type(CVMix_conv_cs),                       intent(in)  :: CS !< CVMix convection control structure
-  real, dimension(SZI_(G),SZJ_(G)),          intent(in)  :: hbl !< Depth of ocean boundary layer [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZJ_(G)),          intent(in)  :: hbl !< Depth of ocean boundary layer [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
                                              intent(inout) :: Kd !< Diapycnal diffusivity at each interface
                                                                  !! that will be incremented here
                                                                  !! [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
                                              intent(inout) :: Kv !< Viscosity at each interface that will be
                                                                  !! incremented here [H Z T-1 ~> m2 s-1 or Pa s]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
                                    optional, intent(inout) :: Kd_aux !< A second diapycnal diffusivity at each
                                                                  !! interface that will also be incremented
                                                                  !! here [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
 
   ! local variables
-  real, dimension(SZK_(GV)) :: rho_lwr !< Adiabatic Water Density [kg m-3], this is a dummy
+  real(wp), dimension(SZK_(GV)) :: rho_lwr !< Adiabatic Water Density [kg m-3], this is a dummy
                                        !! variable since here convection is always
                                        !! computed based on Brunt Vaisala.
-  real, dimension(SZK_(GV)) :: rho_1d  !< water density in a column [kg m-3], this is also
+  real(wp), dimension(SZK_(GV)) :: rho_1d  !< water density in a column [kg m-3], this is also
                                        !! a dummy variable, same reason as above.
-  real, dimension(SZK_(GV)+1) :: N2    !< Squared buoyancy frequency [s-2]
-  real, dimension(SZK_(GV)+1) :: kv_col !< Viscosities at interfaces in the column [m2 s-1]
-  real, dimension(SZK_(GV)+1) :: kd_col !< Diffusivities at interfaces in the column [m2 s-1]
-  real, dimension(SZK_(GV)+1) :: iFaceHeight !< Height of interfaces [Z ~> m]
-  real, dimension(SZK_(GV))   :: cellHeight  !< Height of cell centers [Z ~> m]
-  real, dimension(SZI_(G),SZK_(GV)) :: dz ! Height change across layers [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZK_(GV)+1) :: N2    !< Squared buoyancy frequency [s-2]
+  real(wp), dimension(SZK_(GV)+1) :: kv_col !< Viscosities at interfaces in the column [m2 s-1]
+  real(wp), dimension(SZK_(GV)+1) :: kd_col !< Diffusivities at interfaces in the column [m2 s-1]
+  real(wp), dimension(SZK_(GV)+1) :: iFaceHeight !< Height of interfaces [Z ~> m]
+  real(wp), dimension(SZK_(GV))   :: cellHeight  !< Height of cell centers [Z ~> m]
+  real(wp), dimension(SZI_(G),SZK_(GV)) :: dz ! Height change across layers [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
     kd_conv, &                         !< Diffusivity added by convection for diagnostics [Z2 T-1 ~> m2 s-1]
     kv_conv, &                         !< Viscosity added by convection for diagnostics [Z2 T-1 ~> m2 s-1]
     N2_3d                              !< Squared buoyancy frequency for diagnostics [T-2 ~> s-2]
   integer :: kOBL                      !< level of ocean boundary layer extent
-  real :: g_o_rho0  ! Gravitational acceleration, perhaps divided by density, times unit conversion factors
+  real(wp) :: g_o_rho0  ! Gravitational acceleration, perhaps divided by density, times unit conversion factors
                     ! [H s-2 R-1 ~> m4 s-2 kg-1 or m s-2]
-  real :: pref      ! Interface pressures [R L2 T-2 ~> Pa]
-  real :: rhok, rhokm1 ! In situ densities of the layers above and below at the interface pressure [R ~> kg m-3]
-  real :: dh_int    ! The distance between layer centers [H ~> m or kg m-2]
-  real :: dh, hcorr ! Limited thicknesses and a cumulative correction [Z ~> m]
+  real(wp) :: pref      ! Interface pressures [R L2 T-2 ~> Pa]
+  real(wp) :: rhok, rhokm1 ! In situ densities of the layers above and below at the interface pressure [R ~> kg m-3]
+  real(wp) :: dh_int    ! The distance between layer centers [H ~> m or kg m-2]
+  real(wp) :: dh, hcorr ! Limited thicknesses and a cumulative correction [Z ~> m]
   integer :: i, j, k
 
   if (GV%Boussinesq) then
@@ -187,14 +189,14 @@ subroutine calculate_CVMix_conv(h, tv, G, GV, US, CS, hbl, Kd, Kv, Kd_aux)
   endif
 
   ! initialize dummy variables
-  rho_lwr(:) = 0.0 ; rho_1d(:) = 0.0
+  rho_lwr(:) = 0.0_wp ; rho_1d(:) = 0.0_wp
 
   ! set N2 to zero at the top- and bottom-most interfaces
-  N2(1) = 0.0 ; N2(GV%ke+1) = 0.0
+  N2(1) = 0.0_wp ; N2(GV%ke+1) = 0.0_wp
 
-  if (CS%id_N2 > 0) N2_3d(:,:,:) = 0.0
-  if (CS%id_kv_conv > 0) Kv_conv(:,:,:) = 0.0
-  if (CS%id_kd_conv > 0) Kd_conv(:,:,:) = 0.0
+  if (CS%id_N2 > 0) N2_3d(:,:,:) = 0.0_wp
+  if (CS%id_kv_conv > 0) Kv_conv(:,:,:) = 0.0_wp
+  if (CS%id_kd_conv > 0) Kd_conv(:,:,:) = 0.0_wp
 
   do j = G%jsc, G%jec
 
@@ -206,7 +208,7 @@ subroutine calculate_CVMix_conv(h, tv, G, GV, US, CS, hbl, Kd, Kv, Kd_aux)
       ! skip calling at land points
       !if (G%mask2dT(i,j) == 0.) cycle
 
-      pRef = 0. ; if (associated(tv%p_surf)) pRef = tv%p_surf(i,j)
+      pRef = 0._wp ; if (associated(tv%p_surf)) pRef = tv%p_surf(i,j)
       ! Compute Brunt-Vaisala frequency (static stability) on interfaces
       do K=2,GV%ke
 
@@ -215,27 +217,27 @@ subroutine calculate_CVMix_conv(h, tv, G, GV, US, CS, hbl, Kd, Kv, Kd_aux)
         call calculate_density(tv%t(i,j,k), tv%s(i,j,k), pRef, rhok, tv%eqn_of_state)
         call calculate_density(tv%t(i,j,k-1), tv%s(i,j,k-1), pRef, rhokm1, tv%eqn_of_state)
 
-        dh_int = 0.5*(h(i,j,k-1) + h(i,j,k)) + GV%H_subroundoff
+        dh_int = 0.5_wp*(h(i,j,k-1) + h(i,j,k)) + GV%H_subroundoff
         N2(K) = g_o_rho0 * (rhok - rhokm1) / dh_int ! Can be negative
 
       enddo
 
-      iFaceHeight(1) = 0.0 ! BBL is all relative to the surface
-      hcorr = 0.0
+      iFaceHeight(1) = 0.0_wp ! BBL is all relative to the surface
+      hcorr = 0.0_wp
       ! compute heights at cell center and interfaces
       do k=1,GV%ke
         dh = dz(i,k) ! Nominal thickness to use for increment, in the units of heights
         dh = dh + hcorr ! Take away the accumulated error (could temporarily make dh<0)
-        hcorr = min( dh - CS%min_thickness, 0. ) ! If inflating then hcorr<0
+        hcorr = min( dh - CS%min_thickness, 0._wp ) ! If inflating then hcorr<0
         dh = max(dh, CS%min_thickness) ! Limited increment dh>=min_thickness
-        cellHeight(k)    = iFaceHeight(k) - 0.5 * dh
+        cellHeight(k)    = iFaceHeight(k) - 0.5_wp * dh
         iFaceHeight(k+1) = iFaceHeight(k) - dh
       enddo
 
       ! gets index of the level and interface above hbl
       kOBL = CVMix_kpp_compute_kOBL_depth(iFaceHeight, cellHeight, hbl(i,j))
 
-      kv_col(:) = 0.0 ; kd_col(:) = 0.0
+      kv_col(:) = 0.0_wp ; kd_col(:) = 0.0_wp
       call CVMix_coeffs_conv(Mdiff_out=kv_col(:), &
                              Tdiff_out=kd_col(:), &
                              Nsqr=N2(:), &

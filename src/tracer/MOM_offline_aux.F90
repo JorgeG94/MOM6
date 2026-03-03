@@ -19,6 +19,8 @@ use MOM_variables,        only : vertvisc_type
 use MOM_verticalGrid,     only : verticalGrid_type
 use astronomy_mod,        only : orbital_time, diurnal_solar, daily_mean_solar
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public update_offline_from_files
@@ -42,13 +44,13 @@ contains
 subroutine update_h_horizontal_flux(G, GV, uhtr, vhtr, h_pre, h_new)
   type(ocean_grid_type),   intent(in)    :: G     !< ocean grid structure
   type(verticalGrid_type), intent(in)    :: GV    !< ocean vertical grid structure
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: uhtr  !< Accumulated mass flux through zonal face [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in)    :: vhtr  !< Accumulated mass flux through meridional face [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h_pre !< Previous layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h_new !< Updated layer thicknesses [H ~> m or kg m-2]
 
   ! Local variables
@@ -59,7 +61,7 @@ subroutine update_h_horizontal_flux(G, GV, uhtr, vhtr, h_pre, h_new)
   do k=1,nz
     do i=is-1,ie+1 ; do j=js-1,je+1
 
-      h_new(i,j,k) = max(0.0, G%areaT(i,j)*h_pre(i,j,k) + &
+      h_new(i,j,k) = max(0.0_wp, G%areaT(i,j)*h_pre(i,j,k) + &
           ((uhtr(I-1,j,k) - uhtr(I,j,k)) + (vhtr(i,J-1,k) - vhtr(i,J,k))))
 
       ! Convert back to thickness
@@ -74,16 +76,16 @@ end subroutine update_h_horizontal_flux
 subroutine update_h_vertical_flux(G, GV, ea, eb, h_pre, h_new)
   type(ocean_grid_type),   intent(in)    :: G     !< ocean grid structure
   type(verticalGrid_type), intent(in)    :: GV    !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: ea    !< Mass of fluid entrained from the layer
                                                   !! above within this timestep [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: eb    !< Mass of fluid entrained from the layer
                                                   !! below within this timestep [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h_pre !< Layer thicknesses at the end of the previous
                                                   !! step [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h_new !< Updated layer thicknesses [H ~> m or kg m-2]
 
   ! Local variables
@@ -95,15 +97,15 @@ subroutine update_h_vertical_flux(G, GV, ea, eb, h_pre, h_new)
   do j=js-1,je+1
     do i=is-1,ie+1
       ! Top layer
-      h_new(i,j,1) = max(0.0, h_pre(i,j,1) + ((eb(i,j,1) - ea(i,j,2)) + ea(i,j,1)))
+      h_new(i,j,1) = max(0.0_wp, h_pre(i,j,1) + ((eb(i,j,1) - ea(i,j,2)) + ea(i,j,1)))
 
       ! Bottom layer
-      h_new(i,j,nz) = max(0.0, h_pre(i,j,nz) + ((ea(i,j,nz) - eb(i,j,nz-1)) + eb(i,j,nz)))
+      h_new(i,j,nz) = max(0.0_wp, h_pre(i,j,nz) + ((ea(i,j,nz) - eb(i,j,nz-1)) + eb(i,j,nz)))
     enddo
 
     ! Interior layers
     do k=2,nz-1 ; do i=is-1,ie+1
-      h_new(i,j,k) = max(0.0, h_pre(i,j,k) + ((ea(i,j,k) - eb(i,j,k-1)) + &
+      h_new(i,j,k) = max(0.0_wp, h_pre(i,j,k) + ((ea(i,j,k) - eb(i,j,k-1)) + &
                                               (eb(i,j,k) - ea(i,j,k+1))))
     enddo ; enddo
   enddo
@@ -115,32 +117,32 @@ end subroutine update_h_vertical_flux
 subroutine limit_mass_flux_3d(G, GV, uh, vh, ea, eb, h_pre)
   type(ocean_grid_type),   intent(in)    :: G     !< ocean grid structure
   type(verticalGrid_type), intent(in)    :: GV    !< ocean vertical grid structure
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: uh    !< Mass flux through zonal face [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout) :: vh    !< Mass flux through meridional face [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: ea    !< Mass of fluid entrained from the layer
                                                   !! above within this timestep [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: eb    !< Mass of fluid entrained from the layer
                                                   !! below within this timestep [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h_pre !< Layer thicknesses at the end of the previous
                                                   !! step [H ~> m or kg m-2]
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: top_flux    ! Net upward fluxes through the layer
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: top_flux    ! Net upward fluxes through the layer
                                                            ! top [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: bottom_flux ! Net downward fluxes through the layer
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: bottom_flux ! Net downward fluxes through the layer
                                                            ! bottom [H ~> m or kg m-2]
-  real :: pos_flux ! Net flux out of cell [H L2 ~> m3 or kg]
-  real :: hvol     ! Cell volume [H L2 ~> m3 or kg]
-  real :: scale_factor  ! A nondimensional rescaling factor between 0 and 1 [nondim]
-  real :: max_off_cfl   ! The maximum permitted fraction that can leave in a timestep [nondim]
+  real(wp) :: pos_flux ! Net flux out of cell [H L2 ~> m3 or kg]
+  real(wp) :: hvol     ! Cell volume [H L2 ~> m3 or kg]
+  real(wp) :: scale_factor  ! A nondimensional rescaling factor between 0 and 1 [nondim]
+  real(wp) :: max_off_cfl   ! The maximum permitted fraction that can leave in a timestep [nondim]
   integer :: i, j, k, is, ie, js, je, nz
 
-  max_off_cfl = 0.5
+  max_off_cfl = 0.5_wp
 
   ! In this subroutine, fluxes out of the box are scaled away if they deplete
   ! the layer, note that we define the positive direction as flux out of the box.
@@ -174,30 +176,30 @@ subroutine limit_mass_flux_3d(G, GV, uh, vh, ea, eb, h_pre)
   do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
 
     hvol = h_pre(i,j,k) * G%areaT(i,j)
-    pos_flux  = ((max(0.0, -uh(I-1,j,k)) + max(0.0, uh(I,j,k))) + &
-                 (max(0.0, -vh(i,J-1,k)) + max(0.0, vh(i,J,k)))) + &
-                (max(0.0, top_flux(i,j,k)) + max(0.0, bottom_flux(i,j,k))) * G%areaT(i,j)
+    pos_flux  = ((max(0.0_wp, -uh(I-1,j,k)) + max(0.0_wp, uh(I,j,k))) + &
+                 (max(0.0_wp, -vh(i,J-1,k)) + max(0.0_wp, vh(i,J,k)))) + &
+                (max(0.0_wp, top_flux(i,j,k)) + max(0.0_wp, bottom_flux(i,j,k))) * G%areaT(i,j)
 
-    if ((pos_flux > hvol) .and. (pos_flux > 0.0)) then
+    if ((pos_flux > hvol) .and. (pos_flux > 0.0_wp)) then
       scale_factor = (hvol / pos_flux) * max_off_cfl
     else ! Don't scale
-      scale_factor = 1.0
+      scale_factor = 1.0_wp
     endif
 
     ! Scale horizontal fluxes
-    if (-uh(I-1,j,k) > 0.0) uh(I-1,j,k) = uh(I-1,j,k) * scale_factor
-    if (uh(I,j,k) > 0.0)    uh(I,j,k)   = uh(I,j,k) * scale_factor
-    if (-vh(i,J-1,k) > 0.0) vh(i,J-1,k) = vh(i,J-1,k) * scale_factor
-    if (vh(i,J,k) > 0.0)    vh(i,J,k)   = vh(i,J,k) * scale_factor
+    if (-uh(I-1,j,k) > 0.0_wp) uh(I-1,j,k) = uh(I-1,j,k) * scale_factor
+    if (uh(I,j,k) > 0.0_wp)    uh(I,j,k)   = uh(I,j,k) * scale_factor
+    if (-vh(i,J-1,k) > 0.0_wp) vh(i,J-1,k) = vh(i,J-1,k) * scale_factor
+    if (vh(i,J,k) > 0.0_wp)    vh(i,J,k)   = vh(i,J,k) * scale_factor
 
     ! Scale the flux across the interface atop a layer if it is upward
-    if (top_flux(i,j,k) > 0.0) then
+    if (top_flux(i,j,k) > 0.0_wp) then
       ea(i,j,k) = ea(i,j,k) * scale_factor
       if (k > 1) &
         eb(i,j,k-1) = eb(i,j,k-1) * scale_factor
     endif
     ! Scale the flux across the interface atop a layer if it is downward
-    if (bottom_flux(i,j,k) > 0.0) then
+    if (bottom_flux(i,j,k) > 0.0_wp) then
       eb(i,j,k) = eb(i,j,k) * scale_factor
       if (k < nz) &
         ea(i,j,k+1) = ea(i,j,k+1) * scale_factor
@@ -211,28 +213,28 @@ end subroutine limit_mass_flux_3d
 subroutine distribute_residual_uh_barotropic(G, GV, hvol, uh)
   type(ocean_grid_type),   intent(in   ) :: G    !< ocean grid structure
   type(verticalGrid_type), intent(in   ) :: GV   !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in   ) :: hvol !< Mass of water in the cells at the end
                                                  !! of the previous timestep [H L2 ~> m3 or kg]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: uh   !< Zonal mass transport within a timestep [H L2 ~> m3 or kg]
 
   ! Local variables
-  real, dimension(SZIB_(G),SZK_(GV))  :: uh2d     ! A 2-d slice of transports [H L2 ~> m3 or kg]
-  real, dimension(SZIB_(G))           :: uh2d_sum ! Vertically summed transports [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZK_(GV))   :: h2d      ! A 2-d slice of cell volumes [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G))            :: h2d_sum  ! Vertically summed cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZIB_(G),SZK_(GV))  :: uh2d     ! A 2-d slice of transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZIB_(G))           :: uh2d_sum ! Vertically summed transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZK_(GV))   :: h2d      ! A 2-d slice of cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G))            :: h2d_sum  ! Vertically summed cell volumes [H L2 ~> m3 or kg]
 
-  real :: abs_uh_sum  ! The vertical sum of the absolute value of the transports [H L2 ~> m3 or kg]
-  real :: new_uh_sum  ! The vertically summed transports after redistribution [H L2 ~> m3 or kg]
-  real :: uh_neglect  ! A negligible transport [H L2 ~> m3 or kg]
+  real(wp) :: abs_uh_sum  ! The vertical sum of the absolute value of the transports [H L2 ~> m3 or kg]
+  real(wp) :: new_uh_sum  ! The vertically summed transports after redistribution [H L2 ~> m3 or kg]
+  real(wp) :: uh_neglect  ! A negligible transport [H L2 ~> m3 or kg]
   integer :: i, j, k, is, ie, js, je, nz
 
   ! Set index-related variables for fields on T-grid
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   do j=js,je
-    uh2d_sum(:) = 0.0
+    uh2d_sum(:) = 0.0_wp
     ! Copy over uh to a working array and sum up the remaining fluxes in a column
     do k=1,nz ; do I=is-1,ie
       uh2d(I,k) = uh(I,j,k)
@@ -240,10 +242,10 @@ subroutine distribute_residual_uh_barotropic(G, GV, hvol, uh)
     enddo ; enddo
 
     ! Copy over h to a working array and calculate total column volume
-    h2d_sum(:) = 0.0
+    h2d_sum(:) = 0.0_wp
     do k=1,nz ; do i=is-1,ie+1
       h2d(i,k) = hvol(i,j,k)
-      if (hvol(i,j,k)>0.) then
+      if (hvol(i,j,k)>0._wp) then
         h2d_sum(i) = h2d_sum(i) + h2d(i,k)
       else
         h2d(i,k) = GV%H_subroundoff * G%areaT(i,j)
@@ -253,28 +255,28 @@ subroutine distribute_residual_uh_barotropic(G, GV, hvol, uh)
     ! Distribute flux. Note min/max is intended to make sure that the mass transport
     ! does not deplete a cell
     do I=is-1,ie
-      if ( uh2d_sum(I)>0.0 ) then
+      if ( uh2d_sum(I)>0.0_wp ) then
         do k=1,nz
           uh2d(I,k) = uh2d_sum(I)*(h2d(i,k)/h2d_sum(i))
         enddo
-      elseif (uh2d_sum(I)<0.0) then
+      elseif (uh2d_sum(I)<0.0_wp) then
         do k=1,nz
           uh2d(I,k) = uh2d_sum(I)*(h2d(i+1,k)/h2d_sum(i+1))
         enddo
       else
         do k=1,nz
-          uh2d(I,k) = 0.0
+          uh2d(I,k) = 0.0_wp
         enddo
       endif
 
       ! Check that column integrated transports match the original to within roundoff.
       uh_neglect = GV%Angstrom_H * min(G%areaT(i,j), G%areaT(i+1,j))
-      abs_uh_sum = 0.0 ; new_uh_sum = 0.0
+      abs_uh_sum = 0.0_wp ; new_uh_sum = 0.0_wp
       do k=1,nz
         abs_uh_sum = abs_uh_sum + abs(uh2d(j,k))
         new_uh_sum = new_uh_sum + uh2d(j,k)
       enddo
-      if ( abs(new_uh_sum - uh2d_sum(j)) > max(uh_neglect, (5.0e-16*nz)*abs_uh_sum) ) &
+      if ( abs(new_uh_sum - uh2d_sum(j)) > max(uh_neglect, (5.0e-16_wp*nz)*abs_uh_sum) ) &
         call MOM_error(WARNING, "Column integral of uh does not match after "//&
                                 "barotropic redistribution")
     enddo
@@ -290,28 +292,28 @@ end subroutine distribute_residual_uh_barotropic
 subroutine distribute_residual_vh_barotropic(G, GV, hvol, vh)
   type(ocean_grid_type),   intent(in   ) :: G    !< ocean grid structure
   type(verticalGrid_type), intent(in   ) :: GV   !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in   ) :: hvol !< Mass of water in the cells at the end
                                                  !! of the previous timestep [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout) :: vh   !< Meridional mass transport within a timestep [H L2 ~> m3 or kg]
 
   ! Local variables
-  real, dimension(SZJB_(G),SZK_(GV))  :: vh2d     ! A 2-d slice of transports [H L2 ~> m3 or kg]
-  real, dimension(SZJB_(G))           :: vh2d_sum ! Vertically summed transports [H L2 ~> m3 or kg]
-  real, dimension(SZJ_(G),SZK_(GV))   :: h2d      ! A 2-d slice of cell volumes [H L2 ~> m3 or kg]
-  real, dimension(SZJ_(G))            :: h2d_sum  ! Vertically summed cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJB_(G),SZK_(GV))  :: vh2d     ! A 2-d slice of transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJB_(G))           :: vh2d_sum ! Vertically summed transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJ_(G),SZK_(GV))   :: h2d      ! A 2-d slice of cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJ_(G))            :: h2d_sum  ! Vertically summed cell volumes [H L2 ~> m3 or kg]
 
-  real :: abs_vh_sum  ! The vertical sum of the absolute value of the transports [H L2 ~> m3 or kg]
-  real :: new_vh_sum  ! The vertically summed transports after redistribution [H L2 ~> m3 or kg]
-  real :: vh_neglect  ! A negligible transport [H L2 ~> m3 or kg]
+  real(wp) :: abs_vh_sum  ! The vertical sum of the absolute value of the transports [H L2 ~> m3 or kg]
+  real(wp) :: new_vh_sum  ! The vertically summed transports after redistribution [H L2 ~> m3 or kg]
+  real(wp) :: vh_neglect  ! A negligible transport [H L2 ~> m3 or kg]
   integer :: i, j, k, is, ie, js, je, nz
 
   ! Set index-related variables for fields on T-grid
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   do i=is,ie
-    vh2d_sum(:) = 0.0
+    vh2d_sum(:) = 0.0_wp
     ! Copy over uh to a working array and sum up the remaining fluxes in a column
     do k=1,nz ; do J=js-1,je
       vh2d(J,k) = vh(i,J,k)
@@ -319,10 +321,10 @@ subroutine distribute_residual_vh_barotropic(G, GV, hvol, vh)
     enddo ; enddo
 
     ! Copy over h to a working array and calculate column volume
-    h2d_sum(:) = 0.0
+    h2d_sum(:) = 0.0_wp
     do k=1,nz ; do j=js-1,je+1
       h2d(j,k) = hvol(i,j,k)
-      if (hvol(i,j,k)>0.) then
+      if (hvol(i,j,k)>0._wp) then
         h2d_sum(j) = h2d_sum(j) + h2d(j,k)
       else
         h2d(i,k) = GV%H_subroundoff * G%areaT(i,j)
@@ -331,28 +333,28 @@ subroutine distribute_residual_vh_barotropic(G, GV, hvol, vh)
 
     ! Distribute flux evenly throughout a column
     do J=js-1,je
-      if ( vh2d_sum(J)>0.0 ) then
+      if ( vh2d_sum(J)>0.0_wp ) then
         do k=1,nz
           vh2d(J,k) = vh2d_sum(J)*(h2d(j,k)/h2d_sum(j))
         enddo
-      elseif (vh2d_sum(J)<0.0) then
+      elseif (vh2d_sum(J)<0.0_wp) then
         do k=1,nz
           vh2d(J,k) = vh2d_sum(J)*(h2d(j+1,k)/h2d_sum(j+1))
         enddo
       else
         do k=1,nz
-          vh2d(J,k) = 0.0
+          vh2d(J,k) = 0.0_wp
         enddo
       endif
 
       ! Check that column integrated transports match the original to within roundoff.
       vh_neglect = GV%Angstrom_H * min(G%areaT(i,j), G%areaT(i,j+1))
-      abs_vh_sum = 0.0 ; new_vh_sum = 0.0
+      abs_vh_sum = 0.0_wp ; new_vh_sum = 0.0_wp
       do k=1,nz
         abs_vh_sum = abs_vh_sum + abs(vh2d(J,k))
         new_vh_sum = new_vh_sum + vh2d(J,k)
       enddo
-      if ( abs(new_vh_sum - vh2d_sum(J)) > max(vh_neglect, (5.0e-16*nz)*abs_vh_sum) ) &
+      if ( abs(new_vh_sum - vh2d_sum(J)) > max(vh_neglect, (5.0e-16_wp*nz)*abs_vh_sum) ) &
         call MOM_error(WARNING, "Column integral of vh does not match after "//&
                                 "barotropic redistribution")
     enddo
@@ -369,25 +371,25 @@ end subroutine distribute_residual_vh_barotropic
 subroutine distribute_residual_uh_upwards(G, GV, hvol, uh)
   type(ocean_grid_type),   intent(in   ) :: G     !< ocean grid structure
   type(verticalGrid_type), intent(in   ) :: GV    !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in   ) :: hvol  !< Mass of water in the cells at the end
                                                   !! of the previous timestep [H L2 ~> m3 or kg]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: uh    !< Zonal mass transport within a timestep [H L2 ~> m3 or kg]
 
   ! Local variables
-  real, dimension(SZIB_(G),SZK_(GV))  :: uh2d  ! A slice of transports [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZK_(GV))   :: h2d   ! A slice of updated cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZIB_(G),SZK_(GV))  :: uh2d  ! A slice of transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZK_(GV))   :: h2d   ! A slice of updated cell volumes [H L2 ~> m3 or kg]
 
-  real  :: uh_neglect, uh_remain, uh_sum, uh_col  ! Transports [H L2 ~> m3 or kg]
-  real  :: hup, hlos ! Various cell volumes [H L2 ~> m3 or kg]
-  real  :: min_h     ! A minimal layer thickness [H ~> m or kg m-2]
+  real(wp)  :: uh_neglect, uh_remain, uh_sum, uh_col  ! Transports [H L2 ~> m3 or kg]
+  real(wp)  :: hup, hlos ! Various cell volumes [H L2 ~> m3 or kg]
+  real(wp)  :: min_h     ! A minimal layer thickness [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz, k_rev
 
   ! Set index-related variables for fields on T-grid
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  min_h = GV%Angstrom_H*0.1
+  min_h = GV%Angstrom_H*0.1_wp
 
   do j=js,je
     ! Copy over uh and cell volume to working arrays
@@ -403,39 +405,39 @@ subroutine distribute_residual_uh_upwards(G, GV, hvol, uh)
       uh_col = SUM(uh2d(I,:)) ! Store original column-integrated transport
       do k=1,nz
         uh_remain = uh2d(I,k)
-        uh2d(I,k) = 0.0
-        if (abs(uh_remain) > 0.0) then
+        uh2d(I,k) = 0.0_wp
+        if (abs(uh_remain) > 0.0_wp) then
           do k_rev = k,1,-1
             uh_sum = uh_remain + uh2d(I,k_rev)
-            if (uh_sum<0.0) then ! Transport to the left
+            if (uh_sum<0.0_wp) then ! Transport to the left
               hup = h2d(i+1,k_rev)
-              hlos = max(0.0,uh2d(I+1,k_rev))
-              if ((((hup - hlos) + uh_sum) < 0.0) .and. &
-                  ((0.5*hup + uh_sum) < 0.0)) then
-                uh2d(I,k_rev) = min(-0.5*hup,-hup+hlos,0.0)
+              hlos = max(0.0_wp,uh2d(I+1,k_rev))
+              if ((((hup - hlos) + uh_sum) < 0.0_wp) .and. &
+                  ((0.5_wp*hup + uh_sum) < 0.0_wp)) then
+                uh2d(I,k_rev) = min(-0.5_wp*hup,-hup+hlos,0.0_wp)
                 uh_remain = uh_sum - uh2d(I,k_rev)
               else
                 uh2d(I,k_rev) = uh_sum
-                uh_remain = 0.0
+                uh_remain = 0.0_wp
                 exit
               endif
             else ! Transport to the right
               hup = h2d(i,k_rev)
-              hlos = max(0.0,-uh2d(I-1,k_rev))
-              if ((((hup - hlos) - uh_sum) < 0.0) .and. &
-                  ((0.5*hup - uh_sum) < 0.0)) then
-                uh2d(I,k_rev) = max(0.5*hup,hup-hlos,0.0)
+              hlos = max(0.0_wp,-uh2d(I-1,k_rev))
+              if ((((hup - hlos) - uh_sum) < 0.0_wp) .and. &
+                  ((0.5_wp*hup - uh_sum) < 0.0_wp)) then
+                uh2d(I,k_rev) = max(0.5_wp*hup,hup-hlos,0.0_wp)
                 uh_remain = uh_sum - uh2d(I,k_rev)
               else
                 uh2d(I,k_rev) = uh_sum
-                uh_remain = 0.0
+                uh_remain = 0.0_wp
                 exit
               endif
             endif
           enddo ! k_rev
         endif
 
-        if (abs(uh_remain) > 0.0) then
+        if (abs(uh_remain) > 0.0_wp) then
           if (k<nz) then
             uh2d(I,k+1) = uh2d(I,k+1) + uh_remain
           else
@@ -466,25 +468,25 @@ end subroutine distribute_residual_uh_upwards
 subroutine distribute_residual_vh_upwards(G, GV, hvol, vh)
   type(ocean_grid_type),   intent(in   ) :: G     !< ocean grid structure
   type(verticalGrid_type), intent(in   ) :: GV    !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in   ) :: hvol  !< Mass of water in the cells at the end
                                                   !! of the previous timestep [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout) :: vh    !< Meridional mass transport within a timestep [H L2 ~> m3 or kg]
 
   ! Local variables
-  real, dimension(SZJB_(G),SZK_(GV))  :: vh2d     ! A slice of transports [H L2 ~> m3 or kg]
-  real, dimension(SZJ_(G),SZK_(GV))   :: h2d      ! A slice of updated cell volumes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJB_(G),SZK_(GV))  :: vh2d     ! A slice of transports [H L2 ~> m3 or kg]
+  real(wp), dimension(SZJ_(G),SZK_(GV))   :: h2d      ! A slice of updated cell volumes [H L2 ~> m3 or kg]
 
-  real  :: vh_neglect, vh_remain, vh_col, vh_sum  ! Transports [H L2 ~> m3 or kg]
-  real  :: hup, hlos ! Various cell volumes [H L2 ~> m3 or kg]
-  real  :: min_h     ! A minimal layer thickness [H ~> m or kg m-2]
+  real(wp)  :: vh_neglect, vh_remain, vh_col, vh_sum  ! Transports [H L2 ~> m3 or kg]
+  real(wp)  :: hup, hlos ! Various cell volumes [H L2 ~> m3 or kg]
+  real(wp)  :: min_h     ! A minimal layer thickness [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz, k_rev
 
   ! Set index-related variables for fields on T-grid
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  min_h = 0.1*GV%Angstrom_H
+  min_h = 0.1_wp*GV%Angstrom_H
 
   do i=is,ie
     ! Copy over uh and cell volume to working arrays
@@ -499,32 +501,32 @@ subroutine distribute_residual_vh_upwards(G, GV, hvol, vh)
       vh_col = SUM(vh2d(J,:))
       do k=1,nz
         vh_remain = vh2d(J,k)
-        vh2d(J,k) = 0.0
-        if (abs(vh_remain) > 0.0) then
+        vh2d(J,k) = 0.0_wp
+        if (abs(vh_remain) > 0.0_wp) then
           do k_rev = k,1,-1
             vh_sum = vh_remain + vh2d(J,k_rev)
-            if (vh_sum<0.0) then ! Transport to the left
+            if (vh_sum<0.0_wp) then ! Transport to the left
               hup = h2d(j+1,k_rev)
-              hlos = MAX(0.0,vh2d(J+1,k_rev))
-              if ((((hup - hlos) + vh_sum) < 0.0) .and. &
-                  ((0.5*hup + vh_sum) < 0.0)) then
-                vh2d(J,k_rev) = MIN(-0.5*hup,-hup+hlos,0.0)
+              hlos = MAX(0.0_wp,vh2d(J+1,k_rev))
+              if ((((hup - hlos) + vh_sum) < 0.0_wp) .and. &
+                  ((0.5_wp*hup + vh_sum) < 0.0_wp)) then
+                vh2d(J,k_rev) = MIN(-0.5_wp*hup,-hup+hlos,0.0_wp)
                 vh_remain = vh_sum - vh2d(J,k_rev)
               else
                 vh2d(J,k_rev) = vh_sum
-                vh_remain = 0.0
+                vh_remain = 0.0_wp
                 exit
               endif
             else ! Transport to the right
               hup = h2d(j,k_rev)
-              hlos = MAX(0.0,-vh2d(J-1,k_rev))
-              if ((((hup - hlos) - vh_sum) < 0.0) .and. &
-                  ((0.5*hup - vh_sum) < 0.0)) then
-                vh2d(J,k_rev) = MAX(0.5*hup,hup-hlos,0.0)
+              hlos = MAX(0.0_wp,-vh2d(J-1,k_rev))
+              if ((((hup - hlos) - vh_sum) < 0.0_wp) .and. &
+                  ((0.5_wp*hup - vh_sum) < 0.0_wp)) then
+                vh2d(J,k_rev) = MAX(0.5_wp*hup,hup-hlos,0.0_wp)
                 vh_remain = vh_sum - vh2d(J,k_rev)
               else
                 vh2d(J,k_rev) = vh_sum
-                vh_remain = 0.0
+                vh_remain = 0.0_wp
                 exit
               endif
             endif
@@ -532,7 +534,7 @@ subroutine distribute_residual_vh_upwards(G, GV, hvol, vh)
           enddo ! k_rev
         endif
 
-        if (abs(vh_remain) > 0.0) then
+        if (abs(vh_remain) > 0.0_wp) then
          if (k<nz) then
             vh2d(J,k+1) = vh2d(J,k+1) + vh_remain
           else
@@ -566,16 +568,16 @@ subroutine offline_add_diurnal_SW(fluxes, G, Time_start, Time_end)
   type(time_type),       intent(in)    :: Time_start !< The start time for this step.
   type(time_type),       intent(in)    :: Time_end   !< The ending time for this step.
 
-  real :: diurnal_factor ! A scaling factor to insert a synthetic diurnal cycle [nondim]
-  real :: time_since_ae  ! Time since the autumnal equinox expressed as a fraction of a year times 2 pi [nondim]
-  real :: rad            ! A conversion factor from degrees to radians = pi/180 degrees [nondim]
-  real :: fracday_dt     ! Daylight fraction averaged over a timestep [nondim]
-  real :: fracday_day    ! Daylight fraction averaged over a day [nondim]
-  real :: cosz_day       ! Cosine of the solar zenith angle averaged over a day [nondim]
-  real :: cosz_dt        ! Cosine of the solar zenith angle averaged over a timestep [nondim]
-  real :: rrsun_day      ! Earth-Sun distance (r) relative to the semi-major axis of
+  real(wp) :: diurnal_factor ! A scaling factor to insert a synthetic diurnal cycle [nondim]
+  real(wp) :: time_since_ae  ! Time since the autumnal equinox expressed as a fraction of a year times 2 pi [nondim]
+  real(wp) :: rad            ! A conversion factor from degrees to radians = pi/180 degrees [nondim]
+  real(wp) :: fracday_dt     ! Daylight fraction averaged over a timestep [nondim]
+  real(wp) :: fracday_day    ! Daylight fraction averaged over a day [nondim]
+  real(wp) :: cosz_day       ! Cosine of the solar zenith angle averaged over a day [nondim]
+  real(wp) :: cosz_dt        ! Cosine of the solar zenith angle averaged over a timestep [nondim]
+  real(wp) :: rrsun_day      ! Earth-Sun distance (r) relative to the semi-major axis of
                          ! the orbital ellipse averaged over a day [nondim]
-  real :: rrsun_dt       ! Earth-Sun distance (r) relative to the semi-major axis of
+  real(wp) :: rrsun_dt       ! Earth-Sun distance (r) relative to the semi-major axis of
                          ! the orbital ellipse averaged over a timestep [nondim]
   type(time_type) :: dt_here  ! The time increment covered by this call
 
@@ -588,7 +590,7 @@ subroutine offline_add_diurnal_SW(fluxes, G, Time_start, Time_end)
   ! hemisphere autumnal equinox from a time_type variable.
   time_since_ae = orbital_time(Time_start)
   dt_here = Time_end - Time_start
-  rad = acos(-1.)/180.
+  rad = acos(-1._wp)/180._wp
 
   !$OMP parallel do default(shared) private(i,j,i2,j2,cosz_dt,fracday_dt,rrsun_dt, &
   !$OMP                                     fracday_day,cosz_day,rrsun_day,diurnal_factor)
@@ -603,7 +605,7 @@ subroutine offline_add_diurnal_SW(fluxes, G, Time_start, Time_end)
                        fracday=fracday_dt, rrsun=rrsun_dt, dt_time=dt_here)
     call daily_mean_solar(G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
     diurnal_factor = cosz_dt*fracday_dt*rrsun_dt / &
-                     max(1e-30, cosz_day*fracday_day*rrsun_day)
+                     max(1e-30_wp, cosz_day*fracday_day*rrsun_day)
 
     i2 = i+i_off ; j2 = j+j_off
     fluxes%sw(i2,j2) = fluxes%sw(i2,j2) * diurnal_factor
@@ -629,19 +631,19 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
   character(len=*),        intent(in   ) :: sum_file  !< Name of file with summed fields
   character(len=*),        intent(in   ) :: snap_file !< Name of file with snapshot fields
   character(len=*),        intent(in   ) :: surf_file !< Name of file with surface fields
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h_end     !< End of timestep layer thickness [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: uhtr      !< Zonal mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout) :: vhtr      !< Meridional mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: temp_mean !< Averaged temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: salt_mean !< Averaged salinity [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G)),          &
+  real(wp), dimension(SZI_(G),SZJ_(G)),          &
                            intent(inout) :: mld       !< Averaged mixed layer depth [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
                            intent(inout) :: Kd        !< Diapycnal diffusivities at interfaces
                                                       !! [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
   type(forcing),           intent(inout) :: fluxes    !< Fields with surface fluxes
@@ -653,7 +655,7 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
   logical,       optional, intent(in   ) :: do_ale_in !< True if using ALE algorithms
 
   logical :: do_ale
-  real    :: convert_to_H  ! A scale conversion factor from the thickness units in the
+  real(wp)    :: convert_to_H  ! A scale conversion factor from the thickness units in the
                            ! file to H [H m-1 ~> 1] or [H m2 kg-1 ~> 1]
   integer :: i, j, k, is, ie, js, je, nz
 
@@ -670,11 +672,11 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
 
   ! Check if reading in temperature, salinity, transports and ending thickness
   if (read_ts_uvh) then
-    h_end(:,:,:) = 0.0
-    temp_mean(:,:,:) = 0.0
-    salt_mean(:,:,:) = 0.0
-    uhtr(:,:,:) = 0.0
-    vhtr(:,:,:) = 0.0
+    h_end(:,:,:) = 0.0_wp
+    temp_mean(:,:,:) = 0.0_wp
+    salt_mean(:,:,:) = 0.0_wp
+    uhtr(:,:,:) = 0.0_wp
+    vhtr(:,:,:) = 0.0_wp
     ! Time-summed fields
     call MOM_read_vector(sum_file, 'uhtr_sum', 'vhtr_sum', uhtr(:,:,1:nk_input), &
                          vhtr(:,:,1:nk_input), G%Domain, timelevel=ridx_sum, &
@@ -688,7 +690,7 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
 
     ! Fill temperature and salinity downward from the deepest input data.
     do k=nk_input+1,nz ; do j=js,je ; do i=is,ie
-      if (G%mask2dT(i,j)>0.) then
+      if (G%mask2dT(i,j)>0._wp) then
         temp_mean(i,j,k) = temp_mean(i,j,nk_input)
         salt_mean(i,j,k) = salt_mean(i,j,nk_input)
       endif
@@ -703,21 +705,21 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
   ! contains netMassIn and netMassOut which is necessary for the applyTracerBoundaryFluxesInOut routine
   if (do_ale) then
     if (.not. associated(fluxes%netMassOut)) &
-      allocate(fluxes%netMassOut(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+      allocate(fluxes%netMassOut(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
     if (.not. associated(fluxes%netMassIn)) &
-      allocate(fluxes%netMassIn(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+      allocate(fluxes%netMassIn(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
 
-    fluxes%netMassOut(:,:) = 0.0
-    fluxes%netMassIn(:,:) = 0.0
+    fluxes%netMassOut(:,:) = 0.0_wp
+    fluxes%netMassIn(:,:) = 0.0_wp
     call MOM_read_data(surf_file,'massout_flux_sum',fluxes%netMassOut, G%Domain, &
                        timelevel=ridx_sum, scale=GV%kg_m2_to_H)
     call MOM_read_data(surf_file,'massin_flux_sum', fluxes%netMassIn,  G%Domain, &
                        timelevel=ridx_sum, scale=GV%kg_m2_to_H)
 
     do j=js,je ; do i=is,ie
-      if (G%mask2dT(i,j)<1.0) then
-        fluxes%netMassOut(i,j) = 0.0
-        fluxes%netMassIn(i,j) = 0.0
+      if (G%mask2dT(i,j)<1.0_wp) then
+        fluxes%netMassOut(i,j) = 0.0_wp
+        fluxes%netMassIn(i,j) = 0.0_wp
       endif
     enddo ; enddo
 
@@ -736,18 +738,18 @@ subroutine update_offline_from_files(G, GV, US, nk_input, mean_file, sum_file, s
                        timelevel=ridx_sum, scale=US%W_m2_to_QRZ_T)
     call MOM_read_data(mean_file,'sw_nir', fluxes%sw_nir_dir, G%Domain, &
                        timelevel=ridx_sum, scale=US%W_m2_to_QRZ_T)
-    fluxes%sw_vis_dir(:,:) = fluxes%sw_vis_dir(:,:)*0.5
+    fluxes%sw_vis_dir(:,:) = fluxes%sw_vis_dir(:,:)*0.5_wp
     fluxes%sw_vis_dif(:,:) = fluxes%sw_vis_dir(:,:)
-    fluxes%sw_nir_dir(:,:) = fluxes%sw_nir_dir(:,:)*0.5
+    fluxes%sw_nir_dir(:,:) = fluxes%sw_nir_dir(:,:)*0.5_wp
     fluxes%sw_nir_dif(:,:) = fluxes%sw_nir_dir(:,:)
     fluxes%sw = (fluxes%sw_vis_dir + fluxes%sw_vis_dif) + (fluxes%sw_nir_dir + fluxes%sw_nir_dif)
     do j=js,je ; do i=is,ie
-      if (G%mask2dT(i,j)<1.0) then
-        fluxes%sw(i,j) = 0.0
-        fluxes%sw_vis_dir(i,j) = 0.0
-        fluxes%sw_nir_dir(i,j) = 0.0
-        fluxes%sw_vis_dif(i,j) = 0.0
-        fluxes%sw_nir_dif(i,j) = 0.0
+      if (G%mask2dT(i,j)<1.0_wp) then
+        fluxes%sw(i,j) = 0.0_wp
+        fluxes%sw_vis_dir(i,j) = 0.0_wp
+        fluxes%sw_nir_dir(i,j) = 0.0_wp
+        fluxes%sw_vis_dif(i,j) = 0.0_wp
+        fluxes%sw_nir_dif(i,j) = 0.0_wp
       endif
     enddo ; enddo
     call pass_var(fluxes%sw,G%Domain)
@@ -769,21 +771,21 @@ subroutine update_offline_from_arrays(G, GV, nk_input, ridx_sum, mean_file, sum_
   character(len=200),                        intent(in   ) :: mean_file !< Name of file with averages fields
   character(len=200),                        intent(in   ) :: sum_file  !< Name of file with summed fields
   character(len=200),                        intent(in   ) :: snap_file !< Name of file with snapshot fields
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uhtr     !< Zonal mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vhtr     !< Meridional mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: hend      !< End of timestep layer thickness
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(inout) :: uhtr     !< Zonal mass fluxes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(inout) :: vhtr     !< Meridional mass fluxes [H L2 ~> m3 or kg]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: hend      !< End of timestep layer thickness
                                                                         !! [H ~> m or kg m-2]
-  real, dimension(:,:,:,:), allocatable,     intent(inout) :: uhtr_all  !< Zonal mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(:,:,:,:), allocatable,     intent(inout) :: vhtr_all  !< Meridional mass fluxes [H L2 ~> m3 or kg]
-  real, dimension(:,:,:,:), allocatable,     intent(inout) :: hend_all  !< End of timestep layer thickness
+  real(wp), dimension(:,:,:,:), allocatable,     intent(inout) :: uhtr_all  !< Zonal mass fluxes [H L2 ~> m3 or kg]
+  real(wp), dimension(:,:,:,:), allocatable,     intent(inout) :: vhtr_all  !< Meridional mass fluxes [H L2 ~> m3 or kg]
+  real(wp), dimension(:,:,:,:), allocatable,     intent(inout) :: hend_all  !< End of timestep layer thickness
                                                                         !! [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: temp      !< Temperature array [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: salt      !< Salinity array [S ~> ppt]
-  real, dimension(:,:,:,:), allocatable,     intent(inout) :: temp_all  !< Temperature array [C ~> degC]
-  real, dimension(:,:,:,:), allocatable,     intent(inout) :: salt_all  !< Salinity array [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: temp      !< Temperature array [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: salt      !< Salinity array [S ~> ppt]
+  real(wp), dimension(:,:,:,:), allocatable,     intent(inout) :: temp_all  !< Temperature array [C ~> degC]
+  real(wp), dimension(:,:,:,:), allocatable,     intent(inout) :: salt_all  !< Salinity array [S ~> ppt]
 
   integer :: i, j, k, is, ie, js, je, nz
-  real, parameter :: fill_value = 0. ! The fill value for input arrays [various]
+  real(wp), parameter :: fill_value = 0._wp ! The fill value for input arrays [various]
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   ! Check that all fields are allocated (this is a redundant check)

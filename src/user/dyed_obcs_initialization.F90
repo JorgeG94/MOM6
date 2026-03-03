@@ -15,6 +15,8 @@ use MOM_tracer_registry, only : tracer_type
 use MOM_variables,       only : thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -23,7 +25,7 @@ public dyed_obcs_set_OBC_data
 
 integer :: ntr = 0 !< Number of dye tracers
                    !! \todo This is a module variable. Move this variable into the control structure.
-real :: dye_obc_inflow = 0.0 !< Inflow value of obc dye concentration
+real(wp) :: dye_obc_inflow = 0.0_wp !< Inflow value of obc dye concentration
 
 contains
 
@@ -44,7 +46,7 @@ subroutine dyed_obcs_set_OBC_data(OBC, G, GV, param_file, tr_Reg)
   integer :: is, ie, js, je, isd, ied, jsd, jed, m, n, nz, ntr_id
   integer :: IsdB, IedB, JsdB, JedB
   integer :: n_dye ! Number of regionsl dye tracers
-  real :: dye ! Inflow dye concentration [arbitrary]
+  real(wp) :: dye ! Inflow dye concentration [arbitrary]
   type(tracer_type), pointer      :: tr_ptr => NULL()
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -71,7 +73,7 @@ subroutine dyed_obcs_set_OBC_data(OBC, G, GV, param_file, tr_Reg)
 
   call get_param(param_file, mdl, "DYE_OBC_INFLOW", dye_obc_inflow, &
                  "The OBC inflow value of dye tracers.", units="kg kg-1", &
-                 default=1.0)
+                 default=1.0_wp)
 
   if (OBC%number_of_segments < ntr) then
     call MOM_error(WARNING, "Error in dyed_obc segment setup")
@@ -89,7 +91,7 @@ subroutine dyed_obcs_set_OBC_data(OBC, G, GV, param_file, tr_Reg)
       if (n == m) then
         dye = dye_obc_inflow
       else
-        dye = 0.0
+        dye = 0.0_wp
       endif
       call register_segment_tracer(tr_ptr, ntr_id, param_file, GV, &
                                    OBC%segment(n), OBC_scalar=dye)

@@ -249,7 +249,7 @@ function init_string_int(n) result(str)
     !< String output
 
   ! TODO: Estimate this with integer arithmetic
-  character(1 + floor(log10(real(abs(n)))) + (1 - sign(1, n))/2) :: chr
+  character(1 + floor(log10(real(abs(n), wp))) + (1 - sign(1, n))/2) :: chr
 
   write(chr, '(i0)') n
   str = string(chr)

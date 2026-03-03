@@ -22,6 +22,8 @@ use MOM_grid,                  only: ocean_grid_type
 use MOM_domains,               only: pass_var
 use mpp_domains_mod,           only: mpp_get_compute_domain
 
+use MOM_datatypes, only : wp
+
 ! By default make data private
 implicit none; private
 
@@ -54,8 +56,8 @@ type(ESMF_GeomType_Flag) :: geomtype      !< SMF type describing type of
 ! these actors are ONLY valid for meshes that are read in - so do not need them for
 ! grids that are calculated internally
 
-real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model areas to input mesh areas
-real(ESMF_KIND_R8), public, allocatable :: med2mod_areacor(:) ! ratios of input mesh areas to model areas
+real(ESMF_KIND_R8, wp), public, allocatable :: mod2med_areacor(:) ! ratios of model areas to input mesh areas
+real(ESMF_KIND_R8, wp), public, allocatable :: med2mod_areacor(:) ! ratios of input mesh areas to model areas
 character(len=*),parameter :: u_FILE_u =  __FILE__
 
 contains
@@ -89,10 +91,10 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   integer                         :: esmf_ind
   integer                         :: nsc ! number of stokes drift components
   character(len=128)              :: fldname
-  real(ESMF_KIND_R8), allocatable :: taux(:,:)
-  real(ESMF_KIND_R8), allocatable :: tauy(:,:)
-  real(ESMF_KIND_R8), allocatable :: stkx(:,:,:)
-  real(ESMF_KIND_R8), allocatable :: stky(:,:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: taux(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: tauy(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: stkx(:,:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: stky(:,:,:)
   character(len=*)  , parameter   :: subname = '(mom_import)'
 
   rc = ESMF_SUCCESS
@@ -544,8 +546,8 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
           if(set_missing_stks_to_zero) then
             do ib = 1, nsc
               if((abs(stkx(i,j,ib)-9.99E20_ESMF_KIND_R8) <= 0.01_ESMF_KIND_R8)) then
-                ice_ocean_boundary%ustkb(i,j,ib) = 0.0
-                ice_ocean_boundary%vstkb(i,j,ib) = 0.0
+                ice_ocean_boundary%ustkb(i,j,ib) = 0.0_wp
+                ice_ocean_boundary%vstkb(i,j,ib) = 0.0_wp
               else
                 ice_ocean_boundary%ustkb(i,j,ib) = ocean_grid%cos_rot(ig,jg)*stkx(i,j,ib) &
                     - ocean_grid%sin_rot(ig,jg)*stky(i,j,ib)
@@ -587,20 +589,20 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   integer                         :: iglob, jglob         ! indices
   integer                         :: n
   integer                         :: icount
-  real                            :: slp_L, slp_R, slp_C
-  real                            :: slope, u_min, u_max
+  real(wp)                            :: slp_L, slp_R, slp_C
+  real(wp)                            :: slope, u_min, u_max
   integer                         :: day, secs
   type(ESMF_TimeInterval)         :: timeStep
   integer                         :: dt_int
-  real                            :: inv_dt_int  !< The inverse of coupling time interval in s-1.
+  real(wp)                            :: inv_dt_int  !< The inverse of coupling time interval in s-1.
   type(ESMF_StateItem_Flag)       :: itemFlag
-  real(ESMF_KIND_R8), allocatable :: omask(:,:)
-  real(ESMF_KIND_R8), allocatable :: melt_potential(:,:)
-  real(ESMF_KIND_R8), allocatable :: ocz(:,:), ocm(:,:)
-  real(ESMF_KIND_R8), allocatable :: ocz_rot(:,:), ocm_rot(:,:)
-  real(ESMF_KIND_R8), allocatable :: ssh(:,:)
-  real(ESMF_KIND_R8), allocatable :: dhdx(:,:), dhdy(:,:)
-  real(ESMF_KIND_R8), allocatable :: dhdx_rot(:,:), dhdy_rot(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: omask(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: melt_potential(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: ocz(:,:), ocm(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: ocz_rot(:,:), ocm_rot(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: ssh(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: dhdx(:,:), dhdy(:,:)
+  real(ESMF_KIND_R8, wp), allocatable :: dhdx_rot(:,:), dhdy_rot(:,:)
   character(len=*)  , parameter   :: subname = '(mom_export)'
 
   rc = ESMF_SUCCESS
@@ -612,10 +614,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   ! Use Adcroft's rule of reciprocals; it does the right thing here.
-  if (real(dt_int) > 0.0) then
-    inv_dt_int = 1.0 / real(dt_int)
+  if (real(dt_int, wp) > 0.0_wp) then
+    inv_dt_int = 1.0_wp / real(dt_int, wp)
   else
-    inv_dt_int = 0.0
+    inv_dt_int = 0.0_wp
   endif
 
   !----------------
@@ -705,11 +707,11 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
 
   do j = jsc,jec
     do i = isc,iec
-      if (ocean_public%frazil(i,j) > 0.0) then
+      if (ocean_public%frazil(i,j) > 0.0_wp) then
         melt_potential(i,j) =  ocean_public%frazil(i,j) * inv_dt_int
       else
         melt_potential(i,j) = -ocean_public%melt_potential(i,j) * inv_dt_int
-        if (melt_potential(i,j) > 0.0) melt_potential(i,j) = 0.0
+        if (melt_potential(i,j) > 0.0_wp) melt_potential(i,j) = 0.0_wp
       endif
     enddo
   enddo
@@ -763,23 +765,23 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
       i  = iglob + ocean_grid%isc - isc
       ! This is a PLM slope which might be less prone to the A-grid null mode
       slp_L = (ssh(I,j) - ssh(I-1,j)) * ocean_grid%mask2dCu(i-1,j)
-      if (ocean_grid%mask2dCu(i-1,j)==0.) slp_L = 0.
+      if (ocean_grid%mask2dCu(i-1,j)==0._wp) slp_L = 0._wp
       slp_R = (ssh(I+1,j) - ssh(I,j)) * ocean_grid%mask2dCu(i,j)
-      if (ocean_grid%mask2dCu(i+1,j)==0.) slp_R = 0.
-      slp_C = 0.5 * (slp_L + slp_R)
-      if ( (slp_L * slp_R) > 0.0 ) then
+      if (ocean_grid%mask2dCu(i+1,j)==0._wp) slp_R = 0._wp
+      slp_C = 0.5_wp * (slp_L + slp_R)
+      if ( (slp_L * slp_R) > 0.0_wp ) then
         ! This limits the slope so that the edge values are bounded by the
         ! two cell averages spanning the edge.
         u_min = min( ssh(i-1,j), ssh(i,j), ssh(i+1,j) )
         u_max = max( ssh(i-1,j), ssh(i,j), ssh(i+1,j) )
-        slope = sign( min( abs(slp_C), 2.*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
+        slope = sign( min( abs(slp_C), 2._wp*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
       else
         ! Extrema in the mean values require a PCM reconstruction avoid generating
         ! larger extreme values.
-        slope = 0.0
+        slope = 0.0_wp
       endif
       dhdx(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdxT(i,j) * ocean_grid%mask2dT(i,j)
-      if (ocean_grid%mask2dT(i,j)==0.) dhdx(iglob,jglob) = 0.0
+      if (ocean_grid%mask2dT(i,j)==0._wp) dhdx(iglob,jglob) = 0.0_wp
     enddo
   enddo
 
@@ -793,23 +795,23 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
       i = iglob + ocean_grid%isc - isc
       ! This is a PLM slope which might be less prone to the A-ocean_grid null mode
       slp_L = ssh(i,J) - ssh(i,J-1) * ocean_grid%mask2dCv(i,j-1)
-      if (ocean_grid%mask2dCv(i,j-1)==0.) slp_L = 0.
+      if (ocean_grid%mask2dCv(i,j-1)==0._wp) slp_L = 0._wp
       slp_R = ssh(i,J+1) - ssh(i,J) * ocean_grid%mask2dCv(i,j)
-      if (ocean_grid%mask2dCv(i,j+1)==0.) slp_R = 0.
-      slp_C = 0.5 * (slp_L + slp_R)
-      if ((slp_L * slp_R) > 0.0) then
+      if (ocean_grid%mask2dCv(i,j+1)==0._wp) slp_R = 0._wp
+      slp_C = 0.5_wp * (slp_L + slp_R)
+      if ((slp_L * slp_R) > 0.0_wp) then
         ! This limits the slope so that the edge values are bounded by the
         ! two cell averages spanning the edge.
         u_min = min( ssh(i,j-1), ssh(i,j), ssh(i,j+1) )
         u_max = max( ssh(i,j-1), ssh(i,j), ssh(i,j+1) )
-        slope = sign( min( abs(slp_C), 2.*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
+        slope = sign( min( abs(slp_C), 2._wp*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
       else
         ! Extrema in the mean values require a PCM reconstruction avoid generating
         ! larger extreme values.
-        slope = 0.0
+        slope = 0.0_wp
       endif
       dhdy(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdyT(i,j) * ocean_grid%mask2dT(i,j)
-      if (ocean_grid%mask2dT(i,j)==0.) dhdy(iglob,jglob) = 0.0
+      if (ocean_grid%mask2dT(i,j)==0._wp) dhdy(iglob,jglob) = 0.0_wp
     enddo
   enddo
 
@@ -849,7 +851,7 @@ end subroutine mom_export
 subroutine State_GetFldPtr_1d(State, fldname, fldptr, rc)
   type(ESMF_State)            , intent(in)  :: State    !< ESMF state
   character(len=*)            , intent(in)  :: fldname  !< Field name
-  real(ESMF_KIND_R8), pointer , intent(in)  :: fldptr(:)!< Pointer to the 1D field
+  real(ESMF_KIND_R8, wp), pointer , intent(in)  :: fldptr(:)!< Pointer to the 1D field
   integer, optional           , intent(out) :: rc       !< Return code
 
   ! local variables
@@ -870,7 +872,7 @@ end subroutine State_GetFldPtr_1d
 subroutine State_GetFldPtr_2d(State, fldname, fldptr, rc)
   type(ESMF_State)            , intent(in)  :: State      !< ESMF state
   character(len=*)            , intent(in)  :: fldname    !< Field name
-  real(ESMF_KIND_R8), pointer , intent(in)  :: fldptr(:,:)!< Pointer to the 2D field
+  real(ESMF_KIND_R8, wp), pointer , intent(in)  :: fldptr(:,:)!< Pointer to the 2D field
   integer, optional           , intent(out) :: rc         !< Return code
 
   ! local variables
@@ -911,8 +913,8 @@ subroutine State_GetImport_2d(state, fldname, isc, iec, jsc, jec, output, do_sum
   integer                       :: n, i, j, i1, j1
   integer                       :: lbnd1,lbnd2
   logical                       :: do_sum_loc
-  real(ESMF_KIND_R8), pointer   :: dataPtr1d(:)
-  real(ESMF_KIND_R8), pointer   :: dataPtr2d(:,:)
+  real(ESMF_KIND_R8, wp), pointer   :: dataPtr1d(:)
+  real(ESMF_KIND_R8, wp), pointer   :: dataPtr2d(:,:)
   character(len=*)  , parameter :: subname='(MOM_cap_methods:state_getimport_2d)'
   ! ----------------------------------------------
 
@@ -1009,7 +1011,7 @@ subroutine State_GetImport_3d(state, fldname, isc, iec, jsc, jec, lbd, ubd, outp
   integer                       :: n, i, j, i1, j1, u
   integer                       :: lbnd1,lbnd2
   logical                       :: do_sum_loc
-  real(ESMF_KIND_R8), pointer   :: dataPtr2d(:,:)
+  real(ESMF_KIND_R8, wp), pointer   :: dataPtr2d(:,:)
   character(len=*)  , parameter :: subname='(MOM_cap_methods:state_getimport_3d)'
   ! ----------------------------------------------
 
@@ -1085,8 +1087,8 @@ subroutine State_SetExport(state, fldname, isc, iec, jsc, jec, input, ocean_grid
   type(ESMF_StateItem_Flag)     :: itemFlag
   integer                       :: n, i, j, k, i1, j1, ig,jg
   integer                       :: lbnd1,lbnd2
-  real(ESMF_KIND_R8), pointer   :: dataPtr1d(:)
-  real(ESMF_KIND_R8), pointer   :: dataPtr2d(:,:)
+  real(ESMF_KIND_R8, wp), pointer   :: dataPtr1d(:)
+  real(ESMF_KIND_R8, wp), pointer   :: dataPtr2d(:,:)
   character(len=*)  , parameter :: subname='(MOM_cap_methods:state_setexport)'
   ! ----------------------------------------------
 
@@ -1122,7 +1124,7 @@ subroutine State_SetExport(state, fldname, isc, iec, jsc, jec, input, ocean_grid
       ! if a maskmap is provided, set exports of all eliminated cells to zero.
       if (associated(ocean_grid%Domain%maskmap)) then
         do k = n+1, size(dataPtr1d)
-          dataPtr1d(k) = 0.0
+          dataPtr1d(k) = 0.0_wp
         enddo
       endif
 
@@ -1168,8 +1170,8 @@ subroutine state_diagnose(State, string, rc)
   type(ESMf_Field)                :: lfield
   integer                         :: fieldCount, lrank
   character(ESMF_MAXSTR) ,pointer :: lfieldnamelist(:)
-  real(ESMF_KIND_R8), pointer     :: dataPtr1d(:)
-  real(ESMF_KIND_R8), pointer     :: dataPtr2d(:,:)
+  real(ESMF_KIND_R8, wp), pointer     :: dataPtr1d(:)
+  real(ESMF_KIND_R8, wp), pointer     :: dataPtr2d(:,:)
   character(len=*),parameter      :: subname='(state_diagnose)'
   character(len=ESMF_MAXSTR)      :: msgString
   ! ----------------------------------------------
@@ -1222,8 +1224,8 @@ subroutine field_getfldptr(field, fldptr1, fldptr2, rank, abort, rc)
 
   ! input/output variables
   type(ESMF_Field)  , intent(in)                        :: field        !< An ESMF field
-  real(ESMF_KIND_R8), pointer , intent(inout), optional :: fldptr1(:)   !< A pointer to a rank 1 ESMF field
-  real(ESMF_KIND_R8), pointer , intent(inout), optional :: fldptr2(:,:) !< A pointer to a rank 2 ESMF field
+  real(ESMF_KIND_R8, wp), pointer , intent(inout), optional :: fldptr1(:)   !< A pointer to a rank 1 ESMF field
+  real(ESMF_KIND_R8, wp), pointer , intent(inout), optional :: fldptr2(:,:) !< A pointer to a rank 2 ESMF field
   integer           , intent(out)            , optional :: rank         !< Field rank
   logical           , intent(in)             , optional :: abort        !< Abort code
   integer           , intent(out)            , optional :: rc           !< Return code

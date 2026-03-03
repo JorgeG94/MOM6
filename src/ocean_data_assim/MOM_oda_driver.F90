@@ -61,6 +61,8 @@ use MOM_unit_scaling, only : unit_scale_type, unit_scaling_init
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type, verticalGridInit
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: init_oda, oda_end, set_prior_tracer, get_posterior_tracer
@@ -104,12 +106,12 @@ type, public :: ODA_CS ; private
 
   type(domain2d), pointer :: mpp_domain => NULL() !< Pointer to a mpp domain object for DA
   type(grid_type), pointer :: oda_grid !< local tracer grid
-  real, pointer, dimension(:,:,:) :: h => NULL() !<layer thicknesses [H ~> m or kg m-2] for DA
-  real, pointer, dimension(:,:,:) :: T_tend => NULL() !<layer temperature tendency from DA [C T-1 ~> degC s-1]
-  real, pointer, dimension(:,:,:) :: S_tend => NULL() !<layer salinity tendency from DA [S T-1 ~> ppt s-1]
-  real, pointer, dimension(:,:,:) :: T_bc_tend => NULL() !< The layer temperature tendency due
+  real(wp), pointer, dimension(:,:,:) :: h => NULL() !<layer thicknesses [H ~> m or kg m-2] for DA
+  real(wp), pointer, dimension(:,:,:) :: T_tend => NULL() !<layer temperature tendency from DA [C T-1 ~> degC s-1]
+  real(wp), pointer, dimension(:,:,:) :: S_tend => NULL() !<layer salinity tendency from DA [S T-1 ~> ppt s-1]
+  real(wp), pointer, dimension(:,:,:) :: T_bc_tend => NULL() !< The layer temperature tendency due
                                                          !! to bias adjustment [C T-1 ~> degC s-1]
-  real, pointer, dimension(:,:,:) :: S_bc_tend => NULL() !< The layer salinity tendency due
+  real(wp), pointer, dimension(:,:,:) :: S_bc_tend => NULL() !< The layer salinity tendency due
                                                          !! to bias adjustment [S T-1 ~> ppt s-1]
   integer :: ni          !< global i-direction grid size
   integer :: nj          !< global j-direction grid size
@@ -120,13 +122,13 @@ type, public :: ODA_CS ; private
   logical :: use_basin_mask !< If true, use a basin file to delineate weakly coupled ocean basins
   logical :: do_bias_adjustment !< If true, use spatio-temporally varying climatological tendency
                                 !! adjustment for Temperature and Salinity
-  real :: bias_adjustment_multiplier !< A scaling for the bias adjustment [nondim]
+  real(wp) :: bias_adjustment_multiplier !< A scaling for the bias adjustment [nondim]
   integer :: assim_method !< Method: NO_ASSIM,EAKF_ASSIM or OI_ASSIM
   integer :: ensemble_size !< Size of the ensemble
   integer :: ensemble_id = 0 !< id of the current ensemble member
   integer, pointer, dimension(:,:) :: ensemble_pelist !< PE list for ensemble members
   integer, pointer, dimension(:) :: filter_pelist !< PE list for ensemble members
-  real :: assim_interval !< analysis interval [T ~> s]
+  real(wp) :: assim_interval !< analysis interval [T ~> s]
   ! Profiles local to the analysis domain
   type(ocean_profile_type), pointer :: Profiles => NULL() !< pointer to linked list of all available profiles
   type(ocean_profile_type), pointer :: CProfiles => NULL()!< pointer to linked list of current profiles
@@ -188,7 +190,7 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
   character(len=80) :: bias_correction_file, inc_file
   integer :: default_answer_date  ! The default setting for the various ANSWER_DATE flags.
   logical :: om4_remap_via_sub_cells ! If true, use the OM4 remapping algorithm
-  real :: h_neglect, h_neglect_edge                 ! small thicknesses [H ~> m or kg m-2]
+  real(wp) :: h_neglect, h_neglect_edge                 ! small thicknesses [H ~> m or kg m-2]
 
   if (associated(CS)) call MOM_error(FATAL, 'Calling oda_init with associated control structure')
   allocate(CS)
@@ -206,12 +208,12 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
        "String which determines the data assimilation method "//&
        "Valid methods are: \'EAKF\',\'OI\', and \'NO_ASSIM\'", default='NO_ASSIM')
   call get_param(PF, mdl, "ASSIM_INTERVAL", CS%assim_interval,  &
-       "data assimilation update interval in hours",default=-1.0,units="hours",scale=3600.*US%s_to_T)
-  if (CS%assim_interval < 0.) then
+       "data assimilation update interval in hours",default=-1.0_wp,units="hours",scale=3600._wp*US%s_to_T)
+  if (CS%assim_interval < 0._wp) then
      call get_param(PF, mdl, "ASSIM_FREQUENCY", CS%assim_interval,  &
           "data assimilation update  in hours. This parameter name will \n"//&
-          "be deprecated in the future. ASSIM_INTERVAL should be used instead.",default=-1.0, &
-          units="hours",scale=3600.*US%s_to_T)
+          "be deprecated in the future. ASSIM_INTERVAL should be used instead.",default=-1.0_wp, &
+          units="hours",scale=3600._wp*US%s_to_T)
   endif
 
   call get_param(PF, mdl, "USE_REGRIDDING", CS%use_ALE_algorithm , &
@@ -233,7 +235,7 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
   if (CS%do_bias_adjustment) then
     call get_param(PF, mdl, "TRACER_ADJUSTMENT_FACTOR", CS%bias_adjustment_multiplier, &
        "A multiplicative scaling factor for the climatological tracer tendency adjustment ", &
-       units="nondim", default=1.0)
+       units="nondim", default=1.0_wp)
   endif
   call get_param(PF, mdl, "USE_BASIN_MASK", CS%use_basin_mask, &
        "If true, add a basin mask to delineate weakly connected "//&
@@ -343,7 +345,7 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
   h_neglect = set_h_neglect(GV, CS%answer_date, h_neglect_edge)
   call initialize_remapping(CS%remapCS, remap_scheme, om4_remap_via_sub_cells=om4_remap_via_sub_cells, &
                             h_neglect=h_neglect, h_neglect_edge=h_neglect_edge, answer_date=CS%answer_date)
-  call set_regrid_params(CS%regridCS, min_thickness=0.)
+  call set_regrid_params(CS%regridCS, min_thickness=0._wp)
   isd = G%isd; ied = G%ied; jsd = G%jsd; jed = G%jed
 
   ! breaking with the MOM6 convention and using global indices
@@ -358,8 +360,8 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
     call ALE_initThicknessToCoord(CS%ALE_CS, G, CS%GV, CS%h)
   endif
 
-  allocate(CS%T_tend(isd:ied,jsd:jed,CS%GV%ke), source=0.0)
-  allocate(CS%S_tend(isd:ied,jsd:jed,CS%GV%ke), source=0.0)
+  allocate(CS%T_tend(isd:ied,jsd:jed,CS%GV%ke), source=0.0_wp)
+  allocate(CS%S_tend(isd:ied,jsd:jed,CS%GV%ke), source=0.0_wp)
 !  call set_axes_info(CS%Grid, CS%GV, CS%US, PF, CS%diag_cs, set_vertical=.true.) ! missing in Feiyu's fork
   allocate(CS%oda_grid)
   CS%oda_grid%x => CS%Grid%geolonT
@@ -374,7 +376,7 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
           "The basin mask variable in BASIN_FILE.", default="basin")
     ! Need different data domain indices for the ODA ensemble basin mask.
     call get_domain_extent(CS%Grid%Domain, is_oda, ie_oda, js_oda, je_oda, isd_oda, ied_oda, jsd_oda, jed_oda)
-    allocate(CS%oda_grid%basin_mask(isd_oda:ied_oda,jsd_oda:jed_oda), source=0.0)
+    allocate(CS%oda_grid%basin_mask(isd_oda:ied_oda,jsd_oda:jed_oda), source=0.0_wp)
     call MOM_read_data(basin_file, basin_var, CS%oda_grid%basin_mask, CS%Grid%domain, timelevel=1)
   endif
 
@@ -409,8 +411,8 @@ subroutine init_oda(Time, G, GV, US, diag_CS, CS)
     CS%INC_CS%fldno = 2
     if (CS%nk /= fld_sz(3)) call MOM_error(FATAL,'Increment levels /= ODA levels')
 
-    allocate(CS%T_bc_tend(G%isd:G%ied,G%jsd:G%jed,CS%GV%ke), source=0.0)
-    allocate(CS%S_bc_tend(G%isd:G%ied,G%jsd:G%jed,CS%GV%ke), source=0.0)
+    allocate(CS%T_bc_tend(G%isd:G%ied,G%jsd:G%jed,CS%GV%ke), source=0.0_wp)
+    allocate(CS%S_bc_tend(G%isd:G%ied,G%jsd:G%jed,CS%GV%ke), source=0.0_wp)
   endif
 
   call cpu_clock_end(id_clock_oda_init)
@@ -427,12 +429,12 @@ subroutine set_prior_tracer(Time, G, GV, h, tv, CS)
   type(time_type), intent(in)    :: Time !< The current model time
   type(ocean_grid_type), pointer :: G !< domain and grid information for ocean model
   type(verticalGrid_type),               intent(in)    :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),                 intent(in) :: tv   !< A structure pointing to various thermodynamic variables
 
   type(ODA_CS), pointer :: CS !< ocean DA control structure
-  real, dimension(SZI_(G),SZJ_(G),CS%nk) :: T  ! Temperature on the analysis grid [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),CS%nk) :: S  ! Salinity on the analysis grid [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),CS%nk) :: T  ! Temperature on the analysis grid [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),CS%nk) :: S  ! Salinity on the analysis grid [S ~> ppt]
   integer :: i, j, m
   integer :: isc, iec, jsc, jec
 
@@ -566,13 +568,13 @@ subroutine get_bias_correction_tracer(Time, US, CS)
   type(ODA_CS), pointer :: CS !< ocean DA control structure
 
   ! Local variables
-  real, allocatable, dimension(:,:,:) :: T_bias ! Estimated temperature tendency bias [C T-1 ~> degC s-1]
-  real, allocatable, dimension(:,:,:) :: S_bias ! Estimated salinity tendency bias [S T-1 ~> ppt s-1]
-  real, allocatable, dimension(:,:,:) :: valid_flag ! Valid value flag on the horizontal model grid
+  real(wp), allocatable, dimension(:,:,:) :: T_bias ! Estimated temperature tendency bias [C T-1 ~> degC s-1]
+  real(wp), allocatable, dimension(:,:,:) :: S_bias ! Estimated salinity tendency bias [S T-1 ~> ppt s-1]
+  real(wp), allocatable, dimension(:,:,:) :: valid_flag ! Valid value flag on the horizontal model grid
                                                     ! and input-file vertical levels [nondim]
-  real, allocatable, dimension(:), target :: z_in       ! Cell center depths for input data [Z ~> m]
-  real, allocatable, dimension(:), target :: z_edges_in ! Cell edge depths for input data [Z ~> m]
-  real :: missing_value ! A value indicating that there is no valid input data at this point [CU ~> conc]
+  real(wp), allocatable, dimension(:), target :: z_in       ! Cell center depths for input data [Z ~> m]
+  real(wp), allocatable, dimension(:), target :: z_edges_in ! Cell edge depths for input data [Z ~> m]
+  real(wp) :: missing_value ! A value indicating that there is no valid input data at this point [CU ~> conc]
   integer, dimension(3) :: fld_sz
   integer :: i,j,k
 
@@ -594,8 +596,8 @@ subroutine get_bias_correction_tracer(Time, US, CS)
         do k=1,fld_sz(3)
           ! The following two lines are needed for backward compatibility for NMME answers (2018 vintage)
           ! These were implemented to catch missing values, so large values are excluded.
-          if (T_bias(i,j,k) > 1.0E-3*US%degC_to_C) T_bias(i,j,k) = 0.0
-          if (S_bias(i,j,k) > 1.0E-3*US%ppt_to_S) S_bias(i,j,k) = 0.0
+          if (T_bias(i,j,k) > 1.0E-3_wp*US%degC_to_C) T_bias(i,j,k) = 0.0_wp
+          if (S_bias(i,j,k) > 1.0E-3_wp*US%ppt_to_S) S_bias(i,j,k) = 0.0_wp
         enddo
       enddo
     enddo
@@ -603,9 +605,9 @@ subroutine get_bias_correction_tracer(Time, US, CS)
     do i=1,fld_sz(1)
       do j=1,fld_sz(2)
         do k=1,fld_sz(3)
-          if (valid_flag(i,j,k)==0.) then
-            T_bias(i,j,k)=0.0
-            S_bias(i,j,k)=0.0
+          if (valid_flag(i,j,k)==0._wp) then
+            T_bias(i,j,k)=0.0_wp
+            S_bias(i,j,k)=0.0_wp
           endif
         enddo
       enddo
@@ -686,25 +688,25 @@ end subroutine set_analysis_time
 
 !> Apply increments to tracers
 subroutine apply_oda_tracer_increments(dt, Time_end, G, GV, tv, h, CS)
-  real,                     intent(in)    :: dt !< The tracer timestep [T ~> s]
+  real(wp),                     intent(in)    :: dt !< The tracer timestep [T ~> s]
   type(time_type), intent(in)             :: Time_end !< Time at the end of the interval
   type(ocean_grid_type),    intent(in)    :: G  !< ocean grid structure
   type(verticalGrid_type),  intent(in)    :: GV !< The ocean's vertical grid structure
   type(thermo_var_ptrs),    intent(inout) :: tv !< A structure pointing to various thermodynamic variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                             intent(in)    :: h  !< layer thickness [H ~> m or kg m-2]
   type(ODA_CS), pointer                   :: CS !< the data assimilation structure
 
   !! local variables
   integer :: i, j
   integer :: isc, iec, jsc, jec
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: T_tend_inc !< an adjustment to the temperature
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(G)) :: T_tend_inc !< an adjustment to the temperature
                                                     !! tendency [C T-1 ~> degC s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: S_tend_inc !< an adjustment to the salinity
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(G)) :: S_tend_inc !< an adjustment to the salinity
                                                     !! tendency [S T-1 ~> ppt s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(CS%Grid)) :: T_tend !< The temperature tendency adjustment from
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(CS%Grid)) :: T_tend !< The temperature tendency adjustment from
                                                            !! DA [C T-1 ~> degC s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(CS%Grid)) :: S_tend !< The salinity tendency adjustment from DA
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(CS%Grid)) :: S_tend !< The salinity tendency adjustment from DA
                                                           !! [S T-1 ~> ppt s-1]
 
   if (.not. associated(CS)) return
@@ -712,7 +714,7 @@ subroutine apply_oda_tracer_increments(dt, Time_end, G, GV, tv, h, CS)
 
   call cpu_clock_begin(id_clock_apply_increments)
 
-  T_tend_inc(:,:,:) = 0.0; S_tend_inc(:,:,:) = 0.0; T_tend(:,:,:) = 0.0; S_tend(:,:,:) = 0.0
+  T_tend_inc(:,:,:) = 0.0_wp; S_tend_inc(:,:,:) = 0.0_wp; T_tend(:,:,:) = 0.0_wp; S_tend(:,:,:) = 0.0_wp
   if (CS%assim_method > 0 ) then
     T_tend = T_tend + CS%T_tend
     S_tend = S_tend + CS%S_tend
@@ -758,7 +760,7 @@ end subroutine apply_oda_tracer_increments
     type(ocean_grid_type), pointer :: G !< domain and grid information for ocean model
 
     ! local variables
-    real, dimension(:,:), allocatable :: &
+    real(wp), dimension(:,:), allocatable :: &
       global2D, &  ! A layer thickness in the entire global domain [H ~> m or kg m-2]
       global2D_old ! The thickness of the layer above the one in global2D in the entire
                    ! global domain [H ~> m or kg m-2]
@@ -782,8 +784,8 @@ end subroutine apply_oda_tracer_increments
       allocate(T_grid%basin_mask(CS%ni,CS%nj))
       call global_field(CS%mpp_domain, CS%oda_grid%basin_mask, T_grid%basin_mask)
     endif
-    allocate(T_grid%mask(CS%ni,CS%nj,CS%nk), source=0.0)
-    allocate(T_grid%z(CS%ni,CS%nj,CS%nk), source=0.0)
+    allocate(T_grid%mask(CS%ni,CS%nj,CS%nk), source=0.0_wp)
+    allocate(T_grid%z(CS%ni,CS%nj,CS%nk), source=0.0_wp)
     allocate(global2D(CS%ni,CS%nj))
     allocate(global2D_old(CS%ni,CS%nj))
 
@@ -793,7 +795,7 @@ end subroutine apply_oda_tracer_increments
         ! ###Does the next line need to be revised?  Perhaps it should be
         ! if ( global2D(i,j) > 1.0*GV%H_to_m ) then
         if ( global2D(i,j) > 1 ) then
-           T_grid%mask(i,j,k) = 1.0
+           T_grid%mask(i,j,k) = 1.0_wp
         endif
       enddo; enddo
       if (k == 1) then

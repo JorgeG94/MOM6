@@ -23,6 +23,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : surface
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -39,12 +41,12 @@ type, public :: USER_tracer_example_CS ; private
                                        !! to initialize internally.
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:) => NULL()  !< The array of tracers used in this subroutine, perhaps in [g kg-1]?
-  real :: land_val(NTR) = -1.0 !< The value of tr that is used where land is masked out, perhaps in [g kg-1]?
+  real(wp), pointer :: tr(:,:,:,:) => NULL()  !< The array of tracers used in this subroutine, perhaps in [g kg-1]?
+  real(wp) :: land_val(NTR) = -1.0_wp !< The value of tr that is used where land is masked out, perhaps in [g kg-1]?
 
-  real :: stripe_width  !< The Gaussian width of the stripe in the initial condition
+  real(wp) :: stripe_width  !< The Gaussian width of the stripe in the initial condition
                         !! for the tracer_example tracers [L ~> m]
-  real :: stripe_lat    !< The central latitude of the stripe in the initial condition
+  real(wp) :: stripe_lat    !< The central latitude of the stripe in the initial condition
                         !! for the tracer_example tracers, in [degrees_N] or [km] or [m].
   logical :: use_sponge    !< If true, sponges may be applied somewhere in the domain.
 
@@ -79,7 +81,7 @@ function USER_register_tracer_example(G, GV, US, param_file, CS, tr_Reg, restart
   character(len=200) :: inputdir
   character(len=48) :: flux_units ! The units for tracer fluxes, usually
                             ! kg(tracer) kg(water)-1 m3 s-1 or kg(tracer) s-1.
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to one of the tracers, perhaps in [g kg-1]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to one of the tracers, perhaps in [g kg-1]
   logical :: USER_register_tracer_example
   integer :: isd, ied, jsd, jed, nz, m
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; nz = GV%ke
@@ -108,12 +110,12 @@ function USER_register_tracer_example(G, GV, US, param_file, CS, tr_Reg, restart
                  "specified from MOM_initialization.F90.", default=.false.)
   call get_param(param_file, mdl, "TRACER_EXAMPLE_STRIPE_WIDTH", CS%stripe_width, &
                  "The Gaussian width of the stripe in the initial condition for the "//&
-                 "tracer_example tracers.", units="m", default=1.0e5, scale=US%m_to_L)
+                 "tracer_example tracers.", units="m", default=1.0e5_wp, scale=US%m_to_L)
   call get_param(param_file, mdl, "TRACER_EXAMPLE_STRIPE_LAT", CS%stripe_lat, &
                  "The central latitude of the stripe in the initial condition for the "//&
-                 "tracer_example tracers.", units=G%y_ax_unit_short, default=40.0)
+                 "tracer_example tracers.", units=G%y_ax_unit_short, default=40.0_wp)
 
-  allocate(CS%tr(isd:ied,jsd:jed,nz,NTR), source=0.0)
+  allocate(CS%tr(isd:ied,jsd:jed,nz,NTR), source=0.0_wp)
 
   do m=1,NTR
     write(name,'("tr",I0)') m
@@ -154,7 +156,7 @@ subroutine USER_initialize_tracer(restart, day, G, GV, US, h, diag, OBC, CS, &
   type(ocean_grid_type),              intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),              intent(in) :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_ctrl),            target, intent(in) :: diag !< A structure that is used to regulate
                                                          !! diagnostic output.
@@ -167,12 +169,12 @@ subroutine USER_initialize_tracer(restart, day, G, GV, US, h, diag, OBC, CS, &
                                                                   !! for the sponges, if they are in use.
 
 ! Local variables
-  real, allocatable :: temp(:,:,:) ! Target values for the tracers in the sponges, perhaps in [g kg-1]
+  real(wp), allocatable :: temp(:,:,:) ! Target values for the tracers in the sponges, perhaps in [g kg-1]
   character(len=32) :: name     ! A variable's name in a NetCDF file.
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to one of the tracers, perhaps in [g kg-1]
-  real :: PI     ! 3.1415926... calculated as 4*atan(1) [nondim]
-  real :: tr_y   ! Initial zonally uniform tracer concentrations, perhaps in [g kg-1]
-  real :: dist2  ! The distance squared from a line [L2 ~> m2].
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to one of the tracers, perhaps in [g kg-1]
+  real(wp) :: PI     ! 3.1415926... calculated as 4*atan(1) [nondim]
+  real(wp) :: tr_y   ! Initial zonally uniform tracer concentrations, perhaps in [g kg-1]
+  real(wp) :: dist2  ! The distance squared from a line [L2 ~> m2].
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz, m
   integer :: IsdB, IedB, JsdB, JedB, lntr
 
@@ -198,15 +200,15 @@ subroutine USER_initialize_tracer(restart, day, G, GV, US, h, diag, OBC, CS, &
     else
       do m=1,NTR
         do k=1,nz ; do j=js,je ; do i=is,ie
-          CS%tr(i,j,k,m) = 1.0e-20 ! This could just as well be 0.
+          CS%tr(i,j,k,m) = 1.0e-20_wp ! This could just as well be 0.
         enddo ; enddo ; enddo
       enddo
 
 !    This sets a stripe of tracer across the basin.
-      PI = 4.0*atan(1.0)
+      PI = 4.0_wp*atan(1.0_wp)
       do j=js,je
-        dist2 = (G%Rad_Earth_L * PI / 180.0)**2 * (G%geoLatT(i,j) - CS%stripe_lat)**2
-        tr_y = 0.5 * exp( -dist2 / CS%stripe_width**2 )
+        dist2 = (G%Rad_Earth_L * PI / 180.0_wp)**2 * (G%geoLatT(i,j) - CS%stripe_lat)**2
+        tr_y = 0.5_wp * exp( -dist2 / CS%stripe_width**2 )
 
         do k=1,nz ; do i=is,ie
 !      This adds the stripes of tracer to every layer.
@@ -227,10 +229,10 @@ subroutine USER_initialize_tracer(restart, day, G, GV, US, h, diag, OBC, CS, &
 
     allocate(temp(G%isd:G%ied,G%jsd:G%jed,nz))
     do k=1,nz ; do j=js,je ; do i=is,ie
-      if ((G%geoLatT(i,j) > 0.5*G%len_lat + G%south_lat) .and. (k > nz/2)) then
-        temp(i,j,k) = 1.0
+      if ((G%geoLatT(i,j) > 0.5_wp*G%len_lat + G%south_lat) .and. (k > nz/2)) then
+        temp(i,j,k) = 1.0_wp
       else
-        temp(i,j,k) = 0.0
+        temp(i,j,k) = 0.0_wp
       endif
     enddo ; enddo ; enddo
 
@@ -269,43 +271,43 @@ end subroutine USER_initialize_tracer
 subroutine tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, dt, G, GV, US, CS)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea   !< an array to which the amount of fluid entrained
                                               !! from the layer above during this call will be
                                               !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb   !< an array to which the amount of fluid entrained
                                               !! from the layer below during this call will be
                                               !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
   type(USER_tracer_example_CS), pointer :: CS !< The control structure returned by a previous
                                               !! call to USER_register_tracer_example.
 
 ! Local variables
-  real :: hold0(SZI_(G))       ! The original topmost layer thickness,
+  real(wp) :: hold0(SZI_(G))       ! The original topmost layer thickness,
                                ! with surface mass fluxes added back [H ~> m or kg m-2].
-  real :: b1(SZI_(G))          ! b1 is a variable used by the tridiagonal solver [H ~> m or kg m-2].
-  real :: c1(SZI_(G),SZK_(GV)) ! c1 is a variable used by the tridiagonal solver [nondim].
-  real :: d1(SZI_(G))          ! d1=1-c1 is used by the tridiagonal solver [nondim].
-  real :: h_neglect            ! A thickness that is so small it is usually lost
+  real(wp) :: b1(SZI_(G))          ! b1 is a variable used by the tridiagonal solver [H ~> m or kg m-2].
+  real(wp) :: c1(SZI_(G),SZK_(GV)) ! c1 is a variable used by the tridiagonal solver [nondim].
+  real(wp) :: d1(SZI_(G))          ! d1=1-c1 is used by the tridiagonal solver [nondim].
+  real(wp) :: h_neglect            ! A thickness that is so small it is usually lost
                                ! in roundoff and can be neglected [H ~> m or kg m-2].
-  real :: b_denom_1            ! The first term in the denominator of b1 [H ~> m or kg m-2].
-  real :: diapyc_filt          ! A multiplicative filter that can be set to 0 to disable diapycnal
+  real(wp) :: b_denom_1            ! The first term in the denominator of b1 [H ~> m or kg m-2].
+  real(wp) :: diapyc_filt          ! A multiplicative filter that can be set to 0 to disable diapycnal
                                ! advection of the tracer [nondim]
-  real :: dye_up               ! The tracer concentration of upwelled water, perhaps in [g kg-1]?
-  real :: dye_down             ! The tracer concentration of downwelled water, perhaps in [g kg-1]?
+  real(wp) :: dye_up               ! The tracer concentration of upwelled water, perhaps in [g kg-1]?
+  real(wp) :: dye_down             ! The tracer concentration of downwelled water, perhaps in [g kg-1]?
   integer :: i, j, k, is, ie, js, je, nz, m
 
   ! These are the settings for most "physical" tracers, which
   ! are advected diapycnally in the usual manner.
-  diapyc_filt = 1.0 ; dye_down = 0.0 ; dye_down = 0.0
+  diapyc_filt = 1.0_wp ; dye_down = 0.0_wp ; dye_down = 0.0_wp
 
   ! Uncomment the following line to dye downwelling.
 !  diapyc_filt = 0.0 ; dye_down = 1.0
@@ -333,9 +335,9 @@ subroutine tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, dt, G, GV, US, 
 ! the absolute fluxes.
   !   hold0(i) = h_old(i,j,1) + ea(i,j,1)
       b_denom_1 = h_old(i,j,1) + ea(i,j,1) + h_neglect
-      b1(i) = 1.0 / (b_denom_1 + eb(i,j,1))
+      b1(i) = 1.0_wp / (b_denom_1 + eb(i,j,1))
 !       d1(i) = b_denom_1 * b1(i)
-      d1(i) = diapyc_filt * (b_denom_1 * b1(i)) + (1.0 - diapyc_filt)
+      d1(i) = diapyc_filt * (b_denom_1 * b1(i)) + (1.0_wp - diapyc_filt)
       do m=1,NTR
         CS%tr(i,j,1,m) = b1(i)*(hold0(i)*CS%tr(i,j,1,m) + dye_up*eb(i,j,1))
  !      Add any surface tracer fluxes to the preceding line.
@@ -344,8 +346,8 @@ subroutine tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, dt, G, GV, US, 
     do k=2,nz ; do i=is,ie
       c1(i,k) = diapyc_filt * eb(i,j,k-1) * b1(i)
       b_denom_1 = h_old(i,j,k) + d1(i)*ea(i,j,k) + h_neglect
-      b1(i) = 1.0 / (b_denom_1 + eb(i,j,k))
-      d1(i) = diapyc_filt * (b_denom_1 * b1(i)) + (1.0 - diapyc_filt)
+      b1(i) = 1.0_wp / (b_denom_1 + eb(i,j,k))
+      d1(i) = diapyc_filt * (b_denom_1 * b1(i)) + (1.0_wp - diapyc_filt)
       do m=1,NTR
         CS%tr(i,j,k,m) = b1(i) * (h_old(i,j,k)*CS%tr(i,j,k,m) + &
                  ea(i,j,k)*(diapyc_filt*CS%tr(i,j,k-1,m) + dye_down) + &
@@ -365,7 +367,7 @@ end subroutine tracer_column_physics
 function USER_tracer_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),              intent(in)    :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in)    :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in)    :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(EFP_type), dimension(:),       intent(out)   :: stocks !< The mass-weighted integrated amount of each
                                                               !! tracer, in kg times concentration units [kg conc]
@@ -407,7 +409,7 @@ subroutine USER_tracer_surface_state(sfc_state, h, G, GV, CS)
   type(verticalGrid_type),      intent(in)    :: GV    !< The ocean's vertical grid structure
   type(surface),                intent(inout) :: sfc_state !< A structure containing fields that
                                                        !! describe the surface state of the ocean.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                 intent(in)    :: h  !< Layer thicknesses [H ~> m or kg m-2]
   type(USER_tracer_example_CS), pointer       :: CS !< The control structure returned by a previous
                                                     !! call to register_USER_tracer.

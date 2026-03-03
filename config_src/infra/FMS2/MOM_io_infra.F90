@@ -25,7 +25,8 @@ use mpp_domains_mod,      only : mpp_get_compute_domain, mpp_get_global_domain
 use mpp_mod,              only : stdout_if_root=>stdout
 use mpp_mod,              only : mpp_pe, mpp_root_pe, mpp_npes
 use mpp_mod,              only : mpp_get_current_pelist_name
-use iso_fortran_env,      only : int64
+
+use MOM_datatypes, only : int64, wp
 
 implicit none ; private
 
@@ -107,7 +108,7 @@ type :: file_type ; private
   logical :: open_to_read  = .false. !< If true, this file or fileset can be read
   logical :: open_to_write = .false. !< If true, this file or fileset can be written to
   integer :: num_times !< The number of time levels in this file
-  real    :: file_time !< The time of the latest entry in the file.
+  real(wp)    :: file_time !< The time of the latest entry in the file.
 end type file_type
 
 !> This type is a container for information about a variable in a file.
@@ -122,7 +123,7 @@ end type fieldtype
 !> This type is a container for information about an axis in a file.
 type :: axistype ; private
   character(len=256) :: name !< The name of this axis in the files.
-  real, allocatable, dimension(:) :: ax_data !< The values of the data on the axis.
+  real(wp), allocatable, dimension(:) :: ax_data !< The values of the data on the axis.
   logical :: domain_decomposed = .false.  !< True if axis is domain-decomposed
 end type axistype
 
@@ -179,7 +180,7 @@ subroutine close_file_type(IO_handle)
   endif
   if (allocated(IO_handle%filename)) deallocate(IO_handle%filename)
   IO_handle%open_to_read = .false. ; IO_handle%open_to_write = .false.
-  IO_handle%num_times = 0 ; IO_handle%file_time = 0.0
+  IO_handle%num_times = 0 ; IO_handle%file_time = 0.0_wp
 end subroutine close_file_type
 
 ! TODO: close_file_unit is only used for ASCII files, which are opened outside
@@ -331,7 +332,7 @@ subroutine open_file(IO_handle, filename, action, MOM_domain, threading, fileset
   endif
 
   IO_handle%num_times = 0
-  IO_handle%file_time = 0.0
+  IO_handle%file_time = 0.0_wp
   if ((file_mode == APPEND_FILE) .and. file_exists(filename_tmp, MOM_Domain)) then
     ! Determine the latest file time and number of records so far.
     success = fms2_open_file(fileObj_read, trim(filename_tmp), "read", MOM_domain%mpp_domain)
@@ -487,7 +488,7 @@ end subroutine get_file_info
 !> Get the times of records from a file
 subroutine get_file_times(IO_handle, time_values, ntime)
   type(file_type),                 intent(in)    :: IO_handle !< Handle for a file that is open for I/O
-  real, allocatable, dimension(:), intent(inout) :: time_values !< The real times for the records in file.
+  real(wp), allocatable, dimension(:), intent(inout) :: time_values !< The real times for the records in file.
   integer,               optional, intent(out)   :: ntime !< The number of time levels in the file
 
   character(len=256) :: dim_unlim_name ! name of the unlimited dimension in the file
@@ -731,7 +732,7 @@ subroutine get_axis_data(axis, axis_name, axis_data)
     !< Infra axis
   character(len=256), intent(out) :: axis_name
     !< Axis name
-  real, dimension(:), intent(out) :: axis_data
+  real(wp), dimension(:), intent(out) :: axis_data
     !< Axis points
 
   integer :: i
@@ -755,7 +756,7 @@ subroutine set_axis_data(axis, axis_name, axis_data)
     !< Target axis
   character(len=256), intent(in) :: axis_name
     !< Target axis name
-  real, intent(in) :: axis_data(:)
+  real(wp), intent(in) :: axis_data(:)
     !< Target axis values
 
   axis%name = axis_name
@@ -776,9 +777,9 @@ subroutine read_field_0d(filename, fieldname, data, timelevel, scale, MOM_Domain
                          global_file, file_may_be_4d)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real,                   intent(inout) :: data      !< The 1-dimensional array into which the data
+  real(wp),                   intent(inout) :: data      !< The 1-dimensional array into which the data
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
   type(MOM_domain_type), &
                 optional, intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
@@ -832,7 +833,7 @@ subroutine read_field_0d(filename, fieldname, data, timelevel, scale, MOM_Domain
     if (check_if_open(fileobj)) call fms2_close_file(fileobj)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     data = scale*data
   endif ; endif
 
@@ -844,9 +845,9 @@ subroutine read_field_1d(filename, fieldname, data, timelevel, scale, MOM_Domain
                          global_file, file_may_be_4d)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:),     intent(inout) :: data      !< The 1-dimensional array into which the data
+  real(wp), dimension(:),     intent(inout) :: data      !< The 1-dimensional array into which the data
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before they are returned.
   type(MOM_domain_type), &
                 optional, intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
@@ -900,7 +901,7 @@ subroutine read_field_1d(filename, fieldname, data, timelevel, scale, MOM_Domain
     if (check_if_open(fileobj)) call fms2_close_file(fileobj)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     data(:) = scale*data(:)
   endif ; endif
 
@@ -913,12 +914,12 @@ subroutine read_field_2d(filename, fieldname, data, MOM_Domain, &
                          timelevel, position, scale, global_file, file_may_be_4d)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:,:),   intent(inout) :: data      !< The 2-dimensional array into which the data
+  real(wp), dimension(:,:),   intent(inout) :: data      !< The 2-dimensional array into which the data
                                                      !! should be read
   type(MOM_domain_type),  intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
   integer,      optional, intent(in)    :: position  !< A flag indicating where this data is located
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
   logical,      optional, intent(in)    :: global_file !< If true, read from a single global file
   logical,      optional, intent(in)    :: file_may_be_4d !< If true, this file may have 4-d arrays, but
@@ -948,7 +949,7 @@ subroutine read_field_2d(filename, fieldname, data, MOM_Domain, &
   ! Close the file-set.
   if (check_if_open(fileobj)) call fms2_close_file(fileobj)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     call rescale_comp_data(MOM_Domain, data, scale)
   endif ; endif
 
@@ -960,7 +961,7 @@ subroutine read_field_2d_region(filename, fieldname, data, start, nread, MOM_dom
                                 no_domain, scale)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:,:),   intent(inout) :: data      !< The 2-dimensional array into which the data
+  real(wp), dimension(:,:),   intent(inout) :: data      !< The 2-dimensional array into which the data
                                                      !! should be read
   integer, dimension(:),  intent(in)    :: start     !< The starting index to read in each of 4
                                                      !! dimensions.  For this 2-d read, the 3rd
@@ -972,7 +973,7 @@ subroutine read_field_2d_region(filename, fieldname, data, start, nread, MOM_dom
                 optional, intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   logical,      optional, intent(in)    :: no_domain !< If present and true, this variable does not
                                                      !! use domain decomposion.
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
 
   ! Local variables
@@ -1011,7 +1012,7 @@ subroutine read_field_2d_region(filename, fieldname, data, start, nread, MOM_dom
     if (check_if_open(fileobj)) call fms2_close_file(fileobj)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     if (present(MOM_Domain)) then
       call rescale_comp_data(MOM_Domain, data, scale)
     else
@@ -1029,12 +1030,12 @@ subroutine read_field_3d(filename, fieldname, data, MOM_Domain, &
                          timelevel, position, scale, global_file, file_may_be_4d)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:,:,:), intent(inout) :: data      !< The 3-dimensional array into which the data
+  real(wp), dimension(:,:,:), intent(inout) :: data      !< The 3-dimensional array into which the data
                                                      !! should be read
   type(MOM_domain_type),  intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
   integer,      optional, intent(in)    :: position  !< A flag indicating where this data is located
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
   logical,      optional, intent(in)    :: global_file !< If true, read from a single global file
   logical,      optional, intent(in)    :: file_may_be_4d !< If true, this file may have 4-d arrays, but
@@ -1064,7 +1065,7 @@ subroutine read_field_3d(filename, fieldname, data, MOM_Domain, &
   ! Close the file-set.
   if (check_if_open(fileobj)) call fms2_close_file(fileobj)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     call rescale_comp_data(MOM_Domain, data, scale)
   endif ; endif
 
@@ -1076,7 +1077,7 @@ subroutine read_field_3d_region(filename, fieldname, data, start, nread, MOM_dom
                                 no_domain, scale)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:,:,:),   intent(inout) :: data      !< The 3-dimensional array into which the data
+  real(wp), dimension(:,:,:),   intent(inout) :: data      !< The 3-dimensional array into which the data
                                                      !! should be read
   integer, dimension(:),  intent(in)    :: start     !< The starting index to read in each of 3
                                                      !! dimensions.  For this 3-d read, the
@@ -1088,7 +1089,7 @@ subroutine read_field_3d_region(filename, fieldname, data, start, nread, MOM_dom
                 optional, intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   logical,      optional, intent(in)    :: no_domain !< If present and true, this variable does not
                                                      !! use domain decomposion.
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
 
   ! Local variables
@@ -1127,7 +1128,7 @@ subroutine read_field_3d_region(filename, fieldname, data, start, nread, MOM_dom
     if (check_if_open(fileobj)) call fms2_close_file(fileobj)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     if (present(MOM_Domain)) then
       call rescale_comp_data(MOM_Domain, data, scale)
     else
@@ -1145,12 +1146,12 @@ subroutine read_field_4d(filename, fieldname, data, MOM_Domain, &
                          timelevel, position, scale, global_file)
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: fieldname !< The variable name of the data in the file
-  real, dimension(:,:,:,:), intent(inout) :: data    !< The 4-dimensional array into which the data
+  real(wp), dimension(:,:,:,:), intent(inout) :: data    !< The 4-dimensional array into which the data
                                                      !! should be read
   type(MOM_domain_type),  intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
   integer,      optional, intent(in)    :: position  !< A flag indicating where this data is located
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the field is multiplied
                                                      !! by before it is returned.
   logical,      optional, intent(in)    :: global_file !< If true, read from a single global file
 
@@ -1179,7 +1180,7 @@ subroutine read_field_4d(filename, fieldname, data, MOM_Domain, &
   ! Close the file-set.
   if (check_if_open(fileobj)) call fms2_close_file(fileobj)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     call rescale_comp_data(MOM_Domain, data, scale)
   endif ; endif
 
@@ -1267,15 +1268,15 @@ subroutine read_vector_2d(filename, u_fieldname, v_fieldname, u_data, v_data, MO
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: u_fieldname !< The variable name of the u data in the file
   character(len=*),       intent(in)    :: v_fieldname !< The variable name of the v data in the file
-  real, dimension(:,:),   intent(inout) :: u_data    !< The 2 dimensional array into which the
+  real(wp), dimension(:,:),   intent(inout) :: u_data    !< The 2 dimensional array into which the
                                                      !! u-component of the data should be read
-  real, dimension(:,:),   intent(inout) :: v_data    !< The 2 dimensional array into which the
+  real(wp), dimension(:,:),   intent(inout) :: v_data    !< The 2 dimensional array into which the
                                                      !! v-component of the data should be read
   type(MOM_domain_type),  intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
   integer,      optional, intent(in)    :: stagger   !< A flag indicating where this vector is discretized
   logical,      optional, intent(in)    :: scalar_pair !< If true, a pair of scalars are to be read
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the fields are multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the fields are multiplied
                                                      !! by before they are returned.
   ! Local variables
   type(FmsNetcdfDomainFile_t) :: fileobj ! A handle to a domain-decomposed file object
@@ -1314,7 +1315,7 @@ subroutine read_vector_2d(filename, u_fieldname, v_fieldname, u_data, v_data, MO
   ! Close the file-set.
   if (check_if_open(fileobj)) call fms2_close_file(fileobj)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     call rescale_comp_data(MOM_Domain, u_data, scale)
     call rescale_comp_data(MOM_Domain, v_data, scale)
   endif ; endif
@@ -1329,15 +1330,15 @@ subroutine read_vector_3d(filename, u_fieldname, v_fieldname, u_data, v_data, MO
   character(len=*),       intent(in)    :: filename  !< The name of the file to read
   character(len=*),       intent(in)    :: u_fieldname !< The variable name of the u data in the file
   character(len=*),       intent(in)    :: v_fieldname !< The variable name of the v data in the file
-  real, dimension(:,:,:), intent(inout) :: u_data    !< The 3 dimensional array into which the
+  real(wp), dimension(:,:,:), intent(inout) :: u_data    !< The 3 dimensional array into which the
                                                      !! u-component of the data should be read
-  real, dimension(:,:,:), intent(inout) :: v_data    !< The 3 dimensional array into which the
+  real(wp), dimension(:,:,:), intent(inout) :: v_data    !< The 3 dimensional array into which the
                                                      !! v-component of the data should be read
   type(MOM_domain_type),  intent(in)    :: MOM_Domain !< The MOM_Domain that describes the decomposition
   integer,      optional, intent(in)    :: timelevel !< The time level in the file to read
   integer,      optional, intent(in)    :: stagger   !< A flag indicating where this vector is discretized
   logical,      optional, intent(in)    :: scalar_pair !< If true, a pair of scalars are to be read.
-  real,         optional, intent(in)    :: scale     !< A scaling factor that the fields are multiplied
+  real(wp),         optional, intent(in)    :: scale     !< A scaling factor that the fields are multiplied
                                                      !! by before they are returned.
 
   ! Local variables
@@ -1377,7 +1378,7 @@ subroutine read_vector_3d(filename, u_fieldname, v_fieldname, u_data, v_data, MO
   ! Close the file-set.
   if (check_if_open(fileobj)) call fms2_close_file(fileobj)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     call rescale_comp_data(MOM_Domain, u_data, scale)
     call rescale_comp_data(MOM_Domain, v_data, scale)
   endif ; endif
@@ -1750,10 +1751,10 @@ subroutine write_field_4d(IO_handle, field_md, MOM_domain, field, tstamp, tile_c
   type(file_type),          intent(inout) :: IO_handle  !< Handle for a file that is open for writing
   type(fieldtype),          intent(in)    :: field_md   !< Field type with metadata
   type(MOM_domain_type),    intent(in)    :: MOM_domain !< The MOM_Domain that describes the decomposition
-  real, dimension(:,:,:,:), intent(inout) :: field      !< Field to write
-  real,           optional, intent(in)    :: tstamp     !< Model time of this field
+  real(wp), dimension(:,:,:,:), intent(inout) :: field      !< Field to write
+  real(wp),           optional, intent(in)    :: tstamp     !< Model time of this field
   integer,        optional, intent(in)    :: tile_count !< PEs per tile (default: 1)
-  real,           optional, intent(in)    :: fill_value !< Missing data fill value
+  real(wp),           optional, intent(in)    :: fill_value !< Missing data fill value
 
 
   ! Local variables
@@ -1772,10 +1773,10 @@ subroutine write_field_3d(IO_handle, field_md, MOM_domain, field, tstamp, tile_c
   type(file_type),        intent(inout) :: IO_handle  !< Handle for a file that is open for writing
   type(fieldtype),        intent(in)    :: field_md   !< Field type with metadata
   type(MOM_domain_type),  intent(in)    :: MOM_domain !< The MOM_Domain that describes the decomposition
-  real, dimension(:,:,:), intent(inout) :: field      !< Field to write
-  real,         optional, intent(in)    :: tstamp     !< Model time of this field
+  real(wp), dimension(:,:,:), intent(inout) :: field      !< Field to write
+  real(wp),         optional, intent(in)    :: tstamp     !< Model time of this field
   integer,      optional, intent(in)    :: tile_count !< PEs per tile (default: 1)
-  real,         optional, intent(in)    :: fill_value !< Missing data fill value
+  real(wp),         optional, intent(in)    :: fill_value !< Missing data fill value
 
   ! Local variables
   integer :: time_index
@@ -1793,10 +1794,10 @@ subroutine write_field_2d(IO_handle, field_md, MOM_domain, field, tstamp, tile_c
   type(file_type),        intent(inout) :: IO_handle  !< Handle for a file that is open for writing
   type(fieldtype),        intent(in)    :: field_md   !< Field type with metadata
   type(MOM_domain_type),  intent(in)    :: MOM_domain !< The MOM_Domain that describes the decomposition
-  real, dimension(:,:),   intent(inout) :: field      !< Field to write
-  real,         optional, intent(in)    :: tstamp     !< Model time of this field
+  real(wp), dimension(:,:),   intent(inout) :: field      !< Field to write
+  real(wp),         optional, intent(in)    :: tstamp     !< Model time of this field
   integer,      optional, intent(in)    :: tile_count !< PEs per tile (default: 1)
-  real,         optional, intent(in)    :: fill_value !< Missing data fill value
+  real(wp),         optional, intent(in)    :: fill_value !< Missing data fill value
 
   ! Local variables
   integer :: time_index
@@ -1813,8 +1814,8 @@ end subroutine write_field_2d
 subroutine write_field_1d(IO_handle, field_md, field, tstamp)
   type(file_type),        intent(inout) :: IO_handle  !< Handle for a file that is open for writing
   type(fieldtype),        intent(in)    :: field_md   !< Field type with metadata
-  real, dimension(:),     intent(in)    :: field      !< Field to write
-  real,         optional, intent(in)    :: tstamp     !< Model time of this field
+  real(wp), dimension(:),     intent(in)    :: field      !< Field to write
+  real(wp),         optional, intent(in)    :: tstamp     !< Model time of this field
 
   ! Local variables
   integer :: time_index
@@ -1831,8 +1832,8 @@ end subroutine write_field_1d
 subroutine write_field_0d(IO_handle, field_md, field, tstamp)
   type(file_type),        intent(inout) :: IO_handle  !< Handle for a file that is open for writing
   type(fieldtype),        intent(in)    :: field_md   !< Field type with metadata
-  real,                   intent(in)    :: field      !< Field to write
-  real,         optional, intent(in)    :: tstamp     !< Model time of this field
+  real(wp),                   intent(in)    :: field      !< Field to write
+  real(wp),         optional, intent(in)    :: tstamp     !< Model time of this field
 
   ! Local variables
   integer :: time_index
@@ -1849,7 +1850,7 @@ end subroutine write_field_0d
 !! the file if this time is later than what is already in the file.
 integer function write_time_if_later(IO_handle, field_time)
   type(file_type), intent(inout) :: IO_handle  !< Handle for a file that is open for writing
-  real,            intent(in)    :: field_time !< Model time of this field
+  real(wp),            intent(in)    :: field_time !< Model time of this field
 
   ! Local variables
   character(len=256) :: dim_unlim_name ! name of the unlimited dimension in the file
@@ -1897,7 +1898,7 @@ subroutine write_metadata_axis(IO_handle, axis, name, units, longname, cartesian
   integer,          optional, intent(in)    :: sense !< This is 1 for axes whose values increase upward, or
                                                      !! -1 if they increase downward.
   type(domain1D),   optional, intent(in)    :: domain !< The domain decomposion for this axis
-  real, dimension(:), optional, intent(in)  :: data   !< The coordinate values of the points on this axis
+  real(wp), dimension(:), optional, intent(in)  :: data   !< The coordinate values of the points on this axis
   logical,          optional, intent(in)    :: edge_axis !< If true, this axis marks an edge of the tracer cells
   character(len=*), optional, intent(in)    :: calendar !< The name of the calendar used with a time axis
 

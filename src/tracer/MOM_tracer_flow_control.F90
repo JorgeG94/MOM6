@@ -76,6 +76,8 @@ use boundary_impulse_tracer, only : boundary_impulse_tracer_CS
 use nw2_tracers, only : nw2_tracers_CS, register_nw2_tracers, nw2_tracer_column_physics
 use nw2_tracers, only : initialize_nw2_tracers, nw2_tracers_end
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public call_tracer_register, tracer_flow_control_init, call_tracer_set_forcing
@@ -300,7 +302,7 @@ subroutine tracer_flow_control_init(restart, day, G, GV, US, h, param_file, diag
   type(verticalGrid_type),               intent(in)    :: GV      !< The ocean's vertical grid
                                                                   !! structure.
   type(unit_scale_type),                 intent(in)    :: US      !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                          intent(in)    :: h       !< Layer thicknesses [H ~> m or kg m-2]
   type(param_file_type),                 intent(in)    :: param_file !< A structure to parse for
                                                                   !! run-time parameters
@@ -397,7 +399,7 @@ end subroutine call_tracer_register_obc_segments
 subroutine get_chl_from_model(Chl_array, G, GV, CS)
   type(ocean_grid_type),        intent(in)  :: G         !< The ocean's grid structure.
   type(verticalGrid_type),      intent(in)  :: GV        !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                 intent(out) :: Chl_array !< The array in which to store the model's
                                                          !! Chlorophyll-A concentrations [mg m-3].
   type(tracer_flow_control_CS), pointer     :: CS        !< The control structure returned by a
@@ -430,7 +432,7 @@ subroutine call_tracer_set_forcing(sfc_state, fluxes, day_start, day_interval, G
                                                            !! fluxes will be applied.
   type(ocean_grid_type),        intent(in)    :: G         !< The ocean's grid structure.
   type(unit_scale_type),        intent(in)    :: US        !< A dimensional unit scaling type
-  real,                         intent(in)    :: Rho0      !< The mean ocean density [R ~> kg m-3]
+  real(wp),                         intent(in)    :: Rho0      !< The mean ocean density [R ~> kg m-3]
   type(tracer_flow_control_CS), pointer       :: CS        !< The control structure returned by a
                                                            !! previous call to call_tracer_register.
 
@@ -453,21 +455,21 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
                                   debug, KPP_CSp, nonLocalTrans, evap_CFL_limit, minimum_forcing_depth, h_BL)
   type(ocean_grid_type),                 intent(in) :: G      !< The ocean's grid structure.
   type(verticalGrid_type),               intent(in) :: GV     !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h_old !< Layer thickness before entrainment
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h_old !< Layer thickness before entrainment
                                                               !! [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h_new !< Layer thickness after entrainment
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h_new !< Layer thickness after entrainment
                                                               !! [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: ea !< an array to which the amount of
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: ea !< an array to which the amount of
                                           !! fluid entrained from the layer above during this call
                                           !! will be added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: eb !< an array to which the amount of
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: eb !< an array to which the amount of
                                           !! fluid entrained from the layer below during this call
                                           !! will be added [H ~> m or kg m-2].
   type(forcing),                         intent(in) :: fluxes !< A structure containing pointers to
                                                               !! any possible forcing fields.
                                                               !! Unused fields have NULL ptrs.
-  real, dimension(SZI_(G),SZJ_(G)),      intent(in) :: mld    !< Mixed layer depth [Z ~> m]
-  real,                                  intent(in) :: dt     !< The amount of time covered by this
+  real(wp), dimension(SZI_(G),SZJ_(G)),      intent(in) :: mld    !< Mixed layer depth [Z ~> m]
+  real(wp),                                  intent(in) :: dt     !< The amount of time covered by this
                                                               !! call [T ~> s]
   type(unit_scale_type),                 intent(in) :: US     !< A dimensional unit scaling type
   type(thermo_var_ptrs),                 intent(in) :: tv     !< A structure pointing to various
@@ -479,16 +481,16 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
                                                               !! call_tracer_register.
   logical,                               intent(in) :: debug  !< If true calculate checksums
   type(KPP_CS),                optional, pointer    :: KPP_CSp  !< KPP control structure
-  real,                        optional, intent(in) :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
-  real,                        optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of
+  real(wp),                        optional, intent(in) :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
+  real(wp),                        optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of
                                                               !! the water that can be fluxed out
                                                               !! of the top layer in a timestep [nondim]
-  real,                        optional, intent(in) :: minimum_forcing_depth !< The smallest depth over
+  real(wp),                        optional, intent(in) :: minimum_forcing_depth !< The smallest depth over
                                                               !! which fluxes can be applied [H ~> m or kg m-2]
-  real, dimension(:,:),        optional, pointer    :: h_BL   !< Thickness of active mixing layer [H ~> m or kg m-2]
+  real(wp), dimension(:,:),        optional, pointer    :: h_BL   !< Thickness of active mixing layer [H ~> m or kg m-2]
 
   ! Local variables
-  real :: Hbl(SZI_(G),SZJ_(G))    !< Boundary layer thickness [H ~> m or kg m-2]
+  real(wp) :: Hbl(SZI_(G),SZJ_(G))    !< Boundary layer thickness [H ~> m or kg m-2]
   logical :: use_h_BL
 
   if (.not. associated(CS)) call MOM_error(FATAL, "call_tracer_column_fns: "// &
@@ -563,7 +565,7 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
                                      evap_CFL_limit=evap_CFL_limit, &
                                      minimum_forcing_depth=minimum_forcing_depth)
     if (CS%use_MOM_generic_tracer) then
-      if (US%QRZ_T_to_W_m2 /= 1.0) call MOM_error(FATAL, "MOM_generic_tracer_column_physics "//&
+      if (US%QRZ_T_to_W_m2 /= 1.0_wp) call MOM_error(FATAL, "MOM_generic_tracer_column_physics "//&
             "has not been written to permit dimensionsal rescaling.  Set all 4 of the "//&
             "[QRZT]_RESCALE_POWER parameters to 0.")
       call MOM_generic_tracer_column_physics(h_old, h_new, ea, eb, fluxes, mld, dt, &
@@ -640,7 +642,7 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
                                      KPP_CSp=KPP_CSp, &
                                      nonLocalTrans=nonLocalTrans)
     if (CS%use_MOM_generic_tracer) then
-      if (US%QRZ_T_to_W_m2 /= 1.0) call MOM_error(FATAL, "MOM_generic_tracer_column_physics "//&
+      if (US%QRZ_T_to_W_m2 /= 1.0_wp) call MOM_error(FATAL, "MOM_generic_tracer_column_physics "//&
             "has not been written to permit dimensionsal rescaling.  Set all 4 of the "//&
             "[QRZT]_RESCALE_POWER parameters to 0.")
       call MOM_generic_tracer_column_physics(h_old, h_new, ea, eb, fluxes, mld, dt, &
@@ -671,9 +673,9 @@ subroutine call_tracer_stocks(h, stock_values, G, GV, US, CS, stock_names, stock
                               xgmin, ygmin, zgmin, xgmax, ygmax, zgmax)
   type(ocean_grid_type),          intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type),        intent(in)  :: GV          !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),    &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),    &
                                   intent(in)  :: h           !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(:),             intent(out) :: stock_values !< The globally mass-integrated
+  real(wp), dimension(:),             intent(out) :: stock_values !< The globally mass-integrated
                                                              !! amount of a tracer [kg conc].
   type(unit_scale_type),          intent(in)  :: US          !< A dimensional unit scaling type
   type(tracer_flow_control_CS),   pointer     :: CS          !< The control structure returned by a
@@ -690,18 +692,18 @@ subroutine call_tracer_stocks(h, stock_values, G, GV, US, CS, stock_names, stock
   logical, dimension(:), &
                       optional, intent(inout) :: got_min_max !< Indicates whether the global min and
                                                              !! max are found for each tracer
-  real, dimension(:), optional, intent(out)   :: global_min  !< The global minimum of each tracer [conc]
-  real, dimension(:), optional, intent(out)   :: global_max  !< The global maximum of each tracer [conc]
-  real, dimension(:), optional, intent(out)   :: xgmin       !< The x-position of the global minimum in the
+  real(wp), dimension(:), optional, intent(out)   :: global_min  !< The global minimum of each tracer [conc]
+  real(wp), dimension(:), optional, intent(out)   :: global_max  !< The global maximum of each tracer [conc]
+  real(wp), dimension(:), optional, intent(out)   :: xgmin       !< The x-position of the global minimum in the
                                                              !! units of G%geoLonT, often [degrees_E] or [km]
-  real, dimension(:), optional, intent(out)   :: ygmin       !< The y-position of the global minimum in the
+  real(wp), dimension(:), optional, intent(out)   :: ygmin       !< The y-position of the global minimum in the
                                                              !! units of G%geoLatT, often [degrees_N] or [km]
-  real, dimension(:), optional, intent(out)   :: zgmin       !< The z-position of the global minimum [layer]
-  real, dimension(:), optional, intent(out)   :: xgmax       !< The x-position of the global maximum in the
+  real(wp), dimension(:), optional, intent(out)   :: zgmin       !< The z-position of the global minimum [layer]
+  real(wp), dimension(:), optional, intent(out)   :: xgmax       !< The x-position of the global maximum in the
                                                              !! units of G%geoLonT, often [degrees_E] or [km]
-  real, dimension(:), optional, intent(out)   :: ygmax       !< The y-position of the global maximum in the
+  real(wp), dimension(:), optional, intent(out)   :: ygmax       !< The y-position of the global maximum in the
                                                              !! units of G%geoLatT, often [degrees_N] or [km]
-  real, dimension(:), optional, intent(out)   :: zgmax       !< The z-position of the global maximum [layer]
+  real(wp), dimension(:), optional, intent(out)   :: zgmax       !< The z-position of the global maximum [layer]
 
   ! Local variables
   character(len=200), dimension(MAX_FIELDS_) :: names, units
@@ -810,7 +812,7 @@ subroutine call_tracer_stocks(h, stock_values, G, GV, US, CS, stock_names, stock
     call EFP_sum_across_PEs(stock_val_EFP, ns_tot)
     do n=1,ns_tot ; stock_values(n) = EFP_to_real(stock_val_EFP(n)) ; enddo
   else
-    stock_values(1) = 0.0
+    stock_values(1) = 0.0_wp
   endif
 
   if (present(num_stocks)) num_stocks = ns_tot
@@ -885,7 +887,7 @@ subroutine call_tracer_surface_state(sfc_state, h, G, GV, US, CS)
                                                        !! describe the surface state of the ocean.
   type(ocean_grid_type),        intent(in)    :: G     !< The ocean's grid structure.
   type(verticalGrid_type),      intent(in)    :: GV    !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                 intent(in)    :: h     !< Layer thicknesses [H ~> m or kg m-2]
   type(unit_scale_type),        intent(in)    :: US    !< A dimensional unit scaling type
   type(tracer_flow_control_CS), pointer       :: CS    !< The control structure returned by a

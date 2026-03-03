@@ -20,6 +20,8 @@ use MOM_variables,     only : accel_diag_ptrs, porous_barrier_type
 use MOM_verticalGrid,  only : verticalGrid_type
 use MOM_wave_interface, only : wave_parameters_CS
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public CorAdCalc, CoriolisAdv_init, CoriolisAdv_end, CoriolisAdv_stencil
@@ -50,12 +52,12 @@ type, public :: CoriolisAdv_CS ; private
                              !! Valid values are:
                              !! - PV_ADV_CENTERED - centered (aka Sadourny, 75)
                              !! - PV_ADV_UPWIND1  - upwind, first order
-  real    :: F_eff_max_blend !< The factor by which the maximum effective Coriolis
+  real(wp)    :: F_eff_max_blend !< The factor by which the maximum effective Coriolis
                              !! acceleration from any point can be increased when
                              !! blending different discretizations with the
                              !! ARAKAWA_LAMB_BLEND Coriolis scheme [nondim].
                              !! This must be greater than 2.0, and is 4.0 by default.
-  real    :: wt_lin_blend    !< A weighting value beyond which the blending between
+  real(wp)    :: wt_lin_blend    !< A weighting value beyond which the blending between
                              !! Sadourny and Arakawa & Hsu goes linearly to 0 [nondim].
                              !! This must be between 1 and 1e-15, often 1/8.
   logical :: no_slip         !< If true, no slip boundary conditions are used.
@@ -138,16 +140,16 @@ contains
 subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Waves)
   type(ocean_grid_type),                      intent(in)    :: G  !< Ocean grid structure
   type(verticalGrid_type),                    intent(in)    :: GV !< Vertical grid structure
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(in)    :: u  !< Zonal velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(in)    :: v  !< Meridional velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)    :: h  !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(in)    :: uh !< Zonal transport u*h*dy
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(in)    :: u  !< Zonal velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(in)    :: v  !< Meridional velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)    :: h  !< Layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(in)    :: uh !< Zonal transport u*h*dy
                                                                   !! [H L2 T-1 ~> m3 s-1 or kg s-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(in)    :: vh !< Meridional transport v*h*dx
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(in)    :: vh !< Meridional transport v*h*dx
                                                                   !! [H L2 T-1 ~> m3 s-1 or kg s-1]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out)   :: CAu !< Zonal acceleration due to Coriolis
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), intent(out)   :: CAu !< Zonal acceleration due to Coriolis
                                                                   !! and momentum advection [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out)   :: CAv !< Meridional acceleration due to Coriolis
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), intent(out)   :: CAv !< Meridional acceleration due to Coriolis
                                                                   !! and momentum advection [L T-2 ~> m s-2].
   type(ocean_OBC_type),                       pointer       :: OBC !< Open boundary control structure
   type(accel_diag_ptrs),                      intent(inout) :: AD  !< Storage for acceleration diagnostics
@@ -157,102 +159,102 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
   type(Wave_parameters_CS),         optional, pointer       :: Waves !< An optional pointer to Stokes drift CS
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJB_(G)) :: &
     q, &        ! Layer potential vorticity [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1].
     qS, &       ! Layer Stokes vorticity [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1].
     Ih_q, &     ! The inverse of thickness interpolated to q points [H-1 ~> m-1 or m2 kg-1].
     h_q, &      ! The thickness interpolated to q points [H-1 ~> m-1 or m2 kg-1].
     Area_q      ! The sum of the ocean areas at the 4 adjacent thickness points [L2 ~> m2].
 
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     a, b, c, d  ! a, b, c, & d are combinations of the potential vorticities
                 ! surrounding an h grid point.  At small scales, a = q/4,
                 ! b = q/4, etc.  All are in [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1],
                 ! and use the indexing of the corresponding u point.
 
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     Area_h, &   ! The ocean area at h points [L2 ~> m2].  Area_h is used to find the
                 ! average thickness in the denominator of q.  0 for land points.
     KE          ! Kinetic energy per unit mass [L2 T-2 ~> m2 s-2], KE = (u^2 + v^2)/2.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJ_(G)) :: &
     hArea_u, &  ! The cell area weighted thickness interpolated to u points
                 ! times the effective areas [H L2 ~> m3 or kg].
     KEx, &      ! The zonal gradient of Kinetic energy per unit mass [L T-2 ~> m s-2],
                 ! KEx = d/dx KE.
     uh_center   ! Transport based on arithmetic mean h at u-points [H L2 T-1 ~> m3 s-1 or kg s-1]
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJB_(G)) :: &
     hArea_v, &  ! The cell area weighted thickness interpolated to v points
                 ! times the effective areas [H L2 ~> m3 or kg].
     KEy, &      ! The meridional gradient of Kinetic energy per unit mass [L T-2 ~> m s-2],
                 ! KEy = d/dy KE.
     vh_center   ! Transport based on arithmetic mean h at v-points [H L2 T-1 ~> m3 s-1 or kg s-1]
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     uh_min, uh_max, &   ! The smallest and largest estimates of the zonal volume fluxes through
                         ! the faces (i.e. u*h*dy) [H L2 T-1 ~> m3 s-1 or kg s-1]
     vh_min, vh_max, &   ! The smallest and largest estimates of the meridional volume fluxes through
                         ! the faces (i.e. v*h*dx) [H L2 T-1 ~> m3 s-1 or kg s-1]
     ep_u, ep_v  ! Additional pseudo-Coriolis terms in the Arakawa and Lamb
                 ! discretization [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1].
-  real, dimension(SZIB_(G),SZJB_(G)) :: &
+  real(wp), dimension(SZIB_(G),SZJB_(G)) :: &
     dvdx, dudy, & ! Contributions to the circulation around q-points [L2 T-1 ~> m2 s-1]
     dvSdx, duSdy, & ! idem. for Stokes drift [L2 T-1 ~> m2 s-1]
     rel_vort, & ! Relative vorticity at q-points [T-1 ~> s-1].
     abs_vort, & ! Absolute vorticity at q-points [T-1 ~> s-1].
     stk_vort, & ! Stokes vorticity at q-points [T-1 ~> s-1].
     q2          ! Relative vorticity over thickness [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1].
-  real, dimension(SZIB_(G),SZJB_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZIB_(G),SZJB_(G),SZK_(GV)) :: &
     PV, &       ! A diagnostic array of the potential vorticities [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1].
     RV          ! A diagnostic array of the relative vorticities [T-1 ~> s-1].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(G)) :: CAuS ! Stokes contribution to CAu [L T-2 ~> m s-2]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(G)) :: CAvS ! Stokes contribution to CAv [L T-2 ~> m s-2]
-  real :: fv1, fv2, fv3, fv4   ! (f+rv)*v at the 4 points surrounding a u points[L T-2 ~> m s-2]
-  real :: fu1, fu2, fu3, fu4   ! -(f+rv)*u at the 4 points surrounding a v point [L T-2 ~> m s-2]
-  real :: max_fv, max_fu       ! The maximum of the neighboring Coriolis accelerations [L T-2 ~> m s-2]
-  real :: min_fv, min_fu       ! The minimum of the neighboring Coriolis accelerations [L T-2 ~> m s-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(G)) :: CAuS ! Stokes contribution to CAu [L T-2 ~> m s-2]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(G)) :: CAvS ! Stokes contribution to CAv [L T-2 ~> m s-2]
+  real(wp) :: fv1, fv2, fv3, fv4   ! (f+rv)*v at the 4 points surrounding a u points[L T-2 ~> m s-2]
+  real(wp) :: fu1, fu2, fu3, fu4   ! -(f+rv)*u at the 4 points surrounding a v point [L T-2 ~> m s-2]
+  real(wp) :: max_fv, max_fu       ! The maximum of the neighboring Coriolis accelerations [L T-2 ~> m s-2]
+  real(wp) :: min_fv, min_fu       ! The minimum of the neighboring Coriolis accelerations [L T-2 ~> m s-2]
 
-  real, parameter :: C1_12 = 1.0 / 12.0 ! C1_12 = 1/12 [nondim]
-  real, parameter :: C1_24 = 1.0 / 24.0 ! C1_24 = 1/24 [nondim]
-  real :: max_Ihq, min_Ihq       ! The maximum and minimum of the nearby Ihq [H-1 ~> m-1 or m2 kg-1].
-  real :: hArea_q                ! The sum of area times thickness of the cells
+  real(wp), parameter :: C1_12 = 1.0_wp / 12.0_wp ! C1_12 = 1/12 [nondim]
+  real(wp), parameter :: C1_24 = 1.0_wp / 24.0_wp ! C1_24 = 1/24 [nondim]
+  real(wp) :: max_Ihq, min_Ihq       ! The maximum and minimum of the nearby Ihq [H-1 ~> m-1 or m2 kg-1].
+  real(wp) :: hArea_q                ! The sum of area times thickness of the cells
                                  ! surrounding a q point [H L2 ~> m3 or kg].
-  real :: vol_neglect            ! A volume so small that is expected to be
+  real(wp) :: vol_neglect            ! A volume so small that is expected to be
                                  ! lost in roundoff [H L2 ~> m3 or kg].
-  real :: area_neglect           ! An area so small that is expected to be
+  real(wp) :: area_neglect           ! An area so small that is expected to be
                                  ! lost in roundoff [L2 ~> m2].
-  real :: temp1, temp2           ! Temporary variables [L2 T-2 ~> m2 s-2].
-  real :: eps_vel                ! A tiny, positive velocity [L T-1 ~> m s-1].
+  real(wp) :: temp1, temp2           ! Temporary variables [L2 T-2 ~> m2 s-2].
+  real(wp) :: eps_vel                ! A tiny, positive velocity [L T-1 ~> m s-1].
 
-  real :: uhc, vhc               ! Centered estimates of uh and vh [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real :: uhm, vhm               ! The input estimates of uh and vh [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real :: c1, c2, c3, slope      ! Nondimensional parameters for the Coriolis limiter scheme [nondim]
+  real(wp) :: uhc, vhc               ! Centered estimates of uh and vh [H L2 T-1 ~> m3 s-1 or kg s-1].
+  real(wp) :: uhm, vhm               ! The input estimates of uh and vh [H L2 T-1 ~> m3 s-1 or kg s-1].
+  real(wp) :: c1, c2, c3, slope      ! Nondimensional parameters for the Coriolis limiter scheme [nondim]
 
-  real :: Fe_m2         ! Temporary variable associated with the ARAKAWA_LAMB_BLEND scheme [nondim]
-  real :: rat_lin       ! Temporary variable associated with the ARAKAWA_LAMB_BLEND scheme [nondim]
-  real :: rat_m1        ! The ratio of the maximum neighboring inverse thickness
+  real(wp) :: Fe_m2         ! Temporary variable associated with the ARAKAWA_LAMB_BLEND scheme [nondim]
+  real(wp) :: rat_lin       ! Temporary variable associated with the ARAKAWA_LAMB_BLEND scheme [nondim]
+  real(wp) :: rat_m1        ! The ratio of the maximum neighboring inverse thickness
                         ! to the minimum inverse thickness minus 1 [nondim]. rat_m1 >= 0.
-  real :: AL_wt         ! The relative weight of the Arakawa & Lamb scheme to the
+  real(wp) :: AL_wt         ! The relative weight of the Arakawa & Lamb scheme to the
                         ! Arakawa & Hsu scheme [nondim], between 0 and 1.
-  real :: Sad_wt        ! The relative weight of the Sadourny energy scheme to
+  real(wp) :: Sad_wt        ! The relative weight of the Sadourny energy scheme to
                         ! the other two with the ARAKAWA_LAMB_BLEND scheme [nondim],
                         ! between 0 and 1.
 
-  real :: Heff1, Heff2  ! Temporary effective H at U or V points [H ~> m or kg m-2].
-  real :: Heff3, Heff4  ! Temporary effective H at U or V points [H ~> m or kg m-2].
-  real :: h_tiny        ! A very small thickness [H ~> m or kg m-2].
-  real :: UHeff, VHeff  ! More temporary variables [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real :: QUHeff,QVHeff ! More temporary variables [H L2 T-2 ~> m3 s-2 or kg s-2].
+  real(wp) :: Heff1, Heff2  ! Temporary effective H at U or V points [H ~> m or kg m-2].
+  real(wp) :: Heff3, Heff4  ! Temporary effective H at U or V points [H ~> m or kg m-2].
+  real(wp) :: h_tiny        ! A very small thickness [H ~> m or kg m-2].
+  real(wp) :: UHeff, VHeff  ! More temporary variables [H L2 T-1 ~> m3 s-1 or kg s-1].
+  real(wp) :: QUHeff,QVHeff ! More temporary variables [H L2 T-2 ~> m3 s-2 or kg s-2].
   integer :: i, j, k, n, is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz
   integer :: Is_q, Ie_q, Js_q, Je_q  ! The scheme-dependent range of values at which vorticity is set.
   logical :: Stokes_VF
-  real :: u_v, v_u      ! u_v is the u velocity at v point, v_u is the v velocity at u point [L T-1 ~> m s-1]
-  real :: q_v, q_u      ! PV at the u and v points [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1]
+  real(wp) :: u_v, v_u      ! u_v is the u velocity at v point, v_u is the v velocity at u point [L T-1 ~> m s-1]
+  real(wp) :: q_v, q_u      ! PV at the u and v points [H-1 T-1 ~> m-1 s-1 or m2 kg-1 s-1]
   integer :: seventh_order, fifth_order, third_order ! Order of accuracy for the WENO calculations
-  real :: u_q8(8) ! Eight-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
-  real :: u_q6(6) ! Six-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
-  real :: u_q4(4) ! Four-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
-  real :: v_q8(8) ! Eight-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
-  real :: v_q6(6) ! Six-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
-  real :: v_q4(4) ! Four-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: u_q8(8) ! Eight-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: u_q6(6) ! Six-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: u_q4(4) ! Four-point zonal velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: v_q8(8) ! Eight-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: v_q6(6) ! Six-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
+  real(wp) :: v_q4(4) ! Four-point meridional velocity at WENO stencils [L T-1 ~> m s-1]
   integer :: stencil    ! Stencil size of WENO scheme
 
 ! To work, the following fields must be set outside of the usual
@@ -265,9 +267,9 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB ; nz = GV%ke
-  vol_neglect = GV%H_subroundoff * (1e-4 * US%m_to_L)**2
-  area_neglect = (1e-4 * US%m_to_L)**2
-  eps_vel = 1.0e-10*US%m_s_to_L_T
+  vol_neglect = GV%H_subroundoff * (1e-4_wp * US%m_to_L)**2
+  area_neglect = (1e-4_wp * US%m_to_L)**2
+  eps_vel = 1.0e-10_wp*US%m_s_to_L_T
   h_tiny = GV%Angstrom_H  ! Perhaps this should be set to h_neglect instead.
 
   stencil = CoriolisAdv_stencil(CS)
@@ -354,18 +356,18 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo; enddo
     endif
     do J=Js_q,Je_q ; do i=Is_q,Ie_q+1
-      hArea_v(i,J) = 0.5*((Area_h(i,j) * h(i,j,k)) + (Area_h(i,j+1) * h(i,j+1,k)))
+      hArea_v(i,J) = 0.5_wp*((Area_h(i,j) * h(i,j,k)) + (Area_h(i,j+1) * h(i,j+1,k)))
     enddo ; enddo
     do j=Js_q,Je_q+1 ; do I=Is_q,Ie_q
-      hArea_u(I,j) = 0.5*((Area_h(i,j) * h(i,j,k)) + (Area_h(i+1,j) * h(i+1,j,k)))
+      hArea_u(I,j) = 0.5_wp*((Area_h(i,j) * h(i,j,k)) + (Area_h(i+1,j) * h(i+1,j,k)))
     enddo ; enddo
 
     if (CS%Coriolis_En_Dis) then
       do j=Jsq,Jeq+1 ; do I=is-1,ie
-        uh_center(I,j) = 0.5 * ((G%dy_Cu(I,j)*pbv%por_face_areaU(I,j,k)) * u(I,j,k)) * (h(i,j,k) + h(i+1,j,k))
+        uh_center(I,j) = 0.5_wp * ((G%dy_Cu(I,j)*pbv%por_face_areaU(I,j,k)) * u(I,j,k)) * (h(i,j,k) + h(i+1,j,k))
       enddo ; enddo
       do J=js-1,je ; do i=Isq,Ieq+1
-        vh_center(i,J) = 0.5 * ((G%dx_Cv(i,J)*pbv%por_face_areaV(i,J,k)) * v(i,J,k)) * (h(i,j,k) + h(i,j+1,k))
+        vh_center(i,J) = 0.5_wp * ((G%dx_Cv(i,J)*pbv%por_face_areaV(i,J,k)) * v(i,J,k)) * (h(i,j,k) + h(i,j+1,k))
       enddo ; enddo
     endif
 
@@ -376,16 +378,16 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       I = OBC%segment(n)%HI%IsdB ; J = OBC%segment(n)%HI%JsdB
       if (OBC%segment(n)%is_N_or_S .and. (J >= Js_q) .and. (J <= Je_q)) then
         if (OBC%zero_vorticity) then ; do I=OBC%segment(n)%HI%IsdB,OBC%segment(n)%HI%IedB
-          dvdx(I,J) = 0. ; dudy(I,J) = 0.
+          dvdx(I,J) = 0._wp ; dudy(I,J) = 0._wp
         enddo ; endif
         if (OBC%freeslip_vorticity) then ; do I=OBC%segment(n)%HI%IsdB,OBC%segment(n)%HI%IedB
-          dudy(I,J) = 0.
+          dudy(I,J) = 0._wp
         enddo ; endif
         if (OBC%computed_vorticity) then ; do I=OBC%segment(n)%HI%IsdB,OBC%segment(n)%HI%IedB
           if (OBC%segment(n)%direction == OBC_DIRECTION_N) then
-            dudy(I,J) = 2.0*(OBC%segment(n)%tangential_vel(I,J,k) - u(I,j,k))*G%dxCu(I,j)
+            dudy(I,J) = 2.0_wp*(OBC%segment(n)%tangential_vel(I,J,k) - u(I,j,k))*G%dxCu(I,j)
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_S)
-            dudy(I,J) = 2.0*(u(I,j+1,k) - OBC%segment(n)%tangential_vel(I,J,k))*G%dxCu(I,j+1)
+            dudy(I,J) = 2.0_wp*(u(I,j+1,k) - OBC%segment(n)%tangential_vel(I,J,k))*G%dxCu(I,j+1)
           endif
         enddo ; endif
         if (OBC%specified_vorticity) then ; do I=OBC%segment(n)%HI%IsdB,OBC%segment(n)%HI%IedB
@@ -399,9 +401,9 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         ! Project thicknesses across OBC points with a no-gradient condition.
         do i = max(Is_q,OBC%segment(n)%HI%isd), min(Ie_q+1,OBC%segment(n)%HI%ied)
           if (OBC%segment(n)%direction == OBC_DIRECTION_N) then
-            hArea_v(i,J) = 0.5 * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j,k)
+            hArea_v(i,J) = 0.5_wp * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j,k)
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_S)
-            hArea_v(i,J) = 0.5 * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j+1,k)
+            hArea_v(i,J) = 0.5_wp * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j+1,k)
           endif
         enddo
 
@@ -416,16 +418,16 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         endif
       elseif (OBC%segment(n)%is_E_or_W .and. (I >= Is_q) .and. (I <= Ie_q)) then
         if (OBC%zero_vorticity) then ; do J=OBC%segment(n)%HI%JsdB,OBC%segment(n)%HI%JedB
-          dvdx(I,J) = 0. ; dudy(I,J) = 0.
+          dvdx(I,J) = 0._wp ; dudy(I,J) = 0._wp
         enddo ; endif
         if (OBC%freeslip_vorticity) then ; do J=OBC%segment(n)%HI%JsdB,OBC%segment(n)%HI%JedB
-          dvdx(I,J) = 0.
+          dvdx(I,J) = 0._wp
         enddo ; endif
         if (OBC%computed_vorticity) then ; do J=OBC%segment(n)%HI%JsdB,OBC%segment(n)%HI%JedB
           if (OBC%segment(n)%direction == OBC_DIRECTION_E) then
-            dvdx(I,J) = 2.0*(OBC%segment(n)%tangential_vel(I,J,k) - v(i,J,k))*G%dyCv(i,J)
+            dvdx(I,J) = 2.0_wp*(OBC%segment(n)%tangential_vel(I,J,k) - v(i,J,k))*G%dyCv(i,J)
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_W)
-            dvdx(I,J) = 2.0*(v(i+1,J,k) - OBC%segment(n)%tangential_vel(I,J,k))*G%dyCv(i+1,J)
+            dvdx(I,J) = 2.0_wp*(v(i+1,J,k) - OBC%segment(n)%tangential_vel(I,J,k))*G%dyCv(i+1,J)
           endif
         enddo ; endif
         if (OBC%specified_vorticity) then ; do J=OBC%segment(n)%HI%JsdB,OBC%segment(n)%HI%JedB
@@ -439,9 +441,9 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         ! Project thicknesses across OBC points with a no-gradient condition.
         do j = max(Js_q,OBC%segment(n)%HI%jsd), min(Je_q+1,OBC%segment(n)%HI%jed)
           if (OBC%segment(n)%direction == OBC_DIRECTION_E) then
-            hArea_u(I,j) = 0.5*(Area_h(i,j) + Area_h(i+1,j)) * h(i,j,k)
+            hArea_u(I,j) = 0.5_wp*(Area_h(i,j) + Area_h(i+1,j)) * h(i,j,k)
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_W)
-            hArea_u(I,j) = 0.5*(Area_h(i,j) + Area_h(i+1,j)) * h(i+1,j,k)
+            hArea_u(I,j) = 0.5_wp*(Area_h(i,j) + Area_h(i+1,j)) * h(i+1,j,k)
           endif
         enddo
         if (CS%Coriolis_En_Dis) then
@@ -464,30 +466,30 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (OBC%segment(n)%is_N_or_S .and. (J >= Js_q) .and. (J <= Je_q)) then
         do I = max(Is_q,OBC%segment(n)%HI%IsdB), min(Ie_q,OBC%segment(n)%HI%IedB)
           if (OBC%segment(n)%direction == OBC_DIRECTION_N) then
-            if (Area_h(i,j) + Area_h(i+1,j) > 0.0) then
+            if (Area_h(i,j) + Area_h(i+1,j) > 0.0_wp) then
               hArea_u(I,j+1) = hArea_u(I,j) * ((Area_h(i,j+1) + Area_h(i+1,j+1)) / &
                                                (Area_h(i,j) + Area_h(i+1,j)))
-            else ; hArea_u(I,j+1) = 0.0 ; endif
+            else ; hArea_u(I,j+1) = 0.0_wp ; endif
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_S)
-            if (Area_h(i,j+1) + Area_h(i+1,j+1) > 0.0) then
+            if (Area_h(i,j+1) + Area_h(i+1,j+1) > 0.0_wp) then
               hArea_u(I,j) = hArea_u(I,j+1) * ((Area_h(i,j) + Area_h(i+1,j)) / &
                                                (Area_h(i,j+1) + Area_h(i+1,j+1)))
-            else ; hArea_u(I,j) = 0.0 ; endif
+            else ; hArea_u(I,j) = 0.0_wp ; endif
           endif
         enddo
       elseif (OBC%segment(n)%is_E_or_W .and. (I >= Is_q) .and. (I <= Ie_q)) then
         do J = max(Js_q,OBC%segment(n)%HI%JsdB), min(Je_q,OBC%segment(n)%HI%JedB)
           if (OBC%segment(n)%direction == OBC_DIRECTION_E) then
-            if (Area_h(i,j) + Area_h(i,j+1) > 0.0) then
+            if (Area_h(i,j) + Area_h(i,j+1) > 0.0_wp) then
               hArea_v(i+1,J) = hArea_v(i,J) * ((Area_h(i+1,j) + Area_h(i+1,j+1)) / &
                                                (Area_h(i,j) + Area_h(i,j+1)))
-            else ; hArea_v(i+1,J) = 0.0 ; endif
+            else ; hArea_v(i+1,J) = 0.0_wp ; endif
           else ! (OBC%segment(n)%direction == OBC_DIRECTION_W)
-            hArea_v(i,J) = 0.5 * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j+1,k)
-            if (Area_h(i+1,j) + Area_h(i+1,j+1) > 0.0) then
+            hArea_v(i,J) = 0.5_wp * (Area_h(i,j) + Area_h(i,j+1)) * h(i,j+1,k)
+            if (Area_h(i+1,j) + Area_h(i+1,j+1) > 0.0_wp) then
               hArea_v(i,J) = hArea_v(i+1,J) * ((Area_h(i,j) + Area_h(i,j+1)) / &
                                                (Area_h(i+1,j) + Area_h(i+1,j+1)))
-            else ; hArea_v(i,J) = 0.0 ; endif
+            else ; hArea_v(i,J) = 0.0_wp ; endif
           endif
         enddo
       endif
@@ -495,12 +497,12 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
     if (CS%no_slip) then
       do J=Js_q,Je_q ; do I=Is_q,Ie_q
-        rel_vort(I,J) = (2.0 - G%mask2dBu(I,J)) * (dvdx(I,J) - dudy(I,J)) * G%IareaBu(I,J)
+        rel_vort(I,J) = (2.0_wp - G%mask2dBu(I,J)) * (dvdx(I,J) - dudy(I,J)) * G%IareaBu(I,J)
       enddo; enddo
       if (Stokes_VF) then
         if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
           do J=Jsq-1,Jeq+1 ; do I=Isq-1,Ieq+1
-            stk_vort(I,J) = (2.0 - G%mask2dBu(I,J)) * (dvSdx(I,J) - duSdy(I,J)) * G%IareaBu(I,J)
+            stk_vort(I,J) = (2.0_wp - G%mask2dBu(I,J)) * (dvSdx(I,J) - duSdy(I,J)) * G%IareaBu(I,J)
           enddo; enddo
         endif
       endif
@@ -511,7 +513,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (Stokes_VF) then
         if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
           do J=Jsq-1,Jeq+1 ; do I=Isq-1,Ieq+1
-            stk_vort(I,J) = (2.0 - G%mask2dBu(I,J)) * (dvSdx(I,J) - duSdy(I,J)) * G%IareaBu(I,J)
+            stk_vort(I,J) = (2.0_wp - G%mask2dBu(I,J)) * (dvSdx(I,J) - duSdy(I,J)) * G%IareaBu(I,J)
           enddo; enddo
         endif
       endif
@@ -571,55 +573,55 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo
     elseif (CS%Coriolis_Scheme == ARAKAWA_LAMB81) then
       do j=Jsq,Jeq+1 ; do I=Isq,Ieq+1
-        a(I-1,j) = (2.0*(q(I,J) + q(I-1,J-1)) + (q(I-1,J) + q(I,J-1))) * C1_24
-        d(I-1,j) = ((q(I,j) + q(I-1,J-1)) + 2.0*(q(I-1,J) + q(I,J-1))) * C1_24
-        b(I,j) =   ((q(I,J) + q(I-1,J-1)) + 2.0*(q(I-1,J) + q(I,J-1))) * C1_24
-        c(I,j) =   (2.0*(q(I,J) + q(I-1,J-1)) + (q(I-1,J) + q(I,J-1))) * C1_24
+        a(I-1,j) = (2.0_wp*(q(I,J) + q(I-1,J-1)) + (q(I-1,J) + q(I,J-1))) * C1_24
+        d(I-1,j) = ((q(I,j) + q(I-1,J-1)) + 2.0_wp*(q(I-1,J) + q(I,J-1))) * C1_24
+        b(I,j) =   ((q(I,J) + q(I-1,J-1)) + 2.0_wp*(q(I-1,J) + q(I,J-1))) * C1_24
+        c(I,j) =   (2.0_wp*(q(I,J) + q(I-1,J-1)) + (q(I-1,J) + q(I,J-1))) * C1_24
         ep_u(i,j) = ((q(I,J) - q(I-1,J-1)) + (q(I-1,J) - q(I,J-1))) * C1_24
         ep_v(i,j) = (-(q(I,J) - q(I-1,J-1)) + (q(I-1,J) - q(I,J-1))) * C1_24
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == AL_BLEND) then
-      Fe_m2 = CS%F_eff_max_blend - 2.0
-      rat_lin = 1.5 * Fe_m2 / max(CS%wt_lin_blend, 1.0e-16)
+      Fe_m2 = CS%F_eff_max_blend - 2.0_wp
+      rat_lin = 1.5_wp * Fe_m2 / max(CS%wt_lin_blend, 1.0e-16_wp)
 
       ! This allows the code to always give Sadourny Energy
-      if (CS%F_eff_max_blend <= 2.0) then ; Fe_m2 = -1. ; rat_lin = -1.0 ; endif
+      if (CS%F_eff_max_blend <= 2.0_wp) then ; Fe_m2 = -1._wp ; rat_lin = -1.0_wp ; endif
 
       do j=Jsq,Jeq+1 ; do I=Isq,Ieq+1
         min_Ihq = MIN(Ih_q(I-1,J-1), Ih_q(I,J-1), Ih_q(I-1,J), Ih_q(I,J))
         max_Ihq = MAX(Ih_q(I-1,J-1), Ih_q(I,J-1), Ih_q(I-1,J), Ih_q(I,J))
-        rat_m1 = 1.0e15
-        if (max_Ihq < 1.0e15*min_Ihq) rat_m1 = max_Ihq / min_Ihq - 1.0
+        rat_m1 = 1.0e15_wp
+        if (max_Ihq < 1.0e15_wp*min_Ihq) rat_m1 = max_Ihq / min_Ihq - 1.0_wp
         ! The weights used here are designed to keep the effective Coriolis
         ! acceleration from any one point on its neighbors within a factor
         ! of F_eff_max.  The minimum permitted value is 2 (the factor for
         ! Sadourny's energy conserving scheme).
 
         ! Determine the relative weights of Arakawa & Lamb vs. Arakawa and Hsu.
-        if (rat_m1 <= Fe_m2) then ; AL_wt = 1.0
-        elseif (rat_m1 < 1.5*Fe_m2) then ; AL_wt = 3.0*Fe_m2 / rat_m1 - 2.0
-        else ; AL_wt = 0.0 ; endif
+        if (rat_m1 <= Fe_m2) then ; AL_wt = 1.0_wp
+        elseif (rat_m1 < 1.5_wp*Fe_m2) then ; AL_wt = 3.0_wp*Fe_m2 / rat_m1 - 2.0_wp
+        else ; AL_wt = 0.0_wp ; endif
 
         ! Determine the relative weights of Sadourny Energy vs. the other two.
-        if (rat_m1 <= 1.5*Fe_m2) then ; Sad_wt = 0.0
+        if (rat_m1 <= 1.5_wp*Fe_m2) then ; Sad_wt = 0.0_wp
         elseif (rat_m1 <= rat_lin) then
-          Sad_wt = 1.0 - (1.5*Fe_m2) / rat_m1
-        elseif (rat_m1 < 2.0*rat_lin) then
-          Sad_wt = 1.0 - (CS%wt_lin_blend / rat_lin) * (rat_m1 - 2.0*rat_lin)
-        else ; Sad_wt = 1.0 ; endif
+          Sad_wt = 1.0_wp - (1.5_wp*Fe_m2) / rat_m1
+        elseif (rat_m1 < 2.0_wp*rat_lin) then
+          Sad_wt = 1.0_wp - (CS%wt_lin_blend / rat_lin) * (rat_m1 - 2.0_wp*rat_lin)
+        else ; Sad_wt = 1.0_wp ; endif
 
-        a(I-1,j) = Sad_wt * 0.25 * q(I-1,J) + (1.0 - Sad_wt) * &
-                   ( ((2.0-AL_wt)* q(I-1,J) + AL_wt*q(I,J-1)) + &
-                      2.0 * (q(I,J) + q(I-1,J-1)) ) * C1_24
-        d(I-1,j) = Sad_wt * 0.25 * q(I-1,J-1) + (1.0 - Sad_wt) * &
-                   ( ((2.0-AL_wt)* q(I-1,J-1) + AL_wt*q(I,J)) + &
-                      2.0 * (q(I-1,J) + q(I,J-1)) ) * C1_24
-        b(I,j) =   Sad_wt * 0.25 * q(I,J) + (1.0 - Sad_wt) * &
-                   ( ((2.0-AL_wt)* q(I,J) + AL_wt*q(I-1,J-1)) + &
-                      2.0 * (q(I-1,J) + q(I,J-1)) ) * C1_24
-        c(I,j) =   Sad_wt * 0.25 * q(I,J-1) + (1.0 - Sad_wt) * &
-                   ( ((2.0-AL_wt)* q(I,J-1) + AL_wt*q(I-1,J)) + &
-                      2.0 * (q(I,J) + q(I-1,J-1)) ) * C1_24
+        a(I-1,j) = Sad_wt * 0.25_wp * q(I-1,J) + (1.0_wp - Sad_wt) * &
+                   ( ((2.0_wp-AL_wt)* q(I-1,J) + AL_wt*q(I,J-1)) + &
+                      2.0_wp * (q(I,J) + q(I-1,J-1)) ) * C1_24
+        d(I-1,j) = Sad_wt * 0.25_wp * q(I-1,J-1) + (1.0_wp - Sad_wt) * &
+                   ( ((2.0_wp-AL_wt)* q(I-1,J-1) + AL_wt*q(I,J)) + &
+                      2.0_wp * (q(I-1,J) + q(I,J-1)) ) * C1_24
+        b(I,j) =   Sad_wt * 0.25_wp * q(I,J) + (1.0_wp - Sad_wt) * &
+                   ( ((2.0_wp-AL_wt)* q(I,J) + AL_wt*q(I-1,J-1)) + &
+                      2.0_wp * (q(I-1,J) + q(I,J-1)) ) * C1_24
+        c(I,j) =   Sad_wt * 0.25_wp * q(I,J-1) + (1.0_wp - Sad_wt) * &
+                   ( ((2.0_wp-AL_wt)* q(I,J-1) + AL_wt*q(I-1,J)) + &
+                      2.0_wp * (q(I,J) + q(I-1,J-1)) ) * C1_24
         ep_u(i,j) = AL_wt  * ((q(I,J) - q(I-1,J-1)) + (q(I-1,J) - q(I,J-1))) * C1_24
         ep_v(i,j) = AL_wt * (-(q(I,J) - q(I-1,J-1)) + (q(I-1,J) - q(I,J-1))) * C1_24
       enddo ; enddo
@@ -627,20 +629,20 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
     if (CS%Coriolis_En_Dis) then
     !  c1 = 1.0-1.5*RANGE ; c2 = 1.0-RANGE ; c3 = 2.0 ; slope = 0.5
-      c1 = 1.0-1.5*0.5 ; c2 = 1.0-0.5 ; c3 = 2.0 ; slope = 0.5
+      c1 = 1.0_wp-1.5_wp*0.5_wp ; c2 = 1.0_wp-0.5_wp ; c3 = 2.0_wp ; slope = 0.5_wp
 
       do j=Jsq,Jeq+1 ; do I=is-1,ie
         uhc = uh_center(I,j)
         uhm = uh(I,j,k)
         ! This sometimes matters with some types of open boundary conditions.
-        if (G%dy_Cu(I,j) == 0.0) uhc = uhm
+        if (G%dy_Cu(I,j) == 0.0_wp) uhc = uhm
 
-        if (abs(uhc) < 0.1*abs(uhm)) then
-          uhm = 10.0*uhc
+        if (abs(uhc) < 0.1_wp*abs(uhm)) then
+          uhm = 10.0_wp*uhc
         elseif (abs(uhc) > c1*abs(uhm)) then
-          if (abs(uhc) < c2*abs(uhm)) then ; uhc = (3.0*uhc+(1.0-c2*3.0)*uhm)
+          if (abs(uhc) < c2*abs(uhm)) then ; uhc = (3.0_wp*uhc+(1.0_wp-c2*3.0_wp)*uhm)
           elseif (abs(uhc) <= c3*abs(uhm)) then ; uhc = uhm
-          else ; uhc = slope*uhc+(1.0-c3*slope)*uhm
+          else ; uhc = slope*uhc+(1.0_wp-c3*slope)*uhm
           endif
         endif
 
@@ -654,14 +656,14 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         vhc = vh_center(i,J)
         vhm = vh(i,J,k)
         ! This sometimes matters with some types of open boundary conditions.
-        if (G%dx_Cv(i,J) == 0.0) vhc = vhm
+        if (G%dx_Cv(i,J) == 0.0_wp) vhc = vhm
 
-        if (abs(vhc) < 0.1*abs(vhm)) then
-          vhm = 10.0*vhc
+        if (abs(vhc) < 0.1_wp*abs(vhm)) then
+          vhm = 10.0_wp*vhc
         elseif (abs(vhc) > c1*abs(vhm)) then
-          if (abs(vhc) < c2*abs(vhm)) then ; vhc = (3.0*vhc+(1.0-c2*3.0)*vhm)
+          if (abs(vhc) < c2*abs(vhm)) then ; vhc = (3.0_wp*vhc+(1.0_wp-c2*3.0_wp)*vhm)
           elseif (abs(vhc) <= c3*abs(vhm)) then ; vhc = vhm
-          else ; vhc = slope*vhc+(1.0-c3*slope)*vhm
+          else ; vhc = slope*vhc+(1.0_wp-c3*slope)*vhm
           endif
         endif
 
@@ -683,35 +685,35 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (CS%Coriolis_En_Dis) then
         ! Energy dissipating biased scheme, Hallberg 200x
         do j=js,je ; do I=Isq,Ieq
-          if (q(I,J)*u(I,j,k) == 0.0) then
+          if (q(I,J)*u(I,j,k) == 0.0_wp) then
             temp1 = q(I,J) * ( (vh_max(i,j)+vh_max(i+1,j)) &
-                             + (vh_min(i,j)+vh_min(i+1,j)) )*0.5
-          elseif (q(I,J)*u(I,j,k) < 0.0) then
+                             + (vh_min(i,j)+vh_min(i+1,j)) )*0.5_wp
+          elseif (q(I,J)*u(I,j,k) < 0.0_wp) then
             temp1 = q(I,J) * (vh_max(i,j)+vh_max(i+1,j))
           else
             temp1 = q(I,J) * (vh_min(i,j)+vh_min(i+1,j))
           endif
-          if (q(I,J-1)*u(I,j,k) == 0.0) then
+          if (q(I,J-1)*u(I,j,k) == 0.0_wp) then
             temp2 = q(I,J-1) * ( (vh_max(i,j-1)+vh_max(i+1,j-1)) &
-                               + (vh_min(i,j-1)+vh_min(i+1,j-1)) )*0.5
-          elseif (q(I,J-1)*u(I,j,k) < 0.0) then
+                               + (vh_min(i,j-1)+vh_min(i+1,j-1)) )*0.5_wp
+          elseif (q(I,J-1)*u(I,j,k) < 0.0_wp) then
             temp2 = q(I,J-1) * (vh_max(i,j-1)+vh_max(i+1,j-1))
           else
             temp2 = q(I,J-1) * (vh_min(i,j-1)+vh_min(i+1,j-1))
           endif
-          CAu(I,j,k) = 0.25 * G%IdxCu(I,j) * (temp1 + temp2)
+          CAu(I,j,k) = 0.25_wp * G%IdxCu(I,j) * (temp1 + temp2)
         enddo ; enddo
       else
         ! Energy conserving scheme, Sadourny 1975
         do j=js,je ; do I=Isq,Ieq
-          CAu(I,j,k) = 0.25 * &
+          CAu(I,j,k) = 0.25_wp * &
             ((q(I,J) * (vh(i+1,J,k) + vh(i,J,k))) + &
              (q(I,J-1) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
         enddo ; enddo
       endif
     elseif (CS%Coriolis_Scheme == SADOURNY75_ENSTRO) then
       do j=js,je ; do I=Isq,Ieq
-        CAu(I,j,k) = 0.125 * (G%IdxCu(I,j) * (q(I,J) + q(I,J-1))) * &
+        CAu(I,j,k) = 0.125_wp * (G%IdxCu(I,j) * (q(I,J) + q(I,J-1))) * &
                      ((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
       enddo ; enddo
     elseif ((CS%Coriolis_Scheme == ARAKAWA_HSU90) .or. &
@@ -740,19 +742,19 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         Heff4 = max(Heff4, min(h(i+1,j-1,k),h(i+1,j,k)))
         Heff4 = min(Heff4, max(h(i+1,j-1,k),h(i+1,j,k)))
         if (CS%PV_Adv_Scheme == PV_ADV_CENTERED) then
-          CAu(I,j,k) = 0.5*(abs_vort(I,J)+abs_vort(I,J-1)) * &
+          CAu(I,j,k) = 0.5_wp*(abs_vort(I,J)+abs_vort(I,J-1)) * &
                        ((vh(i,J,k) + vh(i+1,J-1,k)) + (vh(i,J-1,k) + vh(i+1,J,k)) ) /  &
                        (h_tiny + ((Heff1+Heff4) + (Heff2+Heff3)) ) * G%IdxCu(I,j)
         elseif (CS%PV_Adv_Scheme == PV_ADV_UPWIND1) then
           VHeff = ((vh(i,J,k) + vh(i+1,J-1,k)) + (vh(i,J-1,k) + vh(i+1,J,k)) )
-          QVHeff = 0.5*( ((abs_vort(I,J)+abs_vort(I,J-1))*VHeff) &
+          QVHeff = 0.5_wp*( ((abs_vort(I,J)+abs_vort(I,J-1))*VHeff) &
                        - ((abs_vort(I,J)-abs_vort(I,J-1))*abs(VHeff)) )
           CAu(I,j,k) = (QVHeff / ( h_tiny + ((Heff1+Heff4) + (Heff2+Heff3)) ) ) * G%IdxCu(I,j)
         endif
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == wenovi7th_PV_ENSTRO) then
       do j=js,je ; do I=Isq,Ieq
-        v_u = 0.25*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
+        v_u = 0.25_wp*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
         ! check whether there is masked land points in the stencil
         third_order = (G%mask2dCu(I,j-2) * G%mask2dCu(I,j-1) * G%mask2dCu(I,j) * &
                        G%mask2dCu(I,j+1) * G%mask2dCu(I,j+2))
@@ -764,7 +766,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         ! compute the masking to make sure that inland values are not used
         if (seventh_order == 1) then
           ! all values are valid, we use seventh order reconstruction
-          u_q8(:) = (u(I,j-4:j+3,k) + u(I,j-3:j+4,k)) * 0.5
+          u_q8(:) = (u(I,j-4:j+3,k) + u(I,j-3:j+4,k)) * 0.5_wp
           call weno_seven_h_weight_reconstruction(abs_vort(I,J-4:J+3), &
                                          h_q(I,J-4:J+3), &
                                          u_q8, &
@@ -773,7 +775,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         elseif (fifth_order == 1) then
           ! all values are valid, we use fifth order reconstruction
-          u_q6(:) = (u(I,j-3:j+2,k) + u(I,j-2:j+3,k)) * 0.5
+          u_q6(:) = (u(I,j-3:j+2,k) + u(I,j-2:j+3,k)) * 0.5_wp
           call weno_five_h_weight_reconstruction(abs_vort(I,J-3:J+2), &
                                         h_q(I,J-3:J+2), &
                                         u_q6, &
@@ -782,14 +784,14 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         elseif (third_order == 1) then
           ! only the middle values are valid, we use third order reconstruction
-          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5
+          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5_wp
           call weno_three_h_weight_reconstruction(abs_vort(I,J-2:J+1), &
                                          h_q(I,J-2:J+1), &
                                          u_q4, &
                                          GV%H_subroundoff, v_u, q_u, CS%weno_velocity_smooth)
           CAu(I,j,k) = (q_u * v_u)
         else ! Upwind first order
-          if (v_u>0.) then
+          if (v_u>0._wp) then
               q_u = q(I,J-1)
           else
               q_u = q(I,J)
@@ -800,7 +802,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == wenovi5th_PV_ENSTRO) then
       do j=js,je ; do I=Isq,Ieq
-        v_u = 0.25*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
+        v_u = 0.25_wp*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
         third_order = (G%mask2dCu(I,j-2) * G%mask2dCu(I,j-1) * G%mask2dCu(I,j) * &
                        G%mask2dCu(I,j+1) * G%mask2dCu(I,j+2))
 
@@ -808,7 +810,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         if (fifth_order == 1) then
           ! all values are valid, we use fifth order reconstruction
-          u_q6(:) = (u(I,j-3:j+2,k) + u(I,j-2:j+3,k)) * 0.5
+          u_q6(:) = (u(I,j-3:j+2,k) + u(I,j-2:j+3,k)) * 0.5_wp
           call weno_five_h_weight_reconstruction(abs_vort(I,J-3:J+2), &
                                         h_q(I,J-3:J+2), &
                                         u_q6, &
@@ -817,7 +819,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         elseif (third_order == 1) then
           ! only the middle values are valid, we use third order reconstruction
-          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5
+          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5_wp
           call weno_three_h_weight_reconstruction(abs_vort(I,J-2:J+1), &
                                          h_q(I,J-2:J+1), &
                                          u_q4, &
@@ -825,7 +827,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAu(I,j,k) = (q_u * v_u)
 
         else ! Upwind first order
-          if (v_u>0.) then
+          if (v_u>0._wp) then
               q_u = q(I,J-1)
           else
               q_u = q(I,J)
@@ -835,14 +837,14 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == wenovi3rd_PV_ENSTRO) then
       do j=js,je ; do I=Isq,Ieq
-        v_u = 0.25*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
+        v_u = 0.25_wp*G%IdxCu(I,j)*((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
         third_order = (G%mask2dCu(I,j-2) * G%mask2dCu(I,j-1) * G%mask2dCu(I,j) * &
                        G%mask2dCu(I,j+1) * G%mask2dCu(I,j+2))
 
 
         if (third_order == 1) then
           ! only the middle values are valid, we use third order reconstruction
-          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5
+          u_q4(:) = (u(I,j-2:j+1,k) + u(I,j-1:j+2,k)) * 0.5_wp
           call weno_three_h_weight_reconstruction(abs_vort(I,J-2:J+1), &
                                          h_q(I,J-2:J+1), &
                                          u_q4, &
@@ -850,7 +852,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAu(I,j,k) = (q_u * v_u)
 
         else ! Upwind first order
-          if (v_u>0.) then
+          if (v_u>0._wp) then
               q_u = q(I,J-1)
           else
               q_u = q(I,J)
@@ -870,7 +872,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
         ! Computing the diagnostic Stokes contribution to CAu
         do j=js,je ; do I=Isq,Ieq
-          CAuS(I,j,k) = 0.25 * &
+          CAuS(I,j,k) = 0.25_wp * &
                 ((qS(I,J) * (vh(i+1,J,k) + vh(i,J,k))) + &
                  (qS(I,J-1) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
         enddo ; enddo
@@ -910,35 +912,35 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (CS%Coriolis_En_Dis) then
         ! Energy dissipating biased scheme, Hallberg 200x
         do J=Jsq,Jeq ; do i=is,ie
-          if (q(I-1,J)*v(i,J,k) == 0.0) then
+          if (q(I-1,J)*v(i,J,k) == 0.0_wp) then
             temp1 = q(I-1,J) * ( (uh_max(i-1,j)+uh_max(i-1,j+1)) &
-                               + (uh_min(i-1,j)+uh_min(i-1,j+1)) )*0.5
-          elseif (q(I-1,J)*v(i,J,k) > 0.0) then
+                               + (uh_min(i-1,j)+uh_min(i-1,j+1)) )*0.5_wp
+          elseif (q(I-1,J)*v(i,J,k) > 0.0_wp) then
             temp1 = q(I-1,J) * (uh_max(i-1,j)+uh_max(i-1,j+1))
           else
             temp1 = q(I-1,J) * (uh_min(i-1,j)+uh_min(i-1,j+1))
           endif
-          if (q(I,J)*v(i,J,k) == 0.0) then
+          if (q(I,J)*v(i,J,k) == 0.0_wp) then
             temp2 = q(I,J) * ( (uh_max(i,j)+uh_max(i,j+1)) &
-                             + (uh_min(i,j)+uh_min(i,j+1)) )*0.5
-          elseif (q(I,J)*v(i,J,k) > 0.0) then
+                             + (uh_min(i,j)+uh_min(i,j+1)) )*0.5_wp
+          elseif (q(I,J)*v(i,J,k) > 0.0_wp) then
             temp2 = q(I,J) * (uh_max(i,j)+uh_max(i,j+1))
           else
             temp2 = q(I,J) * (uh_min(i,j)+uh_min(i,j+1))
           endif
-          CAv(i,J,k) = -0.25 * G%IdyCv(i,J) * (temp1 + temp2)
+          CAv(i,J,k) = -0.25_wp * G%IdyCv(i,J) * (temp1 + temp2)
         enddo ; enddo
       else
         ! Energy conserving scheme, Sadourny 1975
         do J=Jsq,Jeq ; do i=is,ie
-          CAv(i,J,k) = - 0.25* &
+          CAv(i,J,k) = - 0.25_wp* &
               ((q(I-1,J)*(uh(I-1,j,k) + uh(I-1,j+1,k))) + &
                (q(I,J)*(uh(I,j,k) + uh(I,j+1,k)))) * G%IdyCv(i,J)
         enddo ; enddo
       endif
     elseif (CS%Coriolis_Scheme == SADOURNY75_ENSTRO) then
       do J=Jsq,Jeq ; do i=is,ie
-        CAv(i,J,k) = -0.125 * (G%IdyCv(i,J) * (q(I-1,J) + q(I,J))) * &
+        CAv(i,J,k) = -0.125_wp * (G%IdyCv(i,J) * (q(I-1,J) + q(I,J))) * &
                      ((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
       enddo ; enddo
     elseif ((CS%Coriolis_Scheme == ARAKAWA_HSU90) .or. &
@@ -969,14 +971,14 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         Heff4 = max(Heff4, min(h(i-1,j+1,k),h(i,j+1,k)))
         Heff4 = min(Heff4, max(h(i-1,j+1,k),h(i,j+1,k)))
         if (CS%PV_Adv_Scheme == PV_ADV_CENTERED) then
-          CAv(i,J,k) = - 0.5*(abs_vort(I,J)+abs_vort(I-1,J)) * &
+          CAv(i,J,k) = - 0.5_wp*(abs_vort(I,J)+abs_vort(I-1,J)) * &
                          ((uh(I  ,j  ,k)+uh(I-1,j+1,k)) +      &
                           (uh(I-1,j  ,k)+uh(I  ,j+1,k)) ) /    &
                       (h_tiny + ((Heff1+Heff4) +(Heff2+Heff3)) ) * G%IdyCv(i,J)
         elseif (CS%PV_Adv_Scheme == PV_ADV_UPWIND1) then
           UHeff = ((uh(I  ,j  ,k)+uh(I-1,j+1,k)) +      &
                    (uh(I-1,j  ,k)+uh(I  ,j+1,k)) )
-          QUHeff = 0.5*( ((abs_vort(I,J)+abs_vort(I-1,J))*UHeff) &
+          QUHeff = 0.5_wp*( ((abs_vort(I,J)+abs_vort(I-1,J))*UHeff) &
                        - ((abs_vort(I,J)-abs_vort(I-1,J))*abs(UHeff)) )
           CAv(i,J,k) = - QUHeff / &
                        (h_tiny + ((Heff1+Heff4) +(Heff2+Heff3)) ) * G%IdyCv(i,J)
@@ -987,7 +989,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     !     CAv = - q * uh - d(KE)/dy.
     elseif (CS%Coriolis_Scheme == wenovi7th_PV_ENSTRO) then
       do J=Jsq,Jeq ; do i=is,ie
-        u_v = 0.25*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
+        u_v = 0.25_wp*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
 
         ! check whether there is any masked land values within the stencils
         third_order = (G%mask2dCv(i-2,J) * G%mask2dCv(i-1,J) * G%mask2dCv(i,J) * G%mask2dCv(i+1,J) * &
@@ -999,7 +1001,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         ! compute the masking to make sure that inland values are not used
         if (seventh_order == 1) then
-          v_q8(:) = (v(i-4:i+3,J,k) + v(i-3:i+4,J,k)) * 0.5
+          v_q8(:) = (v(i-4:i+3,J,k) + v(i-3:i+4,J,k)) * 0.5_wp
           ! all values are valid, we use seventh order reconstruction
           call weno_seven_h_weight_reconstruction(abs_vort(I-4:I+3,J), &
                                          h_q(I-4:I+3,J), &
@@ -1008,7 +1010,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
 
         elseif (fifth_order == 1) then
-          v_q6(:) = (v(i-3:i+2,J,k) + v(i-2:i+3,J,k)) * 0.5
+          v_q6(:) = (v(i-3:i+2,J,k) + v(i-2:i+3,J,k)) * 0.5_wp
           ! all values are valid, we use fifth order reconstruction
           call weno_five_h_weight_reconstruction(abs_vort(I-3:I+2,J), &
                                         h_q(I-3:I+2,J), &
@@ -1017,7 +1019,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
 
         elseif (third_order == 1) then
-          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5
+          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5_wp
 !          ! only the middle values are valid, we use third order reconstruction
           call weno_three_h_weight_reconstruction(abs_vort(I-2:I+1,J), &
                                                  h_q(I-2:I+1,J), &
@@ -1025,7 +1027,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
                                                  GV%H_subroundoff, u_v, q_v, CS%weno_velocity_smooth)
           CAv(i,J,k) = - (q_v * u_v)
         else ! Upwind first order!
-          if (u_v>0.) then
+          if (u_v>0._wp) then
               q_v = q(I-1,J)
           else
               q_v = q(I,J)
@@ -1036,7 +1038,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == wenovi5th_PV_ENSTRO) then
       do J=Jsq,Jeq ; do i=is,ie
-        u_v = 0.25*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
+        u_v = 0.25_wp*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
 
         third_order = (G%mask2dCv(i-2,J) * G%mask2dCv(i-1,J) * G%mask2dCv(i,J) * G%mask2dCv(i+1,J) * &
                        G%mask2dCv(i+2,J))
@@ -1045,7 +1047,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         ! compute the masking to make sure that inland values are not used
         if (fifth_order == 1) then
-          v_q6(:) = (v(i-3:i+2,J,k) + v(i-2:i+3,J,k)) * 0.5
+          v_q6(:) = (v(i-3:i+2,J,k) + v(i-2:i+3,J,k)) * 0.5_wp
           ! all values are valid, we use fifth order reconstruction
           call weno_five_h_weight_reconstruction(abs_vort(I-3:I+2,J), &
                                         h_q(I-3:I+2,J), &
@@ -1054,7 +1056,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
 
         elseif (third_order == 1) then
-          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5
+          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5_wp
 !          ! only the middle values are valid, we use third order reconstruction
           call weno_three_h_weight_reconstruction(abs_vort(I-2:I+1,J), &
                                                  h_q(I-2:I+1,J), &
@@ -1063,7 +1065,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
 
         else
-          if (u_v>0.) then
+          if (u_v>0._wp) then
               q_v = q(I-1,J)
           else
               q_v = q(I,J)
@@ -1074,7 +1076,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       enddo ; enddo
     elseif (CS%Coriolis_Scheme == wenovi3rd_PV_ENSTRO) then
       do J=Jsq,Jeq ; do i=is,ie
-        u_v = 0.25*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
+        u_v = 0.25_wp*G%IdyCv(i,J)*((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
 
         third_order = (G%mask2dCv(i-2,J) * G%mask2dCv(i-1,J) * G%mask2dCv(i,J) * G%mask2dCv(i+1,J) * &
                        G%mask2dCv(i+2,J))
@@ -1082,7 +1084,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         ! compute the masking to make sure that inland values are not used
         if (third_order == 1) then
-          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5
+          v_q4(:) = (v(i-2:i+1,J,k) + v(i-1:i+2,J,k)) * 0.5_wp
 !          ! only the middle values are valid, we use third order reconstruction
           call weno_three_h_weight_reconstruction(abs_vort(I-2:I+1,J), &
                                                  h_q(I-2:I+1,J), &
@@ -1091,7 +1093,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
 
         else
-          if (u_v>0.) then
+          if (u_v>0._wp) then
               q_v = q(I-1,J)
           else
               q_v = q(I,J)
@@ -1112,7 +1114,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
         ! Computing the diagnostic Stokes contribution to CAv
         do J=Jsq,Jeq ; do i=is,ie
-          CAvS(i,J,k) = 0.25 * &
+          CAvS(i,J,k) = 0.25_wp * &
                 ((qS(I,J) * (uh(I,j+1,k) + uh(I,j,k))) + &
                  (qS(I-1,J) * (uh(I-1,j,k) + uh(I-1,j+1,k)))) * G%IdyCv(i,J)
         enddo; enddo
@@ -1149,7 +1151,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
       if (CS%Coriolis_Scheme == SADOURNY75_ENERGY) then
         if (associated(AD%rv_x_u)) then
           do J=Jsq,Jeq ; do i=is,ie
-            AD%rv_x_u(i,J,k) = - 0.25* &
+            AD%rv_x_u(i,J,k) = - 0.25_wp* &
               ((q2(I-1,j)*(uh(I-1,j,k) + uh(I-1,j+1,k))) + &
                (q2(I,j)*(uh(I,j,k) + uh(I,j+1,k)))) * G%IdyCv(i,J)
           enddo ; enddo
@@ -1157,7 +1159,7 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         if (associated(AD%rv_x_v)) then
           do j=js,je ; do I=Isq,Ieq
-            AD%rv_x_v(I,j,k) = 0.25 * &
+            AD%rv_x_v(I,j,k) = 0.25_wp * &
               ((q2(I,j) * (vh(i+1,J,k) + vh(i,J,k))) + &
                (q2(I,j-1) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
           enddo ; enddo
@@ -1233,23 +1235,23 @@ end subroutine CorAdCalc
 subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
   type(ocean_grid_type),             intent(in)  :: G   !< Ocean grid structure
   type(verticalGrid_type),           intent(in)  :: GV  !< Vertical grid structure
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)  :: u   !< Zonal velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)  :: v   !< Meridional velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in)  :: h   !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)),  intent(out) :: KE  !< Kinetic energy per unit mass [L2 T-2 ~> m2 s-2]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(out) :: KEx !< Zonal acceleration due to kinetic
+  real(wp), dimension(SZIB_(G),SZJ_(G)), intent(in)  :: u   !< Zonal velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJB_(G)), intent(in)  :: v   !< Meridional velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJ_(G)),  intent(in)  :: h   !< Layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G)),  intent(out) :: KE  !< Kinetic energy per unit mass [L2 T-2 ~> m2 s-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G)), intent(out) :: KEx !< Zonal acceleration due to kinetic
                                                         !! energy gradient [L T-2 ~> m s-2]
-  real, dimension(SZI_(G),SZJB_(G)), intent(out) :: KEy !< Meridional acceleration due to kinetic
+  real(wp), dimension(SZI_(G),SZJB_(G)), intent(out) :: KEy !< Meridional acceleration due to kinetic
                                                         !! energy gradient [L T-2 ~> m s-2]
   type(unit_scale_type),             intent(in)  :: US  !< A dimensional unit scaling type
   type(CoriolisAdv_CS),              intent(in)  :: CS  !< Control structure for MOM_CoriolisAdv
   ! Local variables
-  real :: um, up, vm, vp         ! Temporary variables [L T-1 ~> m s-1].
-  real :: um2, up2, vm2, vp2     ! Temporary variables [L2 T-2 ~> m2 s-2].
-  real :: um2a, up2a, vm2a, vp2a ! Temporary variables [L4 T-2 ~> m4 s-2].
-  real :: third_order_u, third_order_v  ! Product of mask values to determine the boundary
+  real(wp) :: um, up, vm, vp         ! Temporary variables [L T-1 ~> m s-1].
+  real(wp) :: um2, up2, vm2, vp2     ! Temporary variables [L2 T-2 ~> m2 s-2].
+  real(wp) :: um2a, up2a, vm2a, vp2a ! Temporary variables [L4 T-2 ~> m4 s-2].
+  real(wp) :: third_order_u, third_order_v  ! Product of mask values to determine the boundary
   integer :: i, j, is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz, n
-  real, parameter     :: C1_12 = 1.0/12.0   ! The ratio of 1/12 [nondim]
+  real(wp), parameter     :: C1_12 = 1.0_wp/12.0_wp   ! The ratio of 1/12 [nondim]
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1264,27 +1266,27 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
       KE(i,j) = ( ( (G%areaCu( I ,j)*(u( I ,j)*u( I ,j))) + &
                     (G%areaCu(I-1,j)*(u(I-1,j)*u(I-1,j))) ) + &
                   ( (G%areaCv(i, J )*(v(i, J )*v(i, J ))) + &
-                    (G%areaCv(i,J-1)*(v(i,J-1)*v(i,J-1))) ) )*0.25*G%IareaT(i,j)
+                    (G%areaCv(i,J-1)*(v(i,J-1)*v(i,J-1))) ) )*0.25_wp*G%IareaT(i,j)
     enddo ; enddo
   elseif (CS%KE_Scheme == KE_SIMPLE_GUDONOV) then
     ! The following discretization of KE is based on the one-dimensional Gudonov
     ! scheme which does not take into account any geometric factors
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-      up = 0.5*( u(I-1,j) + ABS( u(I-1,j) ) ) ; up2 = up*up
-      um = 0.5*( u( I ,j) - ABS( u( I ,j) ) ) ; um2 = um*um
-      vp = 0.5*( v(i,J-1) + ABS( v(i,J-1) ) ) ; vp2 = vp*vp
-      vm = 0.5*( v(i, J ) - ABS( v(i, J ) ) ) ; vm2 = vm*vm
-      KE(i,j) = ( max(up2,um2) + max(vp2,vm2) ) *0.5
+      up = 0.5_wp*( u(I-1,j) + ABS( u(I-1,j) ) ) ; up2 = up*up
+      um = 0.5_wp*( u( I ,j) - ABS( u( I ,j) ) ) ; um2 = um*um
+      vp = 0.5_wp*( v(i,J-1) + ABS( v(i,J-1) ) ) ; vp2 = vp*vp
+      vm = 0.5_wp*( v(i, J ) - ABS( v(i, J ) ) ) ; vm2 = vm*vm
+      KE(i,j) = ( max(up2,um2) + max(vp2,vm2) ) *0.5_wp
     enddo ; enddo
   elseif (CS%KE_Scheme == KE_GUDONOV) then
     ! The following discretization of KE is based on the one-dimensional Gudonov
     ! scheme but has been adapted to take horizontal grid factors into account
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-      up = 0.5*( u(I-1,j) + ABS( u(I-1,j) ) ) ; up2a = up*up*G%areaCu(I-1,j)
-      um = 0.5*( u( I ,j) - ABS( u( I ,j) ) ) ; um2a = um*um*G%areaCu( I ,j)
-      vp = 0.5*( v(i,J-1) + ABS( v(i,J-1) ) ) ; vp2a = vp*vp*G%areaCv(i,J-1)
-      vm = 0.5*( v(i, J ) - ABS( v(i, J ) ) ) ; vm2a = vm*vm*G%areaCv(i, J )
-      KE(i,j) = ( max(um2a,up2a) + max(vm2a,vp2a) )*0.5*G%IareaT(i,j)
+      up = 0.5_wp*( u(I-1,j) + ABS( u(I-1,j) ) ) ; up2a = up*up*G%areaCu(I-1,j)
+      um = 0.5_wp*( u( I ,j) - ABS( u( I ,j) ) ) ; um2a = um*um*G%areaCu( I ,j)
+      vp = 0.5_wp*( v(i,J-1) + ABS( v(i,J-1) ) ) ; vp2a = vp*vp*G%areaCv(i,J-1)
+      vm = 0.5_wp*( v(i, J ) - ABS( v(i, J ) ) ) ; vm2a = vm*vm*G%areaCv(i, J )
+      KE(i,j) = ( max(um2a,up2a) + max(vm2a,vp2a) )*0.5_wp*G%IareaT(i,j)
     enddo ; enddo
   elseif (CS%KE_Scheme == KE_UP3) then
     ! The following discretization of KE is based on the one-dimensional third-order
@@ -1296,13 +1298,13 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
                        G%mask2dCu(I,j) * G%mask2dCu(I+1,j))
 
         if (third_order_u == 1) then
-          up = (7.0 * (u(I-1,j) + u(I,j)) - (u(I-2,j) + u(I+1,j))) * C1_12
+          up = (7.0_wp * (u(I-1,j) + u(I,j)) - (u(I-2,j) + u(I+1,j))) * C1_12
           call UP3_Koren_limiter_reconstruction(u(I-2:I+1,j), up, um)
         else
-          up = (u(I-1,j) + u(I,j))*0.5
-          if (up>0.) then
+          up = (u(I-1,j) + u(I,j))*0.5_wp
+          if (up>0._wp) then
             um = u(I-1,j)
-          elseif (up<0.) then
+          elseif (up<0._wp) then
             um = u(I,j)
           else
             um = up
@@ -1312,20 +1314,20 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
         third_order_v = (G%mask2dCv(i,J-2) * G%mask2dCv(i,J-1)* &
                        G%mask2dCv(i,J) * G%mask2dCv(i,J+1))
         if (third_order_v ==1) then
-          vp = (7.0 * (v(i,J-1) + v(i,J)) - (v(i,J-2) + v(i,J+1))) * C1_12
+          vp = (7.0_wp * (v(i,J-1) + v(i,J)) - (v(i,J-2) + v(i,J+1))) * C1_12
           call UP3_Koren_limiter_reconstruction(v(i,J-2:J+1), vp, vm)
         else
-          vp = (v(i,J-1) + v(i,J))*0.5
-          if (vp>0.) then
+          vp = (v(i,J-1) + v(i,J))*0.5_wp
+          if (vp>0._wp) then
             vm = v(i,J-1)
-          elseif (vp<0.) then
+          elseif (vp<0._wp) then
             vm = v(i,J)
           else
             vm = vp
           endif
         endif
 
-        KE(i,j) = ( (um*um) + (vm*vm) )*0.5
+        KE(i,j) = ( (um*um) + (vm*vm) )*0.5_wp
       enddo ; enddo
     else
       do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
@@ -1334,13 +1336,13 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
                        G%mask2dCu(I,j) * G%mask2dCu(I+1,j))
 
         if (third_order_u == 1) then
-          up = (7.0 * (u(I-1,j) + u(I,j)) - (u(I-2,j) + u(I+1,j))) * C1_12
+          up = (7.0_wp * (u(I-1,j) + u(I,j)) - (u(I-2,j) + u(I+1,j))) * C1_12
           call UP3_reconstruction(u(I-2:I+1,j), up, um)
         else
-          up = (u(I-1,j) + u(I,j))*0.5
-          if (up>0.) then
+          up = (u(I-1,j) + u(I,j))*0.5_wp
+          if (up>0._wp) then
             um = u(I-1,j)
-          elseif (up<0.) then
+          elseif (up<0._wp) then
             um = u(I,j)
           else
             um = up
@@ -1350,20 +1352,20 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, G, GV, US, CS)
         third_order_v = (G%mask2dCv(i,J-2) * G%mask2dCv(i,J-1)* &
                        G%mask2dCv(i,J) * G%mask2dCv(i,J+1))
         if (third_order_v ==1) then
-          vp = (7.0 * (v(i,J-1) + v(i,J)) - (v(i,J-2) + v(i,J+1))) * C1_12
+          vp = (7.0_wp * (v(i,J-1) + v(i,J)) - (v(i,J-2) + v(i,J+1))) * C1_12
           call UP3_reconstruction(v(i,J-2:J+1), vp, vm)
         else
-          vp = (v(i,J-1) + v(i,J))*0.5
-          if (vp>0.) then
+          vp = (v(i,J-1) + v(i,J))*0.5_wp
+          if (vp>0._wp) then
             vm = v(i,J-1)
-          elseif (vp<0.) then
+          elseif (vp<0._wp) then
             vm = v(i,J)
           else
             vm = vp
           endif
         endif
 
-        KE(i,j) = ( (um*um) + (vm*vm) )*0.5
+        KE(i,j) = ( (um*um) + (vm*vm) )*0.5_wp
       enddo ; enddo
     endif
   endif
@@ -1382,16 +1384,16 @@ end subroutine gradKE
 
 !> Reconstruct the scalar (e.g., pv, vorticity) onto point i-1/2 using a third-order upwind scheme
 subroutine UP3_reconstruction(q4,u,qr)
-  real, intent(in)    :: q4(4)            !< Tracer values on points i-2, i-1, i, i+1 [A ~> a]
-  real, intent(in)    :: u                !< Velocity or thickness flux on point i-1/2
+  real(wp), intent(in)    :: q4(4)            !< Tracer values on points i-2, i-1, i, i+1 [A ~> a]
+  real(wp), intent(in)    :: u                !< Velocity or thickness flux on point i-1/2
                                           !! [l t-1 ~> m s-1] or [l2 t-1 ~> m2 s-1]
-  real, intent(inout) :: qr               !< Reconstruction of tracer q at point i-1/2 [A ~> a]
-  real, parameter :: C1_6 = 1.0/6.0       ! The ratio of 1/6 [nondim]
+  real(wp), intent(inout) :: qr               !< Reconstruction of tracer q at point i-1/2 [A ~> a]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp       ! The ratio of 1/6 [nondim]
 
-  if (u>0.) then
-    qr = ((2.*q4(3) + 5.*q4(2)) - q4(1)) * C1_6
+  if (u>0._wp) then
+    qr = ((2._wp*q4(3) + 5._wp*q4(2)) - q4(1)) * C1_6
   else
-    qr = ((2.*q4(2) + 5.*q4(3)) - q4(4)) * C1_6
+    qr = ((2._wp*q4(2) + 5._wp*q4(3)) - q4(4)) * C1_6
   endif
 
 end subroutine UP3_reconstruction
@@ -1400,21 +1402,21 @@ end subroutine UP3_reconstruction
 !> Reconstruct the scalar (e.g., PV, vorticity) onto point i-1/2
 !! using a third-order upwind scheme with the Koren flux limiter
 subroutine UP3_Koren_limiter_reconstruction(q4,u,qr)
-  real, intent(in)    :: q4(4)            !< Tracer values on points i-2, i-1, i, i+1 [A ~> a]
-  real, intent(in)    :: u                !< Velocity or thickness flux on point i-1/2
+  real(wp), intent(in)    :: q4(4)            !< Tracer values on points i-2, i-1, i, i+1 [A ~> a]
+  real(wp), intent(in)    :: u                !< Velocity or thickness flux on point i-1/2
                                           !! [L T-1 ~> m s-1] or [L2 T-1 ~> m2 s-1]
-  real, intent(inout) :: qr               !< Reconstruction of tracer q on point i-1/2 [A ~> a]
-  real                :: theta            ! Ratio of gradient [nondim]
-  real                :: psi              ! Limiter function [nondim]
-  real, parameter     :: C1_3 = 1.0/3.0   ! The ratio of 1/3 [nondim]
-  real, parameter     :: C1_6 = 1.0/6.0   ! The ratio of 1/6 [nondim]
+  real(wp), intent(inout) :: qr               !< Reconstruction of tracer q on point i-1/2 [A ~> a]
+  real(wp)                :: theta            ! Ratio of gradient [nondim]
+  real(wp)                :: psi              ! Limiter function [nondim]
+  real(wp), parameter     :: C1_3 = 1.0_wp/3.0_wp   ! The ratio of 1/3 [nondim]
+  real(wp), parameter     :: C1_6 = 1.0_wp/6.0_wp   ! The ratio of 1/6 [nondim]
 
-  if (u>0.) then
+  if (u>0._wp) then
     if (q4(3) == q4(2)) then
       qr = q4(2)
     else
       theta = (q4(2) - q4(1))/(q4(3) - q4(2))
-      psi = max(0., min(1., C1_3 + C1_6*theta, theta)) ! limiter introduced by Koren (1993)
+      psi = max(0._wp, min(1._wp, C1_3 + C1_6*theta, theta)) ! limiter introduced by Koren (1993)
       qr = q4(2) + psi*(q4(3) - q4(2))
     endif
   else
@@ -1422,7 +1424,7 @@ subroutine UP3_Koren_limiter_reconstruction(q4,u,qr)
       qr = q4(3)
     else
       theta = (q4(4) - q4(3))/(q4(3) - q4(2))
-      psi = max(0., min(1., C1_3 + C1_6*theta, theta))
+      psi = max(0._wp, min(1._wp, C1_3 + C1_6*theta, theta))
       qr = q4(3) + psi*(q4(2) - q4(3))
     endif
   endif
@@ -1431,11 +1433,11 @@ end subroutine UP3_Koren_limiter_reconstruction
 
 !> Compute the factor for the WENO weights
 function fac_fn(tau, b) result(fac)
-  real, intent(in)  :: tau  !< Difference of the smoothness indicator [A ~> a]
-  real, intent(in)  :: b    !< The smoothness indicator [A ~> a]
-  real :: fac               !< The factor for the weight [nondim]
+  real(wp), intent(in)  :: tau  !< Difference of the smoothness indicator [A ~> a]
+  real(wp), intent(in)  :: b    !< The smoothness indicator [A ~> a]
+  real(wp) :: fac               !< The factor for the weight [nondim]
 
-  fac = 1.0e40; if (abs(b) > 1.0e-20*tau) fac = (1 + tau / b)**2
+  fac = 1.0e40_wp; if (abs(b) > 1.0e-20_wp*tau) fac = (1 + tau / b)**2
 
 end function fac_fn
 
@@ -1444,27 +1446,27 @@ end function fac_fn
 !! This reconstruction is thickness-weighted
 subroutine weno_three_h_weight_reconstruction(q4, h4, u4, &
                                               h_tiny, u, qr, velocity_smoothing)
-    real, intent(in)    :: q4(4)   !< Tracer value times thickness on points i-2, i-1, i, i+1 [A ~> a]
-    real, intent(in)    :: h4(4)   !< Thickness values on points i-2, i-1, i, i+1 [L ~> m]
-    real, optional, intent(in)    :: u4(4) !< Velocity values on points i-2, i-1, i, i+1
+    real(wp), intent(in)    :: q4(4)   !< Tracer value times thickness on points i-2, i-1, i, i+1 [A ~> a]
+    real(wp), intent(in)    :: h4(4)   !< Thickness values on points i-2, i-1, i, i+1 [L ~> m]
+    real(wp), optional, intent(in)    :: u4(4) !< Velocity values on points i-2, i-1, i, i+1
                                                     !![L T-1 ~> m s-1]
-    real, intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
-    real, intent(in)    :: u              !< Velocity or thickness flux on point i-1/2
+    real(wp), intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
+    real(wp), intent(in)    :: u              !< Velocity or thickness flux on point i-1/2
                                           !! [L T-1 ~> m s-1] or [L2 T-1 ~> m2 s-1]
-    real, intent(inout) :: qr             !< Reconstruction of tracer q on point i-1/2 [A ~> a]
+    real(wp), intent(inout) :: qr             !< Reconstruction of tracer q on point i-1/2 [A ~> a]
     logical, intent(in) :: velocity_smoothing !< If true, use velocity to compute smoothness indicator
-    real :: vr                            ! Reconstruction of hq [A ~> a]
-    real :: hr                            ! Reconstruction of h [L ~> m]
-    real :: c0, c1                        ! Intermediate reconstruction of q [A ~> a]
-    real :: d0, d1                        ! Intermediate reconstruction of h [L ~> m]
-    real :: b0, b1                        ! Smoothness indicator [A ~> a]
-    real :: tau                           ! Difference of smoothness indicator [A ~> a]
-    real :: w0, w1                        ! Weights [nondim]
-    real :: s                             ! Temporary variables [nondim]
-    real, parameter :: C2_3 = 2.0/3.0     ! The ratio of 2/3 [nondim]
-    real, parameter :: C1_3 = 1.0/3.0     ! The ratio of 1/3 [nondim]
+    real(wp) :: vr                            ! Reconstruction of hq [A ~> a]
+    real(wp) :: hr                            ! Reconstruction of h [L ~> m]
+    real(wp) :: c0, c1                        ! Intermediate reconstruction of q [A ~> a]
+    real(wp) :: d0, d1                        ! Intermediate reconstruction of h [L ~> m]
+    real(wp) :: b0, b1                        ! Smoothness indicator [A ~> a]
+    real(wp) :: tau                           ! Difference of smoothness indicator [A ~> a]
+    real(wp) :: w0, w1                        ! Weights [nondim]
+    real(wp) :: s                             ! Temporary variables [nondim]
+    real(wp), parameter :: C2_3 = 2.0_wp/3.0_wp     ! The ratio of 2/3 [nondim]
+    real(wp), parameter :: C1_3 = 1.0_wp/3.0_wp     ! The ratio of 1/3 [nondim]
 
-    if (u>0.) then
+    if (u>0._wp) then
       call weno_three_reconstruction_0(q4(2:3), c0) ! Reconstruction in the second upwind stencil
       call weno_three_reconstruction_1(q4(1:2), c1) ! Reconstruction in the first upwind stencil
 
@@ -1496,7 +1498,7 @@ subroutine weno_three_h_weight_reconstruction(q4, h4, u4, &
     w0  = C2_3 * fac_fn(tau, b0)
     w1  = C1_3 * fac_fn(tau, b1)
 
-    s = 1. / (w0 + w1)
+    s = 1._wp / (w0 + w1)
     w0 = w0 * s   ! Weights of stencils
     w1 = w1 * s
 
@@ -1511,8 +1513,8 @@ end subroutine weno_three_h_weight_reconstruction
 
 !> Compute the smoothness indicator for the two-point stencil of the third-order WENO scheme
 subroutine weno_three_weight(q2, w0)
-    real, intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
-    real, intent(inout) :: w0    !< Smoothness indicator for this stencil [A2 ~> a2]
+    real(wp), intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
+    real(wp), intent(inout) :: w0    !< Smoothness indicator for this stencil [A2 ~> a2]
 
     w0 = (q2(1) - q2(2))**2
 
@@ -1520,19 +1522,19 @@ end subroutine weno_three_weight
 
 !> Reconstruction in the second upwind stencil of the third-order WENO scheme
 subroutine weno_three_reconstruction_0(q2, w0)
-    real, intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
-    real, intent(inout) :: w0    !< Reconstruction of the quantity [A2 ~> a2]
+    real(wp), intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
+    real(wp), intent(inout) :: w0    !< Reconstruction of the quantity [A2 ~> a2]
 
-    w0 = (q2(1) + q2(2)) * 0.5
+    w0 = (q2(1) + q2(2)) * 0.5_wp
 
 end subroutine weno_three_reconstruction_0
 
 !> Reconstruction in the first upwind stencil for third-order WENO scheme
 subroutine weno_three_reconstruction_1(q2, w0)
-    real, intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
-    real, intent(inout) :: w0    !< Reconstruction of the quantity [A ~> a]
+    real(wp), intent(in) :: q2(2)    !< Tracer values on the two-point stencil [A ~> a]
+    real(wp), intent(inout) :: w0    !< Reconstruction of the quantity [A ~> a]
 
-    w0 = (- q2(1) + 3 * q2(2)) * 0.5
+    w0 = (- q2(1) + 3 * q2(2)) * 0.5_wp
 
 end subroutine weno_three_reconstruction_1
 
@@ -1541,30 +1543,30 @@ end subroutine weno_three_reconstruction_1
 !! The reconstruction is weighted by the thickness
 subroutine weno_five_h_weight_reconstruction(q6, h6, u6, &
                                              h_tiny, u, qr, velocity_smoothing)
-    real, intent(in)    :: q6(6)
+    real(wp), intent(in)    :: q6(6)
     !< Tracer values on points i-3, i-2, i-1, i, i+1, i+2 [A ~> a]
-    real, intent(in)    :: h6(6)
+    real(wp), intent(in)    :: h6(6)
     !< Thickness values on points i-3, i-2, i-1, i, i+1, i+2 [L ~> m]
-    real, optional, intent(in)    :: u6(6)
+    real(wp), optional, intent(in)    :: u6(6)
     !< Velocity values on points i-3, i-2, i-1, i, i+1, i+2 [L T-1 ~> m s-1]
-    real, intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
-    real, intent(in)    :: u                      !< Velocity or thickness flux on point i-1/2
+    real(wp), intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
+    real(wp), intent(in)    :: u                      !< Velocity or thickness flux on point i-1/2
                                                   !! [L T-1 ~> m s-1] or [L2 T-1 ~> m2 s-1]
     logical, intent(in) :: velocity_smoothing     !< If ture, use velocity to compute the smoothness indicator
-    real, intent(inout) :: qr                     !< Reconstruction of tracer q on point i-1/2 [A ~> a]
-    real :: vr                                    ! Reconstruction of hq [A ~> a]
-    real :: hr                                    ! Reconstruction of h [L ~> m]
-    real :: c0, c1, c2                            ! Intermediate reconstruction of hq[A ~> a]
-    real :: d0, d1, d2                            ! Intermediate reconstruction of h [L ~> m]
-    real :: b0, b1, b2                            ! Smoothness indicator [A ~> a]
-    real :: tau                                   ! Difference of smoothness indicators [A ~> a]
-    real :: w0, w1, w2                            ! Weights [nondim]
-    real :: s                                     ! Temporary variables [nondim]
-    real, parameter :: C3_10 = 3.0/10.0           ! The ratio of 3/10 [nondim]
-    real, parameter :: C3_5 = 3.0/5.0             ! The ratio of 3/5 [nondim]
-    real, parameter :: C1_10 = 1.0/10.0           ! The ratio of 1/10 [nondim]
+    real(wp), intent(inout) :: qr                     !< Reconstruction of tracer q on point i-1/2 [A ~> a]
+    real(wp) :: vr                                    ! Reconstruction of hq [A ~> a]
+    real(wp) :: hr                                    ! Reconstruction of h [L ~> m]
+    real(wp) :: c0, c1, c2                            ! Intermediate reconstruction of hq[A ~> a]
+    real(wp) :: d0, d1, d2                            ! Intermediate reconstruction of h [L ~> m]
+    real(wp) :: b0, b1, b2                            ! Smoothness indicator [A ~> a]
+    real(wp) :: tau                                   ! Difference of smoothness indicators [A ~> a]
+    real(wp) :: w0, w1, w2                            ! Weights [nondim]
+    real(wp) :: s                                     ! Temporary variables [nondim]
+    real(wp), parameter :: C3_10 = 3.0_wp/10.0_wp           ! The ratio of 3/10 [nondim]
+    real(wp), parameter :: C3_5 = 3.0_wp/5.0_wp             ! The ratio of 3/5 [nondim]
+    real(wp), parameter :: C1_10 = 1.0_wp/10.0_wp           ! The ratio of 1/10 [nondim]
 
-    if (u>0.) then
+    if (u>0._wp) then
       call weno_five_reconstruction_0(q6(3:5), c0) ! Reconstruction in the third upwind stencil
       call weno_five_reconstruction_1(q6(2:4), c1) ! Reconstruction in the second upwind stencil
       call weno_five_reconstruction_2(q6(1:3), c2) ! Reconstruction in the first upwind stencil
@@ -1605,7 +1607,7 @@ subroutine weno_five_h_weight_reconstruction(q6, h6, u6, &
     w1  = C3_5  * fac_fn(tau, b1)
     w2  = C1_10 * fac_fn(tau, b2)
 
-    s = 1. / ((w0 + w1) + w2)
+    s = 1._wp / ((w0 + w1) + w2)
     w0 = w0 * s   ! Weights of stencils
     w1 = w1 * s
     w2 = w2 * s
@@ -1621,8 +1623,8 @@ end subroutine weno_five_h_weight_reconstruction
 
 !> Compute the smoothness indicator for the third upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_weight_0(q3, w0)
-  real, intent(in) :: q3(3)       !< Tracer values on the three-point stencil [A ~> a]
-  real, intent(inout) :: w0       !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q3(3)       !< Tracer values on the three-point stencil [A ~> a]
+  real(wp), intent(inout) :: w0       !< Smoothness indicator for this stencil [A2 ~> a2]
 
   w0 = (q3(1) * ((10 * q3(1) - 31 * q3(2)) + 11 * q3(3))) + &
        ((q3(2) * (25 * q3(2) - 19 * q3(3))) + 4 * (q3(3) * q3(3)))
@@ -1631,8 +1633,8 @@ end subroutine weno_five_weight_0
 
 !> Compute the smoothness indicator for the second upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_weight_1(q3, w1)
-  real, intent(in) :: q3(3)        !< Tracer values on the three-point stencil [A ~> a]
-  real, intent(inout) :: w1        !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q3(3)        !< Tracer values on the three-point stencil [A ~> a]
+  real(wp), intent(inout) :: w1        !< Smoothness indicator for this stencil [A2 ~> a2]
 
   w1 = (q3(1) * ((4 * q3(1) - 13 * q3(2)) + 5 * q3(3))) + &
        ((q3(2) * (13 * q3(2) - 13 * q3(3))) + 4 * (q3(3) * q3(3)))
@@ -1641,8 +1643,8 @@ end subroutine weno_five_weight_1
 
 !> Compute the smoothness indicator for the first upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_weight_2(q3, w2)
-  real, intent(in) :: q3(3)        !< Tracer values on the three-point stencil [A ~> a]
-  real, intent(inout) :: w2        !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q3(3)        !< Tracer values on the three-point stencil [A ~> a]
+  real(wp), intent(inout) :: w2        !< Smoothness indicator for this stencil [A2 ~> a2]
 
   w2 = (q3(1) * ((4 * q3(1) - 19 * q3(2)) + 11 * q3(3))) + &
        ((q3(2) * (25 * q3(2) - 31 * q3(3))) + 10 * (q3(3) * q3(3)))
@@ -1651,9 +1653,9 @@ end subroutine weno_five_weight_2
 
 !> Reconstruction in the third upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_reconstruction_0(q3, p0)
-  real, intent(in) :: q3(3)        !< Tracer values on three points [A ~> a]
-  real, intent(inout) :: p0        !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_6 = 1.0/6.0 ! One sixth [nondim]
+  real(wp), intent(in) :: q3(3)        !< Tracer values on three points [A ~> a]
+  real(wp), intent(inout) :: p0        !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp ! One sixth [nondim]
 
   p0 = ((2*q3(1) + 5*q3(2)) - q3(3)) * C1_6
 
@@ -1661,9 +1663,9 @@ end subroutine weno_five_reconstruction_0
 
 !> Reconstruction in the second upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_reconstruction_1(q3, p1)
-  real, intent(in) :: q3(3)         !< Tracer values on the three-point stencil [A ~> a]
-  real, intent(inout) :: p1         !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_6 = 1.0/6.0 ! One sixth [nondim]
+  real(wp), intent(in) :: q3(3)         !< Tracer values on the three-point stencil [A ~> a]
+  real(wp), intent(inout) :: p1         !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp ! One sixth [nondim]
 
   p1 = ((-q3(1) + 5*q3(2)) + 2*q3(3)) * C1_6
 
@@ -1671,9 +1673,9 @@ end subroutine weno_five_reconstruction_1
 
 !> Reconstruction in the first upwind stencil of the fifth-order WENO scheme
 subroutine weno_five_reconstruction_2(q3, p2)
-  real, intent(in) :: q3(3)          !< Tracer values on the three-point stencil [A ~> a]
-  real, intent(inout) :: p2          !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_6 = 1.0/6.0  ! One sixth [nondim]
+  real(wp), intent(in) :: q3(3)          !< Tracer values on the three-point stencil [A ~> a]
+  real(wp), intent(inout) :: p2          !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_6 = 1.0_wp/6.0_wp  ! One sixth [nondim]
 
   p2 = ((2*q3(1) - 7*q3(2)) + 11*q3(3)) * C1_6
 
@@ -1684,31 +1686,31 @@ end subroutine weno_five_reconstruction_2
 !! This reconstruction computes a thickness weighted average of PV
 subroutine weno_seven_h_weight_reconstruction(q8, h8, u8, &
                                             h_tiny, u, qr, velocity_smoothing)
-  real, intent(in)    :: q8(8)
+  real(wp), intent(in)    :: q8(8)
   !< Tracer values on points i-4, i-3, i-2, i-1, i, i+1, i+2, i+3
-  real, intent(in)    :: h8(8)
+  real(wp), intent(in)    :: h8(8)
   !< Thickness on the same tracer points i-4, i-3, i-2, i-1, i, i+1, i+2, i+3 [L ~> m]
-  real, optional, intent(in)    :: u8(8)
+  real(wp), optional, intent(in)    :: u8(8)
   !< Velocity values on points i-4, i-3, i-2, i-1, i, i+1, i+2, i+3 [L T-1 ~> m s-1]
-  real, intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
-  real, intent(in)    :: u    !< Velocity or thickness flux on point i-1/2
+  real(wp), intent(in)    :: h_tiny  !< A tiny thickness to prevent division by zero [L ~> m]
+  real(wp), intent(in)    :: u    !< Velocity or thickness flux on point i-1/2
                               !! [L T-1 ~> m s-1] or [L2 T-1 ~> m2 s-1]
   logical, intent(in) :: velocity_smoothing !< If true, use velocity to compute the smoothness indicator
-  real, intent(inout) :: qr   !< Reconstruction of tracer q on point i-1/2 [A ~> a]
-  real :: vr                  ! Reconstruction of hq [A ~> a]
-  real :: hr                  ! Reconstruction of h [L ~> m]
-  real :: c0, c1, c2, c3      ! Intermediate reconstruction of hq [A ~> a]
-  real :: d0, d1, d2, d3      ! Intermediate reconstruction of h [L ~> m]
-  real :: b0, b1, b2, b3      ! Smoothness indicator [A ~> a]
-  real :: tau                 ! Difference of smoothness indicators [A ~> a]
-  real :: w0, w1, w2, w3      ! Weights [nondim]
-  real :: s                   ! Temporary variables [nondim]
-  real, parameter :: C4_35 = 4.0/35.0 ! The ratio of 4/35 [nondim]
-  real, parameter :: C18_35 = 18.0/35.0 ! The ratio of 18/35 [nondim]
-  real, parameter :: C12_35 = 12.0/35.0 ! The ratio of 12/35 [nondim]
-  real, parameter :: C1_35 = 1.0/35.0   ! The ratio of 1/35 [nondim]
+  real(wp), intent(inout) :: qr   !< Reconstruction of tracer q on point i-1/2 [A ~> a]
+  real(wp) :: vr                  ! Reconstruction of hq [A ~> a]
+  real(wp) :: hr                  ! Reconstruction of h [L ~> m]
+  real(wp) :: c0, c1, c2, c3      ! Intermediate reconstruction of hq [A ~> a]
+  real(wp) :: d0, d1, d2, d3      ! Intermediate reconstruction of h [L ~> m]
+  real(wp) :: b0, b1, b2, b3      ! Smoothness indicator [A ~> a]
+  real(wp) :: tau                 ! Difference of smoothness indicators [A ~> a]
+  real(wp) :: w0, w1, w2, w3      ! Weights [nondim]
+  real(wp) :: s                   ! Temporary variables [nondim]
+  real(wp), parameter :: C4_35 = 4.0_wp/35.0_wp ! The ratio of 4/35 [nondim]
+  real(wp), parameter :: C18_35 = 18.0_wp/35.0_wp ! The ratio of 18/35 [nondim]
+  real(wp), parameter :: C12_35 = 12.0_wp/35.0_wp ! The ratio of 12/35 [nondim]
+  real(wp), parameter :: C1_35 = 1.0_wp/35.0_wp   ! The ratio of 1/35 [nondim]
 
-  if (u>0.) then
+  if (u>0._wp) then
     call weno_seven_reconstruction_0(q8(4:7), c0) ! Reconstruction in the fourth upwind stencil
     call weno_seven_reconstruction_1(q8(3:6), c1) ! Reconstruction in the third upwind stencil
     call weno_seven_reconstruction_2(q8(2:5), c2) ! Reconstruction in the second upwind stencil
@@ -1758,7 +1760,7 @@ subroutine weno_seven_h_weight_reconstruction(q8, h8, u8, &
   w2  = C12_35 * fac_fn(tau, b2)
   w3  = C1_35  * fac_fn(tau, b3)
 
-  s = 1. / ((w0 + w1) + (w2 + w3))
+  s = 1._wp / ((w0 + w1) + (w2 + w3))
   w0 = w0 * s   ! Weights of the stencils
   w1 = w1 * s
   w2 = w2 * s
@@ -1776,57 +1778,57 @@ end subroutine weno_seven_h_weight_reconstruction
 
 !> Compute the smoothness indicator for the fourth upwind stencil of the seventh-order WENO scheme
 subroutine weno_seven_weight_0(q4, w0)
-  real, intent(in) :: q4(4)          !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: w0          !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q4(4)          !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: w0          !< Smoothness indicator for this stencil [A2 ~> a2]
 
   ! Coefficients from Balsara and Shu (2000). The division by 1000 will be normalized out by fac_fn
-  w0 = ((q4(1) * ((2.107 * q4(1) - 9.402 * q4(2)) + (7.042 * q4(3) - 1.854 * q4(4)))) + &
-     (q4(2) * ((11.003 * q4(2) - 17.246 * q4(3)) + 4.642 * q4(4)))) + &
-     ((q4(3) * (7.043 * q4(3) - 3.882 * q4(4))) + 0.547 * (q4(4) * q4(4)))
+  w0 = ((q4(1) * ((2.107_wp * q4(1) - 9.402_wp * q4(2)) + (7.042_wp * q4(3) - 1.854_wp * q4(4)))) + &
+     (q4(2) * ((11.003_wp * q4(2) - 17.246_wp * q4(3)) + 4.642_wp * q4(4)))) + &
+     ((q4(3) * (7.043_wp * q4(3) - 3.882_wp * q4(4))) + 0.547_wp * (q4(4) * q4(4)))
 
 end subroutine weno_seven_weight_0
 
 !> Compute the smoothness indicator for the third upwind stencil of the seventh-order WENO scheme
 subroutine weno_seven_weight_1(q4, w1)
-  real, intent(in) :: q4(4)          !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: w1          !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q4(4)          !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: w1          !< Smoothness indicator for this stencil [A2 ~> a2]
 
   ! Coefficients from Balsara and Shu (2000). The division by 1000 will be normalized out by fac_fn
-  w1 = ((q4(1) * ((0.547 * q4(1) - 2.522 * q4(2)) + (1.922 * q4(3) - 0.494 * q4(4)))) + &
-     (q4(2) * ((3.443 * q4(2) - 5.966 * q4(3)) + 1.602 * q4(4)))) + &
-     ((q4(3) * (2.843 * q4(3) - 1.642 * q4(4))) + 0.267 * (q4(4) * q4(4)))
+  w1 = ((q4(1) * ((0.547_wp * q4(1) - 2.522_wp * q4(2)) + (1.922_wp * q4(3) - 0.494_wp * q4(4)))) + &
+     (q4(2) * ((3.443_wp * q4(2) - 5.966_wp * q4(3)) + 1.602_wp * q4(4)))) + &
+     ((q4(3) * (2.843_wp * q4(3) - 1.642_wp * q4(4))) + 0.267_wp * (q4(4) * q4(4)))
 
 end subroutine weno_seven_weight_1
 
 !> Compute the smoothness indicator for the second upwind stencil of the seventh-order WENO scheme
 subroutine weno_seven_weight_2(q4, w2)
-  real, intent(in) :: q4(4)           !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: w2           !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q4(4)           !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: w2           !< Smoothness indicator for this stencil [A2 ~> a2]
 
   ! Coefficients from Balsara and Shu (2000). The division by 1000 will be normalized out by fac_fn
-  w2 = ((q4(1) * ((0.267 * q4(1) - 1.642 * q4(2)) + (1.602 * q4(3) - 0.494 * q4(4)))) + &
-     (q4(2) * ((2.843 * q4(2) - 5.966 * q4(3)) + 1.922 * q4(4)))) + &
-     ((q4(3) * (3.443 * q4(3) - 2.522 * q4(4))) + 0.547 * (q4(4) * q4(4)))
+  w2 = ((q4(1) * ((0.267_wp * q4(1) - 1.642_wp * q4(2)) + (1.602_wp * q4(3) - 0.494_wp * q4(4)))) + &
+     (q4(2) * ((2.843_wp * q4(2) - 5.966_wp * q4(3)) + 1.922_wp * q4(4)))) + &
+     ((q4(3) * (3.443_wp * q4(3) - 2.522_wp * q4(4))) + 0.547_wp * (q4(4) * q4(4)))
 
 end subroutine weno_seven_weight_2
 
 !> Compute smoothness indicator for the first upwind stencil of the seventh-order WENO scheme
 subroutine weno_seven_weight_3(q4, w3)
-  real, intent(in) :: q4(4)           !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: w3           !< Smoothness indicator for this stencil [A2 ~> a2]
+  real(wp), intent(in) :: q4(4)           !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: w3           !< Smoothness indicator for this stencil [A2 ~> a2]
 
   ! Coefficients from Balsara and Shu (2000). The division by 1000 will be normalized out by fac_fn
-  w3 = ((q4(1) * ((0.547  * q4(1) - 3.882 * q4(2)) + (4.642 * q4(3) - 1.854 * q4(4)))) + &
-     (q4(2) * ((7.043 * q4(2) - 17.246 * q4(3)) + 7.042 * q4(4)))) + &
-     ((q4(3) * (11.003 * q4(3) - 9.402 * q4(4))) + 2.107 * (q4(4) * q4(4)))
+  w3 = ((q4(1) * ((0.547_wp  * q4(1) - 3.882_wp * q4(2)) + (4.642_wp * q4(3) - 1.854_wp * q4(4)))) + &
+     (q4(2) * ((7.043_wp * q4(2) - 17.246_wp * q4(3)) + 7.042_wp * q4(4)))) + &
+     ((q4(3) * (11.003_wp * q4(3) - 9.402_wp * q4(4))) + 2.107_wp * (q4(4) * q4(4)))
 
 end subroutine weno_seven_weight_3
 
 !> Reconstruction in the fourth upwind stencil for seventh-order WENO scheme
 subroutine weno_seven_reconstruction_0(q4, p0)
-  real, intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: p0            !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_24 = 1.0/24.0  ! One twenty fourth [nondim]
+  real(wp), intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: p0            !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_24 = 1.0_wp/24.0_wp  ! One twenty fourth [nondim]
 
   p0 = (((6 * q4(1) + 26 * q4(2)) - 10 * q4(3)) + 2 * q4(4)) * C1_24
 
@@ -1834,9 +1836,9 @@ end subroutine weno_seven_reconstruction_0
 
 !> Reconstruction in the third upwind stencil for seventh-order WENO scheme
 subroutine weno_seven_reconstruction_1(q4, p1)
-  real, intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: p1            !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_24 = 1.0/24.0  ! One twenty fourth [nondim]
+  real(wp), intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: p1            !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_24 = 1.0_wp/24.0_wp  ! One twenty fourth [nondim]
 
   p1 = (14 * (q4(2) + q4(3)) - 2 * (q4(1) + q4(4))) * C1_24
 
@@ -1844,9 +1846,9 @@ end subroutine weno_seven_reconstruction_1
 
 !> Reconstruction in the second upwind stencil for seventh-order WENO scheme
 subroutine weno_seven_reconstruction_2(q4, p2)
-  real, intent(in) :: q4(4)             !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: p2             !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_24 = 1.0/24.0   ! One twenty fourth [nondim]
+  real(wp), intent(in) :: q4(4)             !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: p2             !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_24 = 1.0_wp/24.0_wp   ! One twenty fourth [nondim]
 
   p2 = (((2 * q4(1) - 10 * q4(2)) + 26 * q4(3)) + 6 * q4(4)) * C1_24
 
@@ -1854,9 +1856,9 @@ end subroutine weno_seven_reconstruction_2
 
 !> Reconstruction in the first upwind stencil for seventh-order WENO scheme
 subroutine weno_seven_reconstruction_3(q4, p3)
-  real, intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
-  real, intent(inout) :: p3            !< Reconstruction of the quantity [A ~> a]
-  real, parameter :: C1_24 = 1.0/24.0  ! One twenty fourth [nondim]
+  real(wp), intent(in) :: q4(4)            !< Tracer values on the four-point stencil [A ~> a]
+  real(wp), intent(inout) :: p3            !< Reconstruction of the quantity [A ~> a]
+  real(wp), parameter :: C1_24 = 1.0_wp/24.0_wp  ! One twenty fourth [nondim]
 
   p3 = (((-6 * q4(1) + 26 * q4(2)) - 46 * q4(3)) + 50 * q4(4)) * C1_24
 
@@ -1967,16 +1969,16 @@ subroutine CoriolisAdv_init(Time, G, GV, US, param_file, diag, AD, CS)
                  "beyond which the blending between Sadourny Energy and "//&
                  "Arakawa & Hsu goes linearly to 0 when CORIOLIS_SCHEME "//&
                  "is ARAWAKA_LAMB_BLEND. This must be between 1 and 1e-16.", &
-                 units="nondim", default=0.125)
+                 units="nondim", default=0.125_wp)
     call get_param(param_file, mdl, "CORIOLIS_BLEND_F_EFF_MAX", CS%F_eff_max_blend, &
                  "The factor by which the maximum effective Coriolis "//&
                  "acceleration from any point can be increased when "//&
                  "blending different discretizations with the "//&
                  "ARAKAWA_LAMB_BLEND Coriolis scheme.  This must be "//&
                  "greater than 2.0 (the max value for Sadourny energy).", &
-                 units="nondim", default=4.0)
-    CS%wt_lin_blend = min(1.0, max(CS%wt_lin_blend,1e-16))
-    if (CS%F_eff_max_blend < 2.0) call MOM_error(WARNING, "CoriolisAdv_init: "//&
+                 units="nondim", default=4.0_wp)
+    CS%wt_lin_blend = min(1.0_wp, max(CS%wt_lin_blend,1e-16_wp))
+    if (CS%F_eff_max_blend < 2.0_wp) call MOM_error(WARNING, "CoriolisAdv_init: "//&
            "CORIOLIS_BLEND_F_EFF_MAX should be at least 2.")
   endif
 

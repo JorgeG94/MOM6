@@ -3,7 +3,6 @@ module MOM_sum_output
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
-use iso_fortran_env, only : int64
 use MOM_checksums,     only : is_NaN, field_checksum
 use MOM_coms,          only : sum_across_PEs, PE_here, root_PE, num_PEs, max_across_PEs
 use MOM_coms,          only : reproducing_sum, reproducing_sum_EFP, EFP_to_real, real_to_EFP
@@ -30,6 +29,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : surface, thermo_var_ptrs
 use MOM_verticalGrid,  only : verticalGrid_type
 
+use MOM_datatypes, only : int64, wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -55,9 +56,9 @@ character (*), parameter :: area_chksum_attr = "mask2dT_areaT_checksum"
 !! depth and the ocean volume below each depth.
 type :: Depth_List
   integer                         :: listsize  !< length of the list <= niglobal*njglobal + 1
-  real, allocatable, dimension(:) :: depth     !< A list of depths [Z ~> m]
-  real, allocatable, dimension(:) :: area      !< The cross-sectional area of the ocean at that depth [L2 ~> m2]
-  real, allocatable, dimension(:) :: vol_below !< The ocean volume below that depth [Z L2 ~> m3]
+  real(wp), allocatable, dimension(:) :: depth     !< A list of depths [Z ~> m]
+  real(wp), allocatable, dimension(:) :: area      !< The cross-sectional area of the ocean at that depth [L2 ~> m2]
+  real(wp), allocatable, dimension(:) :: vol_below !< The ocean volume below that depth [Z L2 ~> m3]
 end type Depth_List
 
 !> The control structure for the MOM_sum_output module
@@ -75,7 +76,7 @@ type, public :: sum_output_CS ; private
   logical :: read_depth_list    !<   Read the depth list from a file if it exists
                                 !! and write it if it doesn't.
   character(len=200) :: depth_list_file  !< The name of the depth list file.
-  real    :: D_list_min_inc     !<  The minimum increment [Z ~> m], between the depths of the
+  real(wp)    :: D_list_min_inc     !<  The minimum increment [Z ~> m], between the depths of the
                                 !! entries in the depth-list file, 0 by default.
   logical :: require_depth_list_chksum
                                 !< Require matching checksums in Depth_list.nc when reading
@@ -96,7 +97,7 @@ type, public :: sum_output_CS ; private
                                   !! time that write_energy was called [ppt kg].
   type(EFP_type) :: mass_prev_EFP !< The total ocean mass the last time that
                                   !! write_energy was called [kg].
-  real    :: dt_in_T            !< The baroclinic dynamics time step [T ~> s].
+  real(wp)    :: dt_in_T            !< The baroclinic dynamics time step [T ~> s].
 
   type(time_type) :: energysavedays            !< The interval between writing the energies
                                                !! and other integral quantities of the run.
@@ -111,7 +112,7 @@ type, public :: sum_output_CS ; private
                                                !! of calls to write_energy and revert to the standard
                                                !! energysavedays interval
 
-  real    :: timeunit           !< The length of the units for the time axis and certain input parameters
+  real(wp)    :: timeunit           !< The length of the units for the time axis and certain input parameters
                                 !! including ENERGYSAVEDAYS [s].
 
   logical :: date_stamped_output !< If true, use dates (not times) in messages to stdout.
@@ -120,7 +121,7 @@ type, public :: sum_output_CS ; private
                                 ! Start_time is set in MOM_initialization.F90
   integer, pointer :: ntrunc => NULL() !< The number of times the velocity has been
                                 !! truncated since the last call to write_energy.
-  real    :: max_Energy         !< The maximum permitted energy per unit mass.  If there is
+  real(wp)    :: max_Energy         !< The maximum permitted energy per unit mass.  If there is
                                 !! more energy than this, the model should stop [L2 T-2 ~> m2 s-2].
   integer :: maxtrunc           !< The number of truncations per energy save
                                 !! interval at which the run is stopped.
@@ -159,7 +160,7 @@ subroutine MOM_sum_output_init(G, GV, US, param_file, directory, ntrnc, &
   type(Sum_output_CS),     pointer       :: CS         !< A pointer that is set to point to the
                                                        !! control structure for this module.
   ! Local variables
-  real :: maxvel    ! The maximum permitted velocity [L T-1 ~> m s-1]
+  real(wp) :: maxvel    ! The maximum permitted velocity [L T-1 ~> m s-1]
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=40)  :: mdl = "MOM_sum_output" ! This module's name.
@@ -210,12 +211,12 @@ subroutine MOM_sum_output_init(G, GV, US, param_file, directory, ntrnc, &
                  "The maximum permitted average energy per unit mass; the "//&
                  "model will be stopped if there is more energy than "//&
                  "this.  If zero or negative, this is set to 10*MAXVEL^2.", &
-                 units="m2 s-2", default=0.0, scale=US%m_s_to_L_T**2)
-  if (CS%max_Energy <= 0.0) then
+                 units="m2 s-2", default=0.0_wp, scale=US%m_s_to_L_T**2)
+  if (CS%max_Energy <= 0.0_wp) then
     call get_param(param_file, mdl, "MAXVEL", maxvel, &
                  "The maximum velocity allowed before the velocity "//&
-                 "components are truncated.", units="m s-1", default=3.0e8, scale=US%m_s_to_L_T)
-    CS%max_Energy = 10.0 * maxvel**2
+                 "components are truncated.", units="m s-1", default=3.0e8_wp, scale=US%m_s_to_L_T)
+    CS%max_Energy = 10.0_wp * maxvel**2
     call log_param(param_file, mdl, "MAX_ENERGY as used", CS%max_Energy, &
                    units="m2 s-2", unscale=US%L_T_to_m_s**2)
   endif
@@ -245,8 +246,8 @@ subroutine MOM_sum_output_init(G, GV, US, param_file, directory, ntrnc, &
   ! Note that the units of CS%Timeunit are the MKS units of [s].
   call get_param(param_file, mdl, "TIMEUNIT", CS%Timeunit, &
                  "The time unit in seconds a number of input fields", &
-                 units="s", default=86400.0)
-  if (CS%Timeunit < 0.0) CS%Timeunit = 86400.0
+                 units="s", default=86400.0_wp)
+  if (CS%Timeunit < 0.0_wp) CS%Timeunit = 86400.0_wp
 
   if (CS%do_APE_calc) then
     call get_param(param_file, mdl, "READ_DEPTH_LIST", CS%read_depth_list, &
@@ -255,7 +256,7 @@ subroutine MOM_sum_output_init(G, GV, US, param_file, directory, ntrnc, &
     call get_param(param_file, mdl, "DEPTH_LIST_MIN_INC", CS%D_list_min_inc, &
                    "The minimum increment between the depths of the "//&
                    "entries in the depth-list file.", &
-                   units="m", default=1.0E-10, scale=US%m_to_Z)
+                   units="m", default=1.0E-10_wp, scale=US%m_to_Z)
     if (CS%read_depth_list) then
       call get_param(param_file, mdl, "DEPTH_LIST_FILE", CS%depth_list_file, &
                    "The name of the depth list file.", default="Depth_list.nc")
@@ -290,7 +291,7 @@ subroutine MOM_sum_output_init(G, GV, US, param_file, directory, ntrnc, &
                  "The interval increases by a factor of 2. after each call to write_energy.",&
                  default=set_time(seconds=0), timeunit=CS%Timeunit)
 
-  if ((time_type_to_real(CS%energysavedays_geometric) > 0.) .and. &
+  if ((time_type_to_real(CS%energysavedays_geometric) > 0._wp) .and. &
      (CS%energysavedays_geometric < CS%energysavedays)) then
          CS%energysave_geometric = .true.
   else
@@ -322,11 +323,11 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   type(ocean_grid_type),   intent(in)    :: G   !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)    :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)    :: US  !< A dimensional unit scaling type
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: u   !< The zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in)    :: v   !< The meridional velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h   !< Layer thicknesses [H ~> m or kg m-2].
   type(thermo_var_ptrs),   intent(in)    :: tv  !< A structure pointing to various
                                                 !! thermodynamic variables.
@@ -340,46 +341,46 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   type(time_type),  optional, intent(in) :: dt_forcing !< The forcing time step
 
   ! Local variables
-  real :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! The height of interfaces [Z ~> m].
-  real :: areaTm(SZI_(G),SZJ_(G)) ! A masked version of areaT [L2 ~> m2].
-  real :: KE(SZK_(GV)) ! The total kinetic energy of a layer [R Z L4 T-2 ~> J]
-  real :: PE(SZK_(GV)+1)! The available potential energy of an interface [R Z L4 T-2 ~> J]
-  real :: KE_tot       ! The total kinetic energy [R Z L4 T-2 ~> J].
-  real :: PE_tot       ! The total available potential energy [R Z L4 T-2 ~> J].
-  real :: Z_0APE(SZK_(GV)+1) ! The uniform depth which overlies the same
+  real(wp) :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! The height of interfaces [Z ~> m].
+  real(wp) :: areaTm(SZI_(G),SZJ_(G)) ! A masked version of areaT [L2 ~> m2].
+  real(wp) :: KE(SZK_(GV)) ! The total kinetic energy of a layer [R Z L4 T-2 ~> J]
+  real(wp) :: PE(SZK_(GV)+1)! The available potential energy of an interface [R Z L4 T-2 ~> J]
+  real(wp) :: KE_tot       ! The total kinetic energy [R Z L4 T-2 ~> J].
+  real(wp) :: PE_tot       ! The total available potential energy [R Z L4 T-2 ~> J].
+  real(wp) :: Z_0APE(SZK_(GV)+1) ! The uniform depth which overlies the same
                        ! volume as is below an interface [Z ~> m].
-  real :: toten        ! The total kinetic & potential energies of all layers [R Z L4 T-2 ~> J]
-  real :: En_mass      ! The total kinetic and potential energies divided by
+  real(wp) :: toten        ! The total kinetic & potential energies of all layers [R Z L4 T-2 ~> J]
+  real(wp) :: En_mass      ! The total kinetic and potential energies divided by
                        ! the total mass of the ocean [L2 T-2 ~> m2 s-2].
-  real :: vol_lay(SZK_(GV)) ! The volume of fluid in a layer [Z L2 ~> m3].
-  real :: volbelow     ! The volume of all layers beneath an interface [Z L2 ~> m3].
-  real :: mass_lay(SZK_(GV)) ! The mass of fluid in a layer [R Z L2 ~> kg]
-  real :: mass_tot     ! The total mass of the ocean [R Z L2 ~> kg]
-  real :: vol_tot      ! The total ocean volume [Z L2 ~> m3]
-  real :: mass_chg     ! The change in total ocean mass of fresh water since
+  real(wp) :: vol_lay(SZK_(GV)) ! The volume of fluid in a layer [Z L2 ~> m3].
+  real(wp) :: volbelow     ! The volume of all layers beneath an interface [Z L2 ~> m3].
+  real(wp) :: mass_lay(SZK_(GV)) ! The mass of fluid in a layer [R Z L2 ~> kg]
+  real(wp) :: mass_tot     ! The total mass of the ocean [R Z L2 ~> kg]
+  real(wp) :: vol_tot      ! The total ocean volume [Z L2 ~> m3]
+  real(wp) :: mass_chg     ! The change in total ocean mass of fresh water since
                        ! the last call to this subroutine [R Z L2 ~> kg]
-  real :: mass_anom    ! The change in fresh water that cannot be accounted for
+  real(wp) :: mass_anom    ! The change in fresh water that cannot be accounted for
                        ! by the surface fluxes [R Z L2 ~> kg]
-  real :: Salt         ! The total amount of salt in the ocean [1e-3 R Z L2 ~> g Salt]
-  real :: Salt_chg     ! The change in total ocean salt since the last call
+  real(wp) :: Salt         ! The total amount of salt in the ocean [1e-3 R Z L2 ~> g Salt]
+  real(wp) :: Salt_chg     ! The change in total ocean salt since the last call
                        ! to this subroutine [1e-3 R Z L2 ~> g Salt]
-  real :: Salt_anom    ! The change in salt that cannot be accounted for by
+  real(wp) :: Salt_anom    ! The change in salt that cannot be accounted for by
                        ! the surface fluxes [1e-3 R Z L2 ~> g Salt]
-  real :: salin        ! The mean salinity of the ocean [ppt].
-  real :: salin_anom   ! The change in total salt that cannot be accounted for by
+  real(wp) :: salin        ! The mean salinity of the ocean [ppt].
+  real(wp) :: salin_anom   ! The change in total salt that cannot be accounted for by
                        ! the surface fluxes divided by total mass [ppt].
-  real :: Heat         ! The total amount of Heat in the ocean [Q R Z L2 ~> J]
-  real :: Heat_chg     ! The change in total ocean heat since the last call to this subroutine [Q R Z L2 ~> J]
-  real :: Heat_anom    ! The change in heat that cannot be accounted for by the surface fluxes [Q R Z L2 ~> J]
-  real :: temp         ! The mean potential temperature of the ocean [C ~> degC]
-  real :: temp_anom    ! The change in total heat that cannot be accounted for
+  real(wp) :: Heat         ! The total amount of Heat in the ocean [Q R Z L2 ~> J]
+  real(wp) :: Heat_chg     ! The change in total ocean heat since the last call to this subroutine [Q R Z L2 ~> J]
+  real(wp) :: Heat_anom    ! The change in heat that cannot be accounted for by the surface fluxes [Q R Z L2 ~> J]
+  real(wp) :: temp         ! The mean potential temperature of the ocean [C ~> degC]
+  real(wp) :: temp_anom    ! The change in total heat that cannot be accounted for
                        ! by the surface fluxes, divided by the total heat
                        ! capacity of the ocean [C ~> degC]
-  real :: hint         ! The deviation of an interface from H [Z ~> m].
-  real :: hbot         ! 0 if the basin is deeper than H, or the
+  real(wp) :: hint         ! The deviation of an interface from H [Z ~> m].
+  real(wp) :: hbot         ! 0 if the basin is deeper than H, or the
                        ! height of the basin depth over H otherwise [Z ~> m].
                        ! This makes PE only include real fluid.
-  real :: hbelow       ! The depth of fluid in all layers beneath an interface [Z ~> m].
+  real(wp) :: hbelow       ! The depth of fluid in all layers beneath an interface [Z ~> m].
   type(EFP_type) :: &
     mass_EFP, &        ! The total mass of the ocean in extended fixed point form [kg].
     salt_EFP, &        ! The total amount of salt in the ocean in extended fixed point form [ppt kg].
@@ -394,25 +395,25 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     mass_anom_EFP      ! The change in fresh water that cannot be accounted for by the surface
                        ! fluxes [kg].
   type(EFP_type), dimension(5) :: EFP_list ! An array of EFP types for joint global sums.
-  real :: CFL_Iarea    ! Direction-based inverse area used in CFL test [L-2 ~> m-2].
-  real :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
-  real :: CFL_lin      ! A simpler definition of the CFL number [nondim].
-  real :: max_CFL(2)   ! The maxima of the CFL numbers [nondim].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
+  real(wp) :: CFL_Iarea    ! Direction-based inverse area used in CFL test [L-2 ~> m-2].
+  real(wp) :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
+  real(wp) :: CFL_lin      ! A simpler definition of the CFL number [nondim].
+  real(wp) :: max_CFL(2)   ! The maxima of the CFL numbers [nondim].
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: &
     tmp1               ! A temporary array used in reproducing sums [various]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: &
     PE_pt              ! The potential energy at each point [R Z L4 T-2 ~> J].
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int ! Layer and cell integrated heat and salt [Q R Z L2 ~> J] and [1e-3 R Z L2 ~> g Salt].
-  real :: RZL4_T2_to_J ! The combination of unit rescaling factors to convert the spatially integrated
+  real(wp) :: RZL4_T2_to_J ! The combination of unit rescaling factors to convert the spatially integrated
                        ! kinetic or potential energies into mks units [T2 kg m2 R-1 Z-1 L-4 s-2 ~> 1]
-  real :: QRZL2_to_J   ! The combination of unit rescaling factors to convert integrated heat
+  real(wp) :: QRZL2_to_J   ! The combination of unit rescaling factors to convert integrated heat
                        ! content into mks units [J Q-1 R-1 Z-1 L-2 ~> 1]
-  real :: J_to_QRZL2   ! The combination of unit rescaling factors to rescale integrated heat
+  real(wp) :: J_to_QRZL2   ! The combination of unit rescaling factors to rescale integrated heat
                        ! content from mks units into the internal units of MOM6 [Q R Z L2 J-1 ~> 1]
-  real :: kg_to_RZL2   ! The combination of unit rescaling factors to rescale masses from
+  real(wp) :: kg_to_RZL2   ! The combination of unit rescaling factors to rescale masses from
                        ! mks units into the internal units of MOM6 [R Z L2 kg-1 ~> 1]
-  real :: salt_to_kg   ! A factor used to rescale salt contents [kg R-1 Z-1 L-2 ~> nondim]
+  real(wp) :: salt_to_kg   ! A factor used to rescale salt contents [kg R-1 Z-1 L-2 ~> nondim]
   integer :: num_nc_fields  ! The number of fields that will actually go into
                             ! the NetCDF file.
   integer :: i, j, k, is, ie, js, je, nz, m, Isq, Ieq, Jsq, Jeq, isr, ier, jsr, jer
@@ -420,54 +421,54 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
                                  ! lbelow & labove are lower & upper limits for li
                                  ! in the search for the entry in lH to use.
   integer :: start_of_day, num_days
-  real    :: reday  ! Time in units given by CS%Timeunit, but often [days]
+  real(wp)    :: reday  ! Time in units given by CS%Timeunit, but often [days]
   character(len=240) :: energypath_nc
   character(len=200) :: mesg
   character(len=32)  :: mesg_intro, time_units, day_str, n_str, date_str, ISO_date_str
   logical :: date_stamped, ISO_date_stamped
   type(time_type) :: dt_force ! A time_type version of the forcing timestep.
 
-  real :: S_min   ! The global minimum unmasked value of the salinity [ppt]
-  real :: S_max   ! The global maximum unmasked value of the salinity [ppt]
-  real :: S_min_x ! The x-positions of the global salinity minima
+  real(wp) :: S_min   ! The global minimum unmasked value of the salinity [ppt]
+  real(wp) :: S_max   ! The global maximum unmasked value of the salinity [ppt]
+  real(wp) :: S_min_x ! The x-positions of the global salinity minima
                   ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: S_min_y ! The y-positions of the global salinity minima
+  real(wp) :: S_min_y ! The y-positions of the global salinity minima
                   ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: S_min_z ! The z-positions of the global salinity minima [layer]
-  real :: S_max_x ! The x-positions of the global salinity maxima
+  real(wp) :: S_min_z ! The z-positions of the global salinity minima [layer]
+  real(wp) :: S_max_x ! The x-positions of the global salinity maxima
                   ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: S_max_y ! The y-positions of the global salinity maxima
+  real(wp) :: S_max_y ! The y-positions of the global salinity maxima
                   ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: S_max_z ! The z-positions of the global salinity maxima [layer]
+  real(wp) :: S_max_z ! The z-positions of the global salinity maxima [layer]
 
-  real :: T_min   ! The global minimum unmasked value of the temperature [degC]
-  real :: T_max   ! The global maximum unmasked value of the temperature [degC]
-  real :: T_min_x ! The x-positions of the global temperature minima
+  real(wp) :: T_min   ! The global minimum unmasked value of the temperature [degC]
+  real(wp) :: T_max   ! The global maximum unmasked value of the temperature [degC]
+  real(wp) :: T_min_x ! The x-positions of the global temperature minima
                   ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: T_min_y ! The y-positions of the global temperature minima
+  real(wp) :: T_min_y ! The y-positions of the global temperature minima
                   ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: T_min_z ! The z-positions of the global temperature minima [layer]
-  real :: T_max_x ! The x-positions of the global temperature maxima
+  real(wp) :: T_min_z ! The z-positions of the global temperature minima [layer]
+  real(wp) :: T_max_x ! The x-positions of the global temperature maxima
                   ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: T_max_y ! The y-positions of the global temperature maxima
+  real(wp) :: T_max_y ! The y-positions of the global temperature maxima
                   ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: T_max_z ! The z-positions of the global temperature maxima [layer]
+  real(wp) :: T_max_z ! The z-positions of the global temperature maxima [layer]
 
 
   ! The units of the tracer stock vary between tracers, with [conc] given explicitly by Tr_units.
-  real :: Tr_stocks(MAX_FIELDS_) ! The total amounts of each of the registered tracers [kg conc]
-  real :: Tr_min(MAX_FIELDS_)   ! The global minimum unmasked value of the tracers [conc]
-  real :: Tr_max(MAX_FIELDS_)   ! The global maximum unmasked value of the tracers [conc]
-  real :: Tr_min_x(MAX_FIELDS_) ! The x-positions of the global tracer minima
+  real(wp) :: Tr_stocks(MAX_FIELDS_) ! The total amounts of each of the registered tracers [kg conc]
+  real(wp) :: Tr_min(MAX_FIELDS_)   ! The global minimum unmasked value of the tracers [conc]
+  real(wp) :: Tr_max(MAX_FIELDS_)   ! The global maximum unmasked value of the tracers [conc]
+  real(wp) :: Tr_min_x(MAX_FIELDS_) ! The x-positions of the global tracer minima
                                 ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: Tr_min_y(MAX_FIELDS_) ! The y-positions of the global tracer minima
+  real(wp) :: Tr_min_y(MAX_FIELDS_) ! The y-positions of the global tracer minima
                                 ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: Tr_min_z(MAX_FIELDS_) ! The z-positions of the global tracer minima [layer]
-  real :: Tr_max_x(MAX_FIELDS_) ! The x-positions of the global tracer maxima
+  real(wp) :: Tr_min_z(MAX_FIELDS_) ! The z-positions of the global tracer minima [layer]
+  real(wp) :: Tr_max_x(MAX_FIELDS_) ! The x-positions of the global tracer maxima
                                 ! in the units of G%geoLonT, often [degrees_E] or [km]
-  real :: Tr_max_y(MAX_FIELDS_) ! The y-positions of the global tracer maxima
+  real(wp) :: Tr_max_y(MAX_FIELDS_) ! The y-positions of the global tracer maxima
                                 ! in the units of G%geoLatT, often [degrees_N] or [km]
-  real :: Tr_max_z(MAX_FIELDS_) ! The z-positions of the global tracer maxima [layer]
+  real(wp) :: Tr_max_z(MAX_FIELDS_) ! The z-positions of the global tracer maxima [layer]
   logical :: Tr_minmax_avail(MAX_FIELDS_) ! A flag indicating whether the global minimum and
                                 ! maximum information are available for each of the tracers
   character(len=40), dimension(MAX_FIELDS_) :: &
@@ -514,7 +515,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
 
   RZL4_T2_to_J = US%RZL2_to_kg*US%L_T_to_m_s**2     ! Used to unscale energies
   QRZL2_to_J = US%RZL2_to_kg*US%Q_to_J_kg           ! Used to unscale heat contents
-  salt_to_kg = 0.001*US%RZL2_to_kg                  ! Used to unscale salt contents
+  salt_to_kg = 0.001_wp*US%RZL2_to_kg                  ! Used to unscale salt contents
   kg_to_RZL2 = US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2 ! Used to scale masses
   J_to_QRZL2 = US%J_kg_to_Q*kg_to_RZL2              ! Used to scale heat contents
 
@@ -554,14 +555,14 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     areaTm(i,j) = G%mask2dT(i,j)*G%areaT(i,j)
   enddo ; enddo
 
-  tmp1(:,:,:) = 0.0
+  tmp1(:,:,:) = 0.0_wp
   do k=1,nz ; do j=js,je ; do i=is,ie
     tmp1(i,j,k) = h(i,j,k) * (GV%H_to_RZ*areaTm(i,j))
   enddo ; enddo ; enddo
   mass_tot = reproducing_sum(tmp1, isr, ier, jsr, jer, sums=mass_lay, EFP_sum=mass_EFP, unscale=US%RZL2_to_kg)
 
   if (GV%Boussinesq) then
-    do k=1,nz ; vol_lay(k) = (1.0 / GV%Rho0) * mass_lay(k) ; enddo
+    do k=1,nz ; vol_lay(k) = (1.0_wp / GV%Rho0) * mass_lay(k) ; enddo
   else
     if (CS%do_APE_calc) then
       call find_eta(h, tv, G, GV, US, eta, dZref=G%Z_ref)
@@ -606,9 +607,9 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   if (CS%previous_calls == 0) then
 
     CS%mass_prev_EFP = mass_EFP
-    CS%fresh_water_in_EFP = real_to_EFP(0.0)
+    CS%fresh_water_in_EFP = real_to_EFP(0.0_wp)
     if (CS%use_temperature) then
-      CS%net_salt_in_EFP = real_to_EFP(0.0)  ; CS%net_heat_in_EFP = real_to_EFP(0.0)
+      CS%net_salt_in_EFP = real_to_EFP(0.0_wp)  ; CS%net_heat_in_EFP = real_to_EFP(0.0_wp)
     endif
 
     !  Reopen or create a text output file, with an explanatory header line.
@@ -617,7 +618,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
         call open_ASCII_file(CS%fileenergy_ascii, trim(CS%energyfile), action=APPEND_FILE)
       else
         call open_ASCII_file(CS%fileenergy_ascii, trim(CS%energyfile), action=WRITEONLY_FILE)
-        if (abs(CS%timeunit - 86400.0) < 1.0) then
+        if (abs(CS%timeunit - 86400.0_wp) < 1.0_wp) then
           if (CS%use_temperature) then
             write(CS%fileenergy_ascii,'("  Step,",7x,"Day,  Truncs,      &
                 &Energy/Mass,      Maximum CFL,  Mean Sea Level,  Total Mass,  Mean Salin, &
@@ -631,13 +632,13 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
                 &"[kg]",11x,"[Nondim]")')
           endif
         else
-          if ((CS%timeunit >= 0.99) .and. (CS%timeunit < 1.01)) then
+          if ((CS%timeunit >= 0.99_wp) .and. (CS%timeunit < 1.01_wp)) then
             time_units = "           [seconds]     "
-          elseif ((CS%timeunit >= 3599.0) .and. (CS%timeunit < 3601.0)) then
+          elseif ((CS%timeunit >= 3599.0_wp) .and. (CS%timeunit < 3601.0_wp)) then
             time_units = "            [hours]      "
-          elseif ((CS%timeunit >= 86399.0) .and. (CS%timeunit < 86401.0)) then
+          elseif ((CS%timeunit >= 86399.0_wp) .and. (CS%timeunit < 86401.0_wp)) then
             time_units = "             [days]      "
-          elseif ((CS%timeunit >= 3.0e7) .and. (CS%timeunit < 3.2e7)) then
+          elseif ((CS%timeunit >= 3.0e7_wp) .and. (CS%timeunit < 3.2e7_wp)) then
             time_units = "            [years]      "
           else
             write(time_units,'(9x,"[",es8.2," s]    ")') CS%timeunit
@@ -671,7 +672,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   endif
 
   if (CS%do_APE_calc) then
-    lbelow = 1 ; volbelow = 0.0
+    lbelow = 1 ; volbelow = 0.0_wp
     do k=nz,1,-1
       volbelow = volbelow + vol_lay(k)
       if ((volbelow >= CS%DL%vol_below(CS%lH(k))) .and. &
@@ -695,16 +696,16 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     !   Calculate the Available Potential Energy integrated over each interface.  With a nonlinear
     ! equation of state or with a bulk mixed layer this calculation is only approximate.
     ! With an ALE model this does not make sense and should be revisited.
-    PE_pt(:,:,:) = 0.0
+    PE_pt(:,:,:) = 0.0_wp
     if (GV%Boussinesq) then
       do j=js,je ; do i=is,ie
-        hbelow = 0.0
+        hbelow = 0.0_wp
         do K=nz,1,-1
           hbelow = hbelow + h(i,j,k) * GV%H_to_Z
           hint = Z_0APE(K) + (hbelow - (G%bathyT(i,j) + G%Z_ref))
           hbot = Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref)
-          hbot = (hbot + ABS(hbot)) * 0.5
-          PE_pt(i,j,K) = (0.5 * areaTm(i,j)) * (GV%Rho0*GV%g_prime(K)) * &
+          hbot = (hbot + ABS(hbot)) * 0.5_wp
+          PE_pt(i,j,K) = (0.5_wp * areaTm(i,j)) * (GV%Rho0*GV%g_prime(K)) * &
                   (hint * hint - hbot * hbot)
         enddo
       enddo ; enddo
@@ -712,8 +713,8 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
       do j=js,je ; do i=is,ie
         do K=nz,1,-1
           hint = Z_0APE(K) + eta(i,j,K)  ! eta and H_0 have opposite signs.
-          hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0)
-          PE_pt(i,j,K) = (0.5 * areaTm(i,j) * (GV%Rho0*GV%g_prime(K))) * &
+          hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0_wp)
+          PE_pt(i,j,K) = (0.5_wp * areaTm(i,j) * (GV%Rho0*GV%g_prime(K))) * &
                          (hint * hint - hbot * hbot)
         enddo
       enddo ; enddo
@@ -721,28 +722,28 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
       do j=js,je ; do i=is,ie
         do K=nz,2,-1
           hint = Z_0APE(K) + eta(i,j,K)  ! eta and H_0 have opposite signs.
-          hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0)
-          PE_pt(i,j,K) = (0.25 * areaTm(i,j) * &
+          hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0_wp)
+          PE_pt(i,j,K) = (0.25_wp * areaTm(i,j) * &
                           ((GV%Rlay(k)+GV%Rlay(k-1))*GV%g_prime(K))) * &
                          (hint * hint - hbot * hbot)
         enddo
         hint = Z_0APE(1) + eta(i,j,1)  ! eta and H_0 have opposite signs.
-        hbot = max(Z_0APE(1) - (G%bathyT(i,j) + G%Z_ref), 0.0)
-        PE_pt(i,j,1) = (0.5 * areaTm(i,j) * (GV%Rlay(1)*GV%g_prime(1))) * &
+        hbot = max(Z_0APE(1) - (G%bathyT(i,j) + G%Z_ref), 0.0_wp)
+        PE_pt(i,j,1) = (0.5_wp * areaTm(i,j) * (GV%Rlay(1)*GV%g_prime(1))) * &
                        (hint * hint - hbot * hbot)
       enddo ; enddo
     endif
 
     PE_tot = reproducing_sum(PE_pt, isr, ier, jsr, jer, sums=PE, unscale=RZL4_T2_to_J)
   else
-    PE_tot = 0.0
-    do k=1,nz+1 ; PE(K) = 0.0 ; Z_0APE(K) = 0.0 ; enddo
+    PE_tot = 0.0_wp
+    do k=1,nz+1 ; PE(K) = 0.0_wp ; Z_0APE(K) = 0.0_wp ; enddo
   endif
 
   ! Calculate the Kinetic Energy integrated over each layer.
-  tmp1(:,:,:) = 0.0
+  tmp1(:,:,:) = 0.0_wp
   do k=1,nz ; do j=js,je ; do i=is,ie
-    tmp1(i,j,k) = (0.25 * GV%H_to_RZ*(areaTm(i,j) * h(i,j,k))) * &
+    tmp1(i,j,k) = (0.25_wp * GV%H_to_RZ*(areaTm(i,j) * h(i,j,k))) * &
             (((u(I-1,j,k)**2) + (u(I,j,k)**2)) + ((v(i,J-1,k)**2) + (v(i,J,k)**2)))
   enddo ; enddo ; enddo
 
@@ -750,7 +751,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
 
   ! Use reproducing sums to do global integrals relate to the heat, salinity and water budgets.
   if (CS%use_temperature) then
-    Temp_int(:,:) = 0.0 ; Salt_int(:,:) = 0.0
+    Temp_int(:,:) = 0.0_wp ; Salt_int(:,:) = 0.0_wp
     do k=1,nz ; do j=js,je ; do i=is,ie
       Salt_int(i,j) = Salt_int(i,j) + tv%S(i,j,k) * (h(i,j,k)*(GV%H_to_RZ * areaTm(i,j)))
       Temp_int(i,j) = Temp_int(i,j) + (tv%C_p * tv%T(i,j,k)) * (h(i,j,k)*(GV%H_to_RZ * areaTm(i,j)))
@@ -773,10 +774,10 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   endif
 
   ! Calculate the maximum CFL numbers.
-  max_CFL(1:2) = 0.0
+  max_CFL(1:2) = 0.0_wp
   do k=1,nz ; do j=js,je ; do I=Isq,Ieq
     CFL_Iarea = G%IareaT(i,j)
-    if (u(I,j,k) < 0.0) &
+    if (u(I,j,k) < 0.0_wp) &
       CFL_Iarea = G%IareaT(i+1,j)
 
     CFL_trans = abs(u(I,j,k) * CS%dt_in_T) * (G%dy_Cu(I,j) * CFL_Iarea)
@@ -786,7 +787,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   enddo ; enddo ; enddo
   do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
     CFL_Iarea = G%IareaT(i,j)
-    if (v(i,J,k) < 0.0) &
+    if (v(i,J,k) < 0.0_wp) &
       CFL_Iarea = G%IareaT(i,j+1)
 
     CFL_trans = abs(v(i,J,k) * CS%dt_in_T) * (G%dx_Cv(i,J) * CFL_Iarea)
@@ -799,7 +800,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
 
   call max_across_PEs(max_CFL, 2)
 
-  Salt = 0.0 ; Heat = 0.0
+  Salt = 0.0_wp ; Heat = 0.0_wp
   if (CS%use_temperature) then
     Salt = kg_to_RZL2 * EFP_to_real(salt_EFP)
     Heat = J_to_QRZL2 * EFP_to_real(heat_EFP)
@@ -821,7 +822,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   mass_anom = kg_to_RZL2 * EFP_to_real(mass_anom_EFP)
   if (CS%use_temperature .and. .not.GV%Boussinesq) then
     ! net_salt_input needs to be converted from ppt kg to [R Z L2 ~> kg]
-    mass_anom = mass_anom - 0.001*kg_to_RZL2*EFP_to_real(CS%net_salt_in_EFP)
+    mass_anom = mass_anom - 0.001_wp*kg_to_RZL2*EFP_to_real(CS%net_salt_in_EFP)
   endif
   mass_chg = kg_to_RZL2 * EFP_to_real(mass_chg_EFP)
 
@@ -841,16 +842,16 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   ISO_date_stamped = (CS%ISO_date_stamped_output .and. (get_calendar_type() /= NO_CALENDAR))
   if (date_stamped .or. ISO_date_stamped) &
     call get_date(day, iyear, imonth, iday, ihour, iminute, isecond, itick)
-  if (abs(CS%timeunit - 86400.0) < 1.0) then
-    reday = REAL(num_days)+ (REAL(start_of_day)/86400.0)
+  if (abs(CS%timeunit - 86400.0_wp) < 1.0_wp) then
+    reday = REAL(num_days, wp)+ (REAL(start_of_day, wp)/86400.0_wp)
     mesg_intro = "MOM Day "
   else
-    reday = REAL(num_days)*(86400.0/CS%timeunit) + &
-            REAL(start_of_day)/abs(CS%timeunit)
+    reday = REAL(num_days, wp)*(86400.0_wp/CS%timeunit) + &
+            REAL(start_of_day, wp)/abs(CS%timeunit)
     mesg_intro = "MOM Time "
   endif
-  if (reday < 1.0e8) then ;      write(day_str, '(F12.3)') reday
-  elseif (reday < 1.0e11) then ; write(day_str, '(F15.3)') reday
+  if (reday < 1.0e8_wp) then ;      write(day_str, '(F12.3)') reday
+  elseif (reday < 1.0e11_wp) then ; write(day_str, '(F15.3)') reday
   else ;                         write(day_str, '(ES15.9)') reday ; endif
 
   if (n < 1000000) then ; write(n_str, '(I6)') n
@@ -915,7 +916,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
       write(stdout,'("    Total Mass: ",ES24.16,", Change: ",ES24.16," Error: ",ES12.5," (",ES8.1,")")') &
             US%RZL2_to_kg*mass_tot, US%RZL2_to_kg*mass_chg, US%RZL2_to_kg*mass_anom, mass_anom/mass_tot
       if (CS%use_temperature) then
-        if (Salt == 0.) then
+        if (Salt == 0._wp) then
           write(stdout,'("    Total Salt: ",ES24.16,", Change: ",ES24.16," Error: ",ES12.5)') &
               Salt*salt_to_kg, Salt_chg*salt_to_kg, Salt_anom*salt_to_kg
         else
@@ -931,7 +932,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
           write(stdout,'(16X,"Salinity Global Min & Max:",ES24.16,1X,ES24.16)') S_min, S_max
         endif
 
-        if (Heat == 0.) then
+        if (Heat == 0._wp) then
           write(stdout,'("    Total Heat: ",ES24.16,", Change: ",ES24.16," Error: ",ES12.5)') &
               QRZL2_to_J*Heat, QRZL2_to_J*Heat_chg, QRZL2_to_J*Heat_anom
         else
@@ -965,7 +966,7 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
       enddo
     endif
 
-    call CS%fileenergy_nc%write_field(CS%fields(1), real(CS%ntrunc), reday)
+    call CS%fileenergy_nc%write_field(CS%fields(1), real(CS%ntrunc, wp), reday)
     call CS%fileenergy_nc%write_field(CS%fields(2), toten, reday)
     call CS%fileenergy_nc%write_field(CS%fields(3), PE, reday)
     call CS%fileenergy_nc%write_field(CS%fields(4), KE, reday)
@@ -1009,10 +1010,10 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
   CS%ntrunc = 0
   CS%previous_calls = CS%previous_calls + 1
 
-  CS%mass_prev_EFP = mass_EFP ; CS%fresh_water_in_EFP = real_to_EFP(0.0)
+  CS%mass_prev_EFP = mass_EFP ; CS%fresh_water_in_EFP = real_to_EFP(0.0_wp)
   if (CS%use_temperature) then
-    CS%salt_prev_EFP = Salt_EFP ; CS%net_salt_in_EFP = real_to_EFP(0.0)
-    CS%heat_prev_EFP = Heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0)
+    CS%salt_prev_EFP = Salt_EFP ; CS%net_salt_in_EFP = real_to_EFP(0.0_wp)
+    CS%heat_prev_EFP = Heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0_wp)
   endif
 
 end subroutine write_energy
@@ -1026,13 +1027,13 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
                                               !! describe the surface state of the ocean.
   type(thermo_var_ptrs), intent(in) :: tv     !< A structure pointing to various
                                               !! thermodynamic variables.
-  real,                  intent(in) :: dt     !< The amount of time over which to average [T ~> s].
+  real(wp),                  intent(in) :: dt     !< The amount of time over which to average [T ~> s].
   type(ocean_grid_type), intent(in) :: G      !< The ocean's grid structure.
   type(unit_scale_type), intent(in) :: US     !< A dimensional unit scaling type
   type(Sum_output_CS),   pointer    :: CS     !< The control structure returned by a previous call
                                               !! to MOM_sum_output_init.
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     FW_in, &   ! The net fresh water input, integrated over a timestep [R Z L2 ~> kg].
     salt_in, & ! The total salt added by surface fluxes, integrated
                ! over a time step [1e-3 R Z L2 ~> g Salt].
@@ -1051,7 +1052,7 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
-  FW_in(:,:) = 0.0
+  FW_in(:,:) = 0.0_wp
   if (associated(fluxes%evap)) then
     if (associated(fluxes%lprec) .and. associated(fluxes%fprec)) then
       do j=js,je ; do i=is,ie
@@ -1069,7 +1070,7 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
     FW_in(i,j) = FW_in(i,j) + dt * G%areaT(i,j) * fluxes%seaice_melt(i,j)
   enddo ; enddo ; endif
 
-  salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
+  salt_in(:,:) = 0.0_wp ; heat_in(:,:) = 0.0_wp
   if (CS%use_temperature) then
 
     if (associated(fluxes%sw)) then ; do j=js,je ; do i=is,ie
@@ -1129,7 +1130,7 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
 
     if (associated(fluxes%salt_flux)) then ; do j=js,je ; do i=is,ie
       ! integrate salt_flux in [R Z T-1 ~> kgSalt m-2 s-1] to give [ppt kg]
-      salt_in(i,j) = dt * G%areaT(i,j)*(1000.0*fluxes%salt_flux(i,j))
+      salt_in(i,j) = dt * G%areaT(i,j)*(1000.0_wp*fluxes%salt_flux(i,j))
     enddo ; enddo ; endif
   endif
 
@@ -1201,19 +1202,19 @@ end subroutine depth_list_setup
 subroutine create_depth_list(G, DL, min_depth_inc)
   type(ocean_grid_type), intent(in)    :: G  !< The ocean's grid structure.
   type(Depth_List),      intent(inout) :: DL !< The list of depths, areas and volumes to create
-  real,                  intent(in)    :: min_depth_inc !< The minimum increment between depths in the list [Z ~> m]
+  real(wp),                  intent(in)    :: min_depth_inc !< The minimum increment between depths in the list [Z ~> m]
 
   ! Local variables
-  real, dimension(G%Domain%niglobal*G%Domain%njglobal + 1) :: &
+  real(wp), dimension(G%Domain%niglobal*G%Domain%njglobal + 1) :: &
     Dlist, &  !< The global list of bottom depths [Z ~> m].
     AreaList  !< The global list of cell areas [L2 ~> m2].
   integer, dimension(G%Domain%niglobal*G%Domain%njglobal+1) :: &
     indx2     !< The position of an element in the original unsorted list.
-  real    :: Dnow  !< The depth now being considered for sorting [Z ~> m].
-  real    :: Dprev !< The most recent depth that was considered [Z ~> m].
-  real    :: vol   !< The running sum of open volume below a depth [Z L2 ~> m3].
-  real    :: area  !< The open area at the current depth [L2 ~> m2].
-  real    :: D_list_prev !< The most recent depth added to the list [Z ~> m].
+  real(wp)    :: Dnow  !< The depth now being considered for sorting [Z ~> m].
+  real(wp)    :: Dprev !< The most recent depth that was considered [Z ~> m].
+  real(wp)    :: vol   !< The running sum of open volume below a depth [Z L2 ~> m3].
+  real(wp)    :: area  !< The open area at the current depth [L2 ~> m2].
+  real(wp)    :: D_list_prev !< The most recent depth added to the list [Z ~> m].
   logical :: add_to_list !< This depth should be included as an entry on the list.
 
   integer :: ir, indxt
@@ -1224,8 +1225,8 @@ subroutine create_depth_list(G, DL, min_depth_inc)
   mls = G%Domain%niglobal*G%Domain%njglobal
 
 ! Need to collect the global data from compute domains to a 1D array for sorting.
-  Dlist(:) = 0.0
-  Arealist(:) = 0.0
+  Dlist(:) = 0.0_wp
+  Arealist(:) = 0.0_wp
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     ! Set global indices that start the global domain at 1 (Fortran convention).
     j_global = j + G%jdg_offset - (G%jsg-1)
@@ -1282,7 +1283,7 @@ subroutine create_depth_list(G, DL, min_depth_inc)
   DL%listsize = list_size+1
   allocate(DL%depth(DL%listsize), DL%area(DL%listsize), DL%vol_below(DL%listsize))
 
-  vol = 0.0 ; area = 0.0
+  vol = 0.0_wp ; area = 0.0_wp
   Dprev = Dlist(indx2(mls))
   D_list_prev = Dprev
 
@@ -1312,12 +1313,12 @@ subroutine create_depth_list(G, DL, min_depth_inc)
   do while (kl+1 < DL%listsize)
     ! I don't understand why this is needed... RWH
     kl = kl+1
-    DL%vol_below(kl) = DL%vol_below(kl-1) * 1.000001
+    DL%vol_below(kl) = DL%vol_below(kl-1) * 1.000001_wp
     DL%area(kl) = DL%area(kl-1)
     DL%depth(kl) = DL%depth(kl-1)
   enddo
 
-  DL%vol_below(DL%listsize) = DL%vol_below(DL%listsize-1) * 1000.0
+  DL%vol_below(DL%listsize) = DL%vol_below(DL%listsize-1) * 1000.0_wp
   DL%area(DL%listsize) = DL%area(DL%listsize-1)
   DL%depth(DL%listsize) = DL%depth(DL%listsize-1)
 
@@ -1460,7 +1461,7 @@ subroutine get_depth_list_checksums(G, US, depth_chksum, area_chksum)
   character(len=16), intent(out) :: area_chksum   !< Area checksum hexstring
 
   ! Local variables
-  real, allocatable :: field(:,:)  ! A temporary array with no halos [Z ~> m] or [L2 ~> m2]
+  real(wp), allocatable :: field(:,:)  ! A temporary array with no halos [Z ~> m] or [L2 ~> m2]
   integer :: i, j
 
   allocate(field(G%isc:G%iec, G%jsc:G%jec))

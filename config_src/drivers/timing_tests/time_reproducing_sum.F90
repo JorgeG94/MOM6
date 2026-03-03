@@ -9,12 +9,14 @@ use MOM_domains, only : MOM_define_layout
 use MOM_error_handler, only : MOM_error, MOM_mesg, FATAL, MOM_set_verbosity
 use MOM_hor_index, only : hor_index_type, hor_index_init
 
+use MOM_datatypes, only : wp
+
   implicit none
 
   type(MOM_domain_type), pointer :: Domain => NULL() ! Ocean model domain
   type(hor_index_type) :: HI ! A hor_index_type for array extents
-  real, allocatable, dimension(:) :: depth_tot_R, depth_tot_std, depth_tot_fastR ! Various sums of depths [m]
-  real, allocatable :: array(:,:) ! An array with values to sum over [m]
+  real(wp), allocatable, dimension(:) :: depth_tot_R, depth_tot_std, depth_tot_fastR ! Various sums of depths [m]
+  real(wp), allocatable :: array(:,:) ! An array with values to sum over [m]
   character(len=200) :: mesg ! String for messages
   integer :: num_sums ! Number of times to repeat the sum call
   integer :: n ! Loop counter
@@ -64,10 +66,10 @@ use MOM_hor_index, only : hor_index_type, hor_index_init
   call create_MOM_domain(Domain, n_global, (/2,2/), (/.false.,.false./), .false., layout)
   call hor_index_init(Domain, HI)
 
-  allocate( array(HI%isd:HI%ied,HI%jsd:HI%jed), source=0. )
-  allocate( depth_tot_std(num_sums), source=0. )
-  allocate( depth_tot_R(num_sums), source=0. )
-  allocate( depth_tot_fastR(num_sums), source=0. )
+  allocate( array(HI%isd:HI%ied,HI%jsd:HI%jed), source=0._wp )
+  allocate( depth_tot_std(num_sums), source=0._wp )
+  allocate( depth_tot_R(num_sums), source=0._wp )
+  allocate( depth_tot_fastR(num_sums), source=0._wp )
 
   ! Set up an array of values to sum
   call generate_array_of_values(array, HI, n_global)
@@ -109,25 +111,25 @@ contains
 !> Generate some "spatial" data, reminiscent of benchmark topography
 subroutine generate_array_of_values(D, HI, n_global)
   type(hor_index_type), intent(in)  :: HI !< The horizontal index type
-  real, intent(out) :: D(HI%isd:HI%ied,HI%jsd:HI%jed) !< Ocean bottom depth in [m]
+  real(wp), intent(out) :: D(HI%isd:HI%ied,HI%jsd:HI%jed) !< Ocean bottom depth in [m]
   integer, intent(in) :: n_global(2) !< Global i-, j- dimensions of domain (h-points)
   ! Local variables
-  real :: PI ! 3.1415926... calculated as 4*atan(1) [nondim]
-  real :: x ! A fractional position in the x-direction [nondim]
-  real :: y ! A fractional position in the y-direction [nondim]
+  real(wp) :: PI ! 3.1415926... calculated as 4*atan(1) [nondim]
+  real(wp) :: x ! A fractional position in the x-direction [nondim]
+  real(wp) :: y ! A fractional position in the y-direction [nondim]
   integer :: i, j ! Loop indices
 
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
 
   !  Calculate the depth of the bottom.
   do concurrent( j=HI%jsc:HI%jec, i=HI%isc:HI%iec )
-    x = real( i + HI%idg_offset ) / real( n_global(1) )
-    y = real( j + HI%idg_offset ) / real( n_global(2) )
-    D(i,j) = -3000.0  * ( y*(1.0 + 0.6*cos(4.0*PI*x)) &
-                          + 0.75*exp(-6.0*y) &
-                          + 0.05*cos(10.0*PI*x) - 0.7 )
-    if (D(i,j) > 3000.0) D(i,j) = 3000.0
-    if (D(i,j) < 1.) D(i,j) = 0.
+    x = real( i + HI%idg_offset , wp) / real( n_global(1) , wp)
+    y = real( j + HI%idg_offset , wp) / real( n_global(2) , wp)
+    D(i,j) = -3000.0_wp  * ( y*(1.0_wp + 0.6_wp*cos(4.0_wp*PI*x)) &
+                          + 0.75_wp*exp(-6.0_wp*y) &
+                          + 0.05_wp*cos(10.0_wp*PI*x) - 0.7_wp )
+    if (D(i,j) > 3000.0_wp) D(i,j) = 3000.0_wp
+    if (D(i,j) < 1._wp) D(i,j) = 0._wp
   enddo
 
 end subroutine generate_array_of_values

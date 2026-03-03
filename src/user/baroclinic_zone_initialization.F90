@@ -9,6 +9,8 @@ use MOM_grid, only : ocean_grid_type
 use MOM_unit_scaling, only : unit_scale_type
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -33,19 +35,19 @@ subroutine bcz_params(G, GV, US, param_file, S_ref, dSdz, delta_S, dSdx, T_ref, 
   type(verticalGrid_type), intent(in)  :: GV         !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US         !< A dimensional unit scaling type
   type(param_file_type),   intent(in)  :: param_file !< Parameter file handle
-  real,                    intent(out) :: S_ref      !< Reference salinity [S ~> ppt]
-  real,                    intent(out) :: dSdz       !< Salinity stratification [S Z-1 ~> ppt m-1]
-  real,                    intent(out) :: delta_S    !< Salinity difference across baroclinic zone [S ~> ppt]
-  real,                    intent(out) :: dSdx       !< Linear salinity gradient, often in [S km-1 ~> ppt km-1]
+  real(wp),                    intent(out) :: S_ref      !< Reference salinity [S ~> ppt]
+  real(wp),                    intent(out) :: dSdz       !< Salinity stratification [S Z-1 ~> ppt m-1]
+  real(wp),                    intent(out) :: delta_S    !< Salinity difference across baroclinic zone [S ~> ppt]
+  real(wp),                    intent(out) :: dSdx       !< Linear salinity gradient, often in [S km-1 ~> ppt km-1]
                                                      !! or [S degrees_E-1 ~> ppt degrees_E-1], depending on
                                                      !! the value of G%x_axis_units
-  real,                    intent(out) :: T_ref      !< Reference temperature [C ~> degC]
-  real,                    intent(out) :: dTdz       !< Temperature stratification [C Z-1 ~> degC m-1]
-  real,                    intent(out) :: delta_T    !< Temperature difference across baroclinic zone [C ~> degC]
-  real,                    intent(out) :: dTdx       !< Linear temperature gradient, often in [C km-1 ~> degC km-1]
+  real(wp),                    intent(out) :: T_ref      !< Reference temperature [C ~> degC]
+  real(wp),                    intent(out) :: dTdz       !< Temperature stratification [C Z-1 ~> degC m-1]
+  real(wp),                    intent(out) :: delta_T    !< Temperature difference across baroclinic zone [C ~> degC]
+  real(wp),                    intent(out) :: dTdx       !< Linear temperature gradient, often in [C km-1 ~> degC km-1]
                                                      !! or [C degrees_E-1 ~> degC degrees_E-1], depending on
                                                      !! the value of G%x_axis_units
-  real,                    intent(out) :: L_zone     !< Width of baroclinic zone, often in [km] or [degrees_N],
+  real(wp),                    intent(out) :: L_zone     !< Width of baroclinic zone, often in [km] or [degrees_N],
                                                      !! depending on the value of G%y_axis_units
   logical,                 intent(in)  :: just_read  !< If true, this call will
                                                      !! only read parameters without changing h.
@@ -54,23 +56,23 @@ subroutine bcz_params(G, GV, US, param_file, S_ref, dSdz, delta_S, dSdx, T_ref, 
     call log_version(param_file, mdl, version, 'Initialization of an analytic baroclinic zone')
   call openParameterBlock(param_file,'BCZIC')
   call get_param(param_file, mdl, "S_REF", S_ref, 'Reference salinity', &
-                 units='ppt', default=35., scale=US%ppt_to_S, do_not_log=just_read)
+                 units='ppt', default=35._wp, scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "DSDZ", dSdz, 'Salinity stratification', &
-                 units='ppt m-1', default=0.0, scale=US%ppt_to_S*US%Z_to_m, do_not_log=just_read)
+                 units='ppt m-1', default=0.0_wp, scale=US%ppt_to_S*US%Z_to_m, do_not_log=just_read)
   call get_param(param_file, mdl, "DELTA_S",delta_S, 'Salinity difference across baroclinic zone', &
-                 units='ppt', default=0.0, scale=US%ppt_to_S, do_not_log=just_read)
+                 units='ppt', default=0.0_wp, scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "DSDX", dSdx,'Meridional salinity difference', &
-                 units='ppt '//trim(G%x_ax_unit_short)//'-1', default=0.0, scale=US%ppt_to_S, do_not_log=just_read)
+                 units='ppt '//trim(G%x_ax_unit_short)//'-1', default=0.0_wp, scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "T_REF", T_ref, 'Reference temperature', &
-                 units='degC', default=10., scale=US%degC_to_C, do_not_log=just_read)
+                 units='degC', default=10._wp, scale=US%degC_to_C, do_not_log=just_read)
   call get_param(param_file, mdl, "DTDZ", dTdz, 'Temperature stratification', &
-                 units='degC m-1', default=0.0, scale=US%degC_to_C*US%Z_to_m, do_not_log=just_read)
+                 units='degC m-1', default=0.0_wp, scale=US%degC_to_C*US%Z_to_m, do_not_log=just_read)
   call get_param(param_file, mdl, "DELTA_T", delta_T,'Temperature difference across baroclinic zone', &
-                 units='degC', default=0.0, scale=US%degC_to_C, do_not_log=just_read)
+                 units='degC', default=0.0_wp, scale=US%degC_to_C, do_not_log=just_read)
   call get_param(param_file, mdl, "DTDX", dTdx,'Meridional temperature difference', &
-                 units='degC '//trim(G%x_ax_unit_short)//'-1', default=0.0, scale=US%degC_to_C, do_not_log=just_read)
+                 units='degC '//trim(G%x_ax_unit_short)//'-1', default=0.0_wp, scale=US%degC_to_C, do_not_log=just_read)
   call get_param(param_file, mdl, "L_ZONE", L_zone, 'Width of baroclinic zone', &
-                 units=G%y_ax_unit_short, default=0.5*G%len_lat, do_not_log=just_read)
+                 units=G%y_ax_unit_short, default=0.5_wp*G%len_lat, do_not_log=just_read)
   call closeParameterBlock(param_file)
 
 end subroutine bcz_params
@@ -81,13 +83,13 @@ subroutine baroclinic_zone_init_temperature_salinity(T, S, h, depth_tot, G, GV, 
   type(ocean_grid_type),   intent(in)  :: G          !< Grid structure
   type(verticalGrid_type), intent(in)  :: GV         !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US         !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: T          !< Potential temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: S          !< Salinity [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: h          !< The model thicknesses [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                            intent(in)  :: depth_tot  !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file !< A structure indicating the open file
                                                      !! to parse for model parameter values.
@@ -95,20 +97,20 @@ subroutine baroclinic_zone_init_temperature_salinity(T, S, h, depth_tot, G, GV, 
                                                      !! parameters without changing T & S.
 
   integer   :: i, j, k, is, ie, js, je, nz
-  real      :: T_ref, delta_T ! Parameters describing temperature distribution [C ~> degC]
-  real      :: dTdz           ! Vertical temperature gradients [C Z-1 ~> degC m-1]
-  real      :: dTdx           ! Zonal temperature gradients [C axis_units-1 ~> degC axis_units-1]
-  real      :: S_ref, delta_S ! Parameters describing salinity distribution [S ~> ppt]
-  real      :: dSdz           ! Vertical salinity gradients [S Z-1 ~> ppt m-1]
-  real      :: dSdx           ! Zonal salinity gradients [S axis_units-1 ~> ppt axis_units-1]
-  real      :: L_zone         ! Width of baroclinic zone, often in [km] or [degrees_N], depending
+  real(wp)      :: T_ref, delta_T ! Parameters describing temperature distribution [C ~> degC]
+  real(wp)      :: dTdz           ! Vertical temperature gradients [C Z-1 ~> degC m-1]
+  real(wp)      :: dTdx           ! Zonal temperature gradients [C axis_units-1 ~> degC axis_units-1]
+  real(wp)      :: S_ref, delta_S ! Parameters describing salinity distribution [S ~> ppt]
+  real(wp)      :: dSdz           ! Vertical salinity gradients [S Z-1 ~> ppt m-1]
+  real(wp)      :: dSdx           ! Zonal salinity gradients [S axis_units-1 ~> ppt axis_units-1]
+  real(wp)      :: L_zone         ! Width of baroclinic zone, often in [km] or [degrees_N], depending
                               ! on the value of G%y_axis_units
-  real      :: zc, zi         ! Depths in depth units [Z ~> m]
-  real      :: x              ! X-position relative to the domain center [degrees_E] or [km] or [m]
-  real      :: y              ! Y-position relative to the domain center [degrees_N] or [km] or [m]
-  real      :: fn             ! A smooth function based on the position in the baroclinic zone [nondim]
-  real      :: xs, xd, yd     ! Fractional x- and y-positions relative to the domain extent [nondim]
-  real      :: PI             ! 3.1415926... calculated as 4*atan(1) [nondim]
+  real(wp)      :: zc, zi         ! Depths in depth units [Z ~> m]
+  real(wp)      :: x              ! X-position relative to the domain center [degrees_E] or [km] or [m]
+  real(wp)      :: y              ! Y-position relative to the domain center [degrees_N] or [km] or [m]
+  real(wp)      :: fn             ! A smooth function based on the position in the baroclinic zone [nondim]
+  real(wp)      :: xs, xd, yd     ! Fractional x- and y-positions relative to the domain extent [nondim]
+  real(wp)      :: PI             ! 3.1415926... calculated as 4*atan(1) [nondim]
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -117,25 +119,25 @@ subroutine baroclinic_zone_init_temperature_salinity(T, S, h, depth_tot, G, GV, 
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  T(:,:,:) = 0.
-  S(:,:,:) = 0.
-  PI = 4.*atan(1.)
+  T(:,:,:) = 0._wp
+  S(:,:,:) = 0._wp
+  PI = 4._wp*atan(1._wp)
 
   do j = G%jsc,G%jec ; do i = G%isc,G%iec
     zi = -depth_tot(i,j)
-    x = G%geoLonT(i,j) - (G%west_lon + 0.5*G%len_lon) ! Relative to center of domain
+    x = G%geoLonT(i,j) - (G%west_lon + 0.5_wp*G%len_lon) ! Relative to center of domain
     xd = x / G%len_lon ! -1/2 < xd 1/2
-    y = G%geoLatT(i,j) - (G%south_lat + 0.5*G%len_lat) ! Relative to center of domain
+    y = G%geoLatT(i,j) - (G%south_lat + 0.5_wp*G%len_lat) ! Relative to center of domain
     yd = y / G%len_lat ! -1/2 < yd 1/2
-    if (L_zone/=0.) then
-      xs = min(1., max(-1., x/L_zone)) ! -1 < ys < 1
-      fn = sin((0.5*PI)*xs)
+    if (L_zone/=0._wp) then
+      xs = min(1._wp, max(-1._wp, x/L_zone)) ! -1 < ys < 1
+      fn = sin((0.5_wp*PI)*xs)
     else
-      xs = sign(1., x) ! +/- 1
+      xs = sign(1._wp, x) ! +/- 1
       fn = xs
     endif
     do k = nz, 1, -1
-      zc = zi + 0.5*h(i,j,k)          ! Position of middle of cell
+      zc = zi + 0.5_wp*h(i,j,k)          ! Position of middle of cell
       zi = zi + h(i,j,k)              ! Top interface position
       T(i,j,k) = T_ref + dTdz * zc  & ! Linear temperature stratification
                  + dTdx * x         & ! Linear gradient

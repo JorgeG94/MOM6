@@ -11,6 +11,7 @@ use MOM_tracer_registry, only : tracer_registry_type
 use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
+use MOM_datatypes, only : wp
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -29,23 +30,23 @@ subroutine external_gwave_initialize_thickness(h, G, GV, US, param_file, just_re
   type(ocean_grid_type),   intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: h           !< The thickness that is being initialized [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   logical,                 intent(in)  :: just_read   !< If true, this call will only read
                                                       !! parameters without changing h.
   ! Local variables
-  real :: eta1D(SZK_(GV)+1)  ! Interface height relative to the sea surface
+  real(wp) :: eta1D(SZK_(GV)+1)  ! Interface height relative to the sea surface
                              ! positive upward [Z ~> m].
-  real :: ssh_anomaly_height ! Vertical height of ssh anomaly [Z ~> m]
-  real :: ssh_anomaly_width  ! Lateral width of anomaly, often in [km] or [degrees_E]
+  real(wp) :: ssh_anomaly_height ! Vertical height of ssh anomaly [Z ~> m]
+  real(wp) :: ssh_anomaly_width  ! Lateral width of anomaly, often in [km] or [degrees_E]
   character(len=40)  :: mdl = "external_gwave_initialize_thickness" ! This subroutine's name.
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   integer :: i, j, k, is, ie, js, je, nz
-  real :: PI       ! The ratio of the circumference of a circle to its diameter [nondim]
-  real :: Xnondim  ! A normalized x position [nondim]
+  real(wp) :: PI       ! The ratio of the circumference of a circle to its diameter [nondim]
+  real(wp) :: Xnondim  ! A normalized x position [nondim]
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -62,14 +63,14 @@ subroutine external_gwave_initialize_thickness(h, G, GV, US, param_file, just_re
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    Xnondim = (G%geoLonT(i,j)-G%west_lon-0.5*G%len_lon) / ssh_anomaly_width
-    Xnondim = min(1., abs(Xnondim))
-    eta1D(1) = ssh_anomaly_height * 0.5 * ( 1. + cos(PI*Xnondim) ) ! Cosine bell
+    Xnondim = (G%geoLonT(i,j)-G%west_lon-0.5_wp*G%len_lon) / ssh_anomaly_width
+    Xnondim = min(1._wp, abs(Xnondim))
+    eta1D(1) = ssh_anomaly_height * 0.5_wp * ( 1._wp + cos(PI*Xnondim) ) ! Cosine bell
     do k=2,nz
       eta1D(K) = -G%max_depth & ! Stretch interior interfaces with SSH
-              + (eta1D(1)+G%max_depth) * ( real(nz+1-k)/real(nz) ) ! Stratification
+              + (eta1D(1)+G%max_depth) * ( real(nz+1-k, wp)/real(nz, wp) ) ! Stratification
     enddo
     eta1D(nz+1) = -G%max_depth ! Force bottom interface to bottom
     do k=1,nz

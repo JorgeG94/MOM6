@@ -11,6 +11,8 @@ module Recon1d_EMPLM_WA_poly
 
 use Recon1d_MPLM_WA_poly, only : MPLM_WA_poly, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public EMPLM_WA_poly
@@ -46,11 +48,11 @@ contains
 !> Calculate a 1D PLM reconstruction based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(EMPLM_WA_poly), intent(inout) :: this !< This reconstruction
-  real,                 intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,                 intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),                 intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),                 intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: n
-  real :: slope ! Difference of u across cell [A]
+  real(wp) :: slope ! Difference of u across cell [A]
 
   ! Use parent (MPLM_WA) reconstruction
   call this%reconstruct_parent(h, u)
@@ -59,15 +61,15 @@ subroutine reconstruct(this, h, u)
 
   ! Fix reconstruction for first cell
   slope = - PLM_extrapolate_slope( h(2), h(1), this%h_neglect, u(2), u(1) )
-  this%ul(1) = u(1) - 0.5 * slope
-  this%ur(1) = u(1) + 0.5 * slope
+  this%ul(1) = u(1) - 0.5_wp * slope
+  this%ur(1) = u(1) + 0.5_wp * slope
   this%poly_coef(1,1) = this%ul(1)
   this%poly_coef(1,2) = this%ur(1) - this%ul(1)
 
   ! Fix reconstruction for last cell
   slope = PLM_extrapolate_slope( h(n-1), h(n), this%h_neglect, u(n-1), u(n) )
-  this%ul(n) = u(n) - 0.5 * slope
-  this%ur(n) = u(n) + 0.5 * slope
+  this%ul(n) = u(n) - 0.5_wp * slope
+  this%ur(n) = u(n) + 0.5_wp * slope
   this%poly_coef(n,1) = this%ul(n)
   this%poly_coef(n,2) = this%ur(n) - this%ul(n)
 
@@ -76,15 +78,15 @@ end subroutine reconstruct
 !> Returns a PLM slope using h2 extrapolation from a cell to the left, in the same
 !! arbitrary units as the input values [A].
 !! Use the negative to extrapolate from the cell to the right.
-real elemental pure function PLM_extrapolate_slope(h_l, h_c, h_neglect, u_l, u_c)
-  real, intent(in) :: h_l !< Thickness of left cell in arbitrary grid thickness units [H]
-  real, intent(in) :: h_c !< Thickness of center cell in arbitrary grid thickness units [H]
-  real, intent(in) :: h_neglect !< A negligible thickness [H]
-  real, intent(in) :: u_l !< Value of left cell in arbitrary units [A]
-  real, intent(in) :: u_c !< Value of center cell in arbitrary units [A]
+real(wp) elemental pure function PLM_extrapolate_slope(h_l, h_c, h_neglect, u_l, u_c)
+  real(wp), intent(in) :: h_l !< Thickness of left cell in arbitrary grid thickness units [H]
+  real(wp), intent(in) :: h_c !< Thickness of center cell in arbitrary grid thickness units [H]
+  real(wp), intent(in) :: h_neglect !< A negligible thickness [H]
+  real(wp), intent(in) :: u_l !< Value of left cell in arbitrary units [A]
+  real(wp), intent(in) :: u_c !< Value of center cell in arbitrary units [A]
   ! Local variables
-  real :: left_edge ! Left edge value [A]
-  real :: hl, hc ! Left and central cell thicknesses [H]
+  real(wp) :: left_edge ! Left edge value [A]
+  real(wp) :: hl, hc ! Left and central cell thicknesses [H]
 
   ! Avoid division by zero for vanished cells
   hl = h_l + h_neglect
@@ -93,27 +95,27 @@ real elemental pure function PLM_extrapolate_slope(h_l, h_c, h_neglect, u_l, u_c
   ! The h2 scheme is used to compute the left edge value
   left_edge = (u_l*hc + u_c*hl) / (hl + hc)
 
-  PLM_extrapolate_slope = 2.0 * ( u_c - left_edge )
+  PLM_extrapolate_slope = 2.0_wp * ( u_c - left_edge )
 
 end function PLM_extrapolate_slope
 
 !> Checks the EMPLM_WA_poly reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(EMPLM_WA_poly), intent(in) :: this !< This reconstruction
-  real,                 intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,                 intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),                 intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),                 intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check implied curvature
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! These two checks fail MOM_remapping:test_recon_consistency in the presence of vanished layers
@@ -133,12 +135,12 @@ logical function check_reconstruction(this, h, u)
   ! Note that in the OM4-era implementation, we were not consistent for top and bottom layers due
   ! extrapolation using cell means rather than edge values, hence reduced range for K
   do K = 2, this%n-2
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. this cell mean and the previous cell right edge
   do K = 3, this%n-1
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
 end function check_reconstruction
@@ -151,8 +153,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,              intent(in)    :: stdout  !< I/O channel for stdout
   integer,              intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -164,31 +166,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,4./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/2.,4.,6./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/0._wp,2._wp,4._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/2._wp,4._wp,6._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/2.,2.,2./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/2.,2.,2./), 'dfdx in center')
-  call test%real_arr(3, ur, (/2.,2.,2./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/2._wp,2._wp,2._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/2._wp,2._wp,2._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/2._wp,2._wp,2._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.25,3.25,5.25/), 'Return interval average')
+  call test%real_arr(3, um, (/1.25_wp,3.25_wp,5.25_wp/), 'Return interval average')
 
   unit_tests = test%summarize('EMPLM_WA_poly:unit_tests')
 

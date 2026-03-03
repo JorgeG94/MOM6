@@ -16,6 +16,8 @@ use MOM_io_infra,        only : get_axis_size, get_axis_data
 use MOM_io,              only : axis_info, set_axis_info
 use MOM_time_manager, only : time_type, set_date, operator(+), operator(<), operator(>)
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 !> Data type used to store information about forcing datasets that are time series
@@ -50,27 +52,27 @@ contains
 subroutine time_interp_external_0d(field, time, data_in, verbose, scale)
   type(external_field), intent(in) :: field    !< Handle for time interpolated field
   type(time_type),   intent(in)    :: time     !< The target time for the data
-  real,              intent(inout) :: data_in  !< The interpolated value in arbitrary units [A ~> a]
+  real(wp),              intent(inout) :: data_in  !< The interpolated value in arbitrary units [A ~> a]
   logical, optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
-  real,    optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
+  real(wp),    optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
                                                !! multiplied by before it is returned [A a-1 ~> 1]
-  real :: data_in_pre_scale ! The input data before rescaling [a]
-  real :: I_scale ! The inverse of scale [a A-1 ~> 1]
+  real(wp) :: data_in_pre_scale ! The input data before rescaling [a]
+  real(wp) :: I_scale ! The inverse of scale [a A-1 ~> 1]
 
   ! Store the input value in case the scaling factor is perfectly invertable.
   data_in_pre_scale = data_in
-  I_scale = 1.0
-  if (present(scale)) then ; if ((scale /= 1.0) .and. (scale /= 0.0)) then
+  I_scale = 1.0_wp
+  if (present(scale)) then ; if ((scale /= 1.0_wp) .and. (scale /= 0.0_wp)) then
     ! Because time_interp_extern has the ability to only set some values, but no clear
     ! mechanism to determine which values have been set, the input data has to
     ! be unscaled so that it will have the right values when it is returned.
-    I_scale = 1.0 / scale
+    I_scale = 1.0_wp / scale
     data_in = data_in * I_scale
   endif ; endif
 
   call time_interp_extern(field, time, data_in, verbose=verbose)
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     ! Rescale data that has been newly set and restore the scaling of unset data.
     if (data_in == I_scale * data_in_pre_scale) then
       data_in = data_in_pre_scale
@@ -87,7 +89,7 @@ subroutine time_interp_external_2d(field, time, data_in, interp, &
                                    verbose, horz_interp, mask_out, turns, scale)
   type(external_field), intent(in)    :: field    !< Handle for time interpolated field
   type(time_type),      intent(in)    :: time     !< The target time for the data
-  real, dimension(:,:), intent(inout) :: data_in  !< The array in which to store the interpolated
+  real(wp), dimension(:,:), intent(inout) :: data_in  !< The array in which to store the interpolated
                                                   !! values in arbitrary units [A ~> a]
   integer,    optional, intent(in)    :: interp   !< A flag indicating the temporal interpolation method
   logical,    optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
@@ -96,12 +98,12 @@ subroutine time_interp_external_2d(field, time, data_in, interp, &
   logical, dimension(:,:), &
               optional, intent(out)   :: mask_out !< An array that is true where there is valid data
   integer,    optional, intent(in)    :: turns    !< Number of quarter turns to rotate the data
-  real,       optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
+  real(wp),       optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
                                                   !! multiplied by before it is returned [A a-1 ~> 1]
 
-  real, allocatable :: data_in_pre_scale(:,:) ! The input data before rescaling [a]
-  real, allocatable :: data_pre_rot(:,:)      ! The unscaled input data before rotation [a]
-  real    :: I_scale ! The inverse of scale [a A-1 ~> 1]
+  real(wp), allocatable :: data_in_pre_scale(:,:) ! The input data before rescaling [a]
+  real(wp), allocatable :: data_pre_rot(:,:)      ! The unscaled input data before rotation [a]
+  real(wp)    :: I_scale ! The inverse of scale [a A-1 ~> 1]
   integer :: qturns ! The number of quarter turns to rotate the data
   integer :: i, j
 
@@ -109,16 +111,16 @@ subroutine time_interp_external_2d(field, time, data_in, interp, &
   if (present(mask_out)) &
     call MOM_error(FATAL, "Rotation of masked output not yet support")
 
-  if (present(scale)) then ; if ((scale /= 1.0) .and. (scale /= 0.0)) then
+  if (present(scale)) then ; if ((scale /= 1.0_wp) .and. (scale /= 0.0_wp)) then
     ! Because time_interp_extern has the ability to only set some values, but no clear mechanism
     ! to determine which values have been set, the input data has to be unscaled so that it will
     ! have the right values when it is returned.  It may be a problem for some compiler settings
     ! if there are NaNs in data_in, but they will not spread.
-    if (abs(fraction(scale)) /= 1.0) then
+    if (abs(fraction(scale)) /= 1.0_wp) then
       ! This scaling factor may not be perfectly invertable, so store the input value
       allocate(data_in_pre_scale, source=data_in)
     endif
-    I_scale = 1.0 / scale
+    I_scale = 1.0_wp / scale
     data_in(:,:) = I_scale * data_in(:,:)
   endif ; endif
 
@@ -135,9 +137,9 @@ subroutine time_interp_external_2d(field, time, data_in, interp, &
     deallocate(data_pre_rot)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     ! Rescale data that has been newly set and restore the scaling of unset data.
-    if ((abs(fraction(scale)) /= 1.0) .and. (scale /= 0.0)) then
+    if ((abs(fraction(scale)) /= 1.0_wp) .and. (scale /= 0.0_wp)) then
       do j=LBOUND(data_in,2),UBOUND(data_in,2) ; do i=LBOUND(data_in,1),UBOUND(data_in,1)
         ! This handles the case where scale is not exactly invertable for data
         ! values that have not been modified by time_interp_extern.
@@ -160,7 +162,7 @@ subroutine time_interp_external_3d(field, time, data_in, interp, &
                                    verbose, horz_interp, mask_out, turns, scale)
   type(external_field), intent(in)      :: field    !< Handle for time interpolated field
   type(time_type),        intent(in)    :: time     !< The target time for the data
-  real, dimension(:,:,:), intent(inout) :: data_in  !< The array in which to store the interpolated
+  real(wp), dimension(:,:,:), intent(inout) :: data_in  !< The array in which to store the interpolated
                                                     !! values in arbitrary units [A ~> a]
   integer,      optional, intent(in)    :: interp   !< A flag indicating the temporal interpolation method
   logical,      optional, intent(in)    :: verbose  !< If true, write verbose output for debugging
@@ -169,12 +171,12 @@ subroutine time_interp_external_3d(field, time, data_in, interp, &
   logical, dimension(:,:,:), &
                 optional, intent(out)   :: mask_out !< An array that is true where there is valid data
   integer,      optional, intent(in)    :: turns    !< Number of quarter turns to rotate the data
-  real,         optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
+  real(wp),         optional, intent(in)    :: scale    !< A scaling factor that new values of data_in are
                                                     !! multiplied by before it is returned [A a-1 ~> 1]
 
-  real, allocatable :: data_in_pre_scale(:,:,:) ! The input data before rescaling [a]
-  real, allocatable :: data_pre_rot(:,:,:)      ! The unscaled input data before rotation [a]
-  real    :: I_scale ! The inverse of scale [a A-1 ~> 1]
+  real(wp), allocatable :: data_in_pre_scale(:,:,:) ! The input data before rescaling [a]
+  real(wp), allocatable :: data_pre_rot(:,:,:)      ! The unscaled input data before rotation [a]
+  real(wp)    :: I_scale ! The inverse of scale [a A-1 ~> 1]
   integer :: qturns  ! The number of quarter turns to rotate the data
   integer :: i, j, k
 
@@ -182,16 +184,16 @@ subroutine time_interp_external_3d(field, time, data_in, interp, &
   if (present(mask_out)) &
     call MOM_error(FATAL, "Rotation of masked output not yet support")
 
-  if (present(scale)) then ; if ((scale /= 1.0) .and. (scale /= 0.0)) then
+  if (present(scale)) then ; if ((scale /= 1.0_wp) .and. (scale /= 0.0_wp)) then
     ! Because time_interp_extern has the ability to only set some values, but no clear mechanism
     ! to determine which values have been set, the input data has to be unscaled so that it will
     ! have the right values when it is returned.  It may be a problem for some compiler settings
     ! if there are NaNs in data_in, but they will not spread.
-    if (abs(fraction(scale)) /= 1.0) then
+    if (abs(fraction(scale)) /= 1.0_wp) then
       ! This scaling factor may not be perfectly invertable, so store the input value
       allocate(data_in_pre_scale, source=data_in)
     endif
-    I_scale = 1.0 / scale
+    I_scale = 1.0_wp / scale
     data_in(:,:,:) = I_scale * data_in(:,:,:)
   endif ; endif
 
@@ -208,9 +210,9 @@ subroutine time_interp_external_3d(field, time, data_in, interp, &
     deallocate(data_pre_rot)
   endif
 
-  if (present(scale)) then ; if (scale /= 1.0) then
+  if (present(scale)) then ; if (scale /= 1.0_wp) then
     ! Rescale data that has been newly set and restore the scaling of unset data.
-    if ((abs(fraction(scale)) /= 1.0) .and. (scale /= 0.0)) then
+    if ((abs(fraction(scale)) /= 1.0_wp) .and. (scale /= 0.0_wp)) then
       do k=LBOUND(data_in,3),UBOUND(data_in,3)
         do j=LBOUND(data_in,2),UBOUND(data_in,2)
           do i=LBOUND(data_in,1),UBOUND(data_in,1)
@@ -291,14 +293,14 @@ subroutine get_external_field_info(field, size, axes, missing)
     !< Dimension sizes for the input data
   type(axis_info), optional, intent(inout) :: axes(4)
     !< Axis types for the input data
-  real, optional, intent(inout) :: missing
+  real(wp), optional, intent(inout) :: missing
     !< Missing value for the input data
 
   type(axistype) :: axes_infra(4)
     ! Axis as represented in the infra
   character(len=256) :: axis_name
     ! Axis name
-  real, allocatable :: ax_data(:)
+  real(wp), allocatable :: ax_data(:)
     ! Axis points
 
   integer :: n

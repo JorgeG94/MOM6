@@ -14,6 +14,8 @@ use MOM_grid, only : ocean_grid_type
 use MOM_hor_index, only : hor_index_type
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -37,44 +39,44 @@ contains
 !> Return the global area mean of a variable, perhaps with a change of units. This uses reproducing sums.
 function global_area_mean(var, G, scale, tmp_scale, unscale)
   type(ocean_grid_type),             intent(in)  :: G    !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in)  :: var  !< The variable to average in arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G)),  intent(in)  :: var  !< The variable to average in arbitrary units [a],
                                                          !! or arbitrary rescaled units [A ~> a] if unscale
                                                          !! or tmp_scale is present
                                                          !! arbitrary, possibly rescaled units [A ~> a]
-  real,                    optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                    optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                          !! that converts it back to unscaled (e.g., mks)
                                                          !! units to enable the use of the reproducing sums
-  real,                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
+  real(wp),                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
                                                          !! that is reversed in the return value [a A-1 ~> 1],
                                                          !! or [b B-1 ~> 1] if unscale is also present.
-  real,                    optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                    optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                          !! that converts it back to unscaled (e.g., mks)
                                                          !! units to enable the use of the reproducing sums, or
                                                          !! a factor converting between rescaled units if
                                                          !! tmp_scale is also present [B A-1 ~> b a-1].
                                                          !! Here scale and unscale are synonymous, but unscale
                                                          !! is preferred and takes precedence.
-  real :: global_area_mean  ! The mean of the variable in arbitrary unscaled units [a] or scaled units [A ~> a]
+  real(wp) :: global_area_mean  ! The mean of the variable in arbitrary unscaled units [a] or scaled units [A ~> a]
                             ! or [B ~> b], depending on which optional arguments are provided
 
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums.
   ! [A ~> a] and [B ~> b] are the same units unless tmp_scale and unscale are both present.
-  real :: tmpForSumming(SZI_(G),SZJ_(G))  ! An unscaled cell integral in [a L2 ~> a m2] or a
+  real(wp) :: tmpForSumming(SZI_(G),SZJ_(G))  ! An unscaled cell integral in [a L2 ~> a m2] or a
                                           ! scaled cell integral in [A L2 ~> a m2] or [B L2 ~> b m2]
-  real :: scalefac   ! A scaling factor for the variable that is not reversed [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
-  real :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
+  real(wp) :: scalefac   ! A scaling factor for the variable that is not reversed [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
+  real(wp) :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
   integer :: i, j, is, ie, js, je
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
-  temp_scale = 1.0 ; if (present(tmp_scale)) temp_scale = tmp_scale
+  temp_scale = 1.0_wp ; if (present(tmp_scale)) temp_scale = tmp_scale
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(scale)) then ; scalefac = scale ; endif
 
-  tmpForSumming(:,:) = 0.
+  tmpForSumming(:,:) = 0._wp
   do j=js,je ; do i=is,ie
     tmpForSumming(i,j) = var(i,j) * (scalefac * G%areaT(i,j) * G%mask2dT(i,j))
   enddo ; enddo
@@ -86,36 +88,36 @@ end function global_area_mean
 !> Return the global area mean of a variable. This uses reproducing sums.
 function global_area_mean_v(var, G, tmp_scale)
   type(ocean_grid_type),             intent(in)  :: G    !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)  :: var  !< The variable to average in arbitrary
+  real(wp), dimension(SZI_(G),SZJB_(G)), intent(in)  :: var  !< The variable to average in arbitrary
                                                          !! units [a], or arbitrary rescaled units
                                                          !! [A ~> a] if tmp_scale is present
-  real,                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
+  real(wp),                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
                                                          !! variable that converts it back to unscaled
                                                          !! (e.g., mks) units to enable the use of the
                                                          !! reproducing sums [a A-1 ~> 1], but is reversed
                                                          !! before output so that the return value has
                                                          !! the same units as var
 
-  real :: global_area_mean_v  ! The mean of the variable in the same arbitrary units as var [A ~> a]
+  real(wp) :: global_area_mean_v  ! The mean of the variable in the same arbitrary units as var [A ~> a]
 
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
   ! [A ~> a] and [B ~> b] are the same unless tmp_scale and unscale are both present.
-  real, dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral [A L2 ~> a m2]
-  real :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [1]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral [A L2 ~> a m2]
+  real(wp) :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [1]
   integer :: i, j, is, ie, js, je, isB, ieB, jsB, jeB
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isB = G%iscB ; ieB = G%iecB ; jsB = G%jscB ; jeB = G%jecB
 
-  temp_scale = 1.0 ; if (present(tmp_scale)) temp_scale = tmp_scale
+  temp_scale = 1.0_wp ; if (present(tmp_scale)) temp_scale = tmp_scale
 
-  tmpForSumming(:,:) = 0.
+  tmpForSumming(:,:) = 0._wp
   do j=js,je ; do i=is,ie
     tmpForSumming(i,j) = G%areaT(i,j) * &
              (var(i,J) * G%mask2dCv(i,J) + var(i,J-1) * G%mask2dCv(i,J-1)) / &
-             max(1.e-20, G%mask2dCv(i,J)+G%mask2dCv(i,J-1))
+             max(1.e-20_wp, G%mask2dCv(i,J)+G%mask2dCv(i,J-1))
   enddo ; enddo
   global_area_mean_v = reproducing_sum(tmpForSumming, unscale=G%US%L_to_m**2*temp_scale) * G%IareaT_global
 
@@ -124,34 +126,34 @@ end function global_area_mean_v
 !> Return the global area mean of a variable on U grid. This uses reproducing sums.
 function global_area_mean_u(var, G, tmp_scale)
   type(ocean_grid_type),             intent(in)  :: G    !< The ocean's grid structure
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)  :: var  !< The variable to average in arbitrary
+  real(wp), dimension(SZIB_(G),SZJ_(G)), intent(in)  :: var  !< The variable to average in arbitrary
                                                          !! units [a], or arbitrary rescaled units
                                                          !! [A ~> a] if tmp_scale is present
-  real,                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
+  real(wp),                    optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
                                                          !! variable that converts it back to unscaled
                                                          !! (e.g., mks) units to enable the use of the
                                                          !! reproducing sums [a A-1 ~> 1], but is reversed
                                                          !! before output so that the return value has
                                                          !! the same units as var
-  real :: global_area_mean_u  ! The mean of the variable in the same arbitrary units as var [A ~> a]
+  real(wp) :: global_area_mean_u  ! The mean of the variable in the same arbitrary units as var [A ~> a]
 
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
-  real, dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral [A L2 ~> a m2]
-  real :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [1]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral [A L2 ~> a m2]
+  real(wp) :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [1]
   integer :: i, j, is, ie, js, je, isB, ieB, jsB, jeB
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isB = G%iscB ; ieB = G%iecB ; jsB = G%jscB ; jeB = G%jecB
 
-  temp_scale = 1.0 ; if (present(tmp_scale)) temp_scale = tmp_scale
+  temp_scale = 1.0_wp ; if (present(tmp_scale)) temp_scale = tmp_scale
 
-  tmpForSumming(:,:) = 0.
+  tmpForSumming(:,:) = 0._wp
   do j=js,je ; do i=is,ie
     tmpForSumming(i,j) = G%areaT(i,j) * &
              (var(I,j) * G%mask2dCu(I,j) + var(I-1,j) * G%mask2dCu(I-1,j)) / &
-             max(1.e-20, G%mask2dCu(I,j)+G%mask2dCu(I-1,j))
+             max(1.e-20_wp, G%mask2dCu(I,j)+G%mask2dCu(I-1,j))
   enddo ; enddo
   global_area_mean_u = reproducing_sum(tmpForSumming, unscale=G%US%L_to_m**2*temp_scale) * G%IareaT_global
 
@@ -163,25 +165,25 @@ end function global_area_mean_u
 !! (if it is present) or unscaled units for both the variable itself and for the area in the integral.
 function global_area_integral(var, G, scale, area, tmp_scale, unscale)
   type(ocean_grid_type),            intent(in)  :: G     !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: var   !< The variable to integrate in arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in)  :: var   !< The variable to integrate in arbitrary units [a],
                                                          !! or arbitrary rescaled units [A ~> a] if unscale
                                                          !! or tmp_scale is present
-  real,                   optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                          !! that converts it back to unscaled (e.g., mks)
                                                          !! units to enable the use of the reproducing sums
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: area !< The alternate area to use, including
+  real(wp), dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: area !< The alternate area to use, including
                                                          !! any required masking [L2 ~> m2].
-  real,                   optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
+  real(wp),                   optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
                                                          !! that is reversed in the return value [a A-1 ~> 1],
                                                          !! or [b B-1 ~> 1] if unscale is also present.
-  real,                   optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                          !! that converts it back to unscaled (e.g., mks)
                                                          !! units to enable the use of the reproducing sums, or
                                                          !! a factor converting between rescaled units if
                                                          !! tmp_scale is also present [B A-1 ~> b a-1].
                                                          !! Here scale and unscale are synonymous, but unscale
                                                          !! is preferred and takes precedence if both are present.
-  real :: global_area_integral !< The returned area integral, usually in the units of var times an area,
+  real(wp) :: global_area_integral !< The returned area integral, usually in the units of var times an area,
                                !! [a m2] or [A L2 ~> a m2] or [B L2 ~> b m2], depending on which optional
                                !! arguments are provided
 
@@ -189,9 +191,9 @@ function global_area_integral(var, G, scale, area, tmp_scale, unscale)
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums.
   ! [A ~> a] and [B ~> b] are the same units unless tmp_scale and unscale are both present.
-  real, dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral in [a m2] or
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! An unscaled cell integral in [a m2] or
                     ! a scaled cell integral in [B L2 ~> b m2] or other units as indicated below
-  real :: scalefac  ! An overall scaling factor for the areas and variable, in units of [a m2 A-1 L-2 ~> 1]
+  real(wp) :: scalefac  ! An overall scaling factor for the areas and variable, in units of [a m2 A-1 L-2 ~> 1]
                     ! or [1] or [B m2 A-1 L-2 ~> b a-1] or [B A-1 ~> b a-1] depending on which
                     ! optional arguments are present.
   !_______________________________________________________________________________________________
@@ -204,21 +206,21 @@ function global_area_integral(var, G, scale, area, tmp_scale, unscale)
   !      False         |      True        | [a m2 A-1 L-2 ~> b a-1] | [a m2]                      |
   !      False         |      False       | [m2 L-2 ~> 1]           | [a m2]                      |
   !____________________|__________________|_________________________|_____________________________!
-  real :: temp_scale ! A temporary scaling factor [a m2 L-2 A-1 ~> 1] or [b m2 L-2 B-1 ~> 1] or [1]
+  real(wp) :: temp_scale ! A temporary scaling factor [a m2 L-2 A-1 ~> 1] or [b m2 L-2 B-1 ~> 1] or [1]
   integer :: i, j, is, ie, js, je
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
   if (present(tmp_scale)) then
     temp_scale = G%US%L_to_m**2 * tmp_scale  ! Units of [a m2 A-1 L-2 ~> 1] or [b m2 B-1 L-2 ~> 1]
-    scalefac = 1.0
+    scalefac = 1.0_wp
   else
-    temp_scale = 1.0
+    temp_scale = 1.0_wp
     scalefac = G%US%L_to_m**2
   endif
   if (present(unscale)) then ; scalefac = scalefac * unscale
   elseif (present(scale)) then ; scalefac = scalefac * scale ; endif
 
-  tmpForSumming(:,:) = 0.
+  tmpForSumming(:,:) = 0._wp
   if (present(area)) then
     do j=js,je ; do i=is,ie
       tmpForSumming(i,j) = var(i,j) * (scalefac * area(i,j))
@@ -237,39 +239,39 @@ end function global_area_integral
 function global_layer_mean(var, h, G, GV, scale, tmp_scale, unscale)
   type(ocean_grid_type),                     intent(in)  :: G    !< The ocean's grid structure
   type(verticalGrid_type),                   intent(in)  :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: var  !< The variable to average in arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: var  !< The variable to average in arbitrary units [a],
                                                                  !! or arbitrary rescaled units [A ~> a] if unscale
                                                                  !! or tmp_scale is present
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h    !< Layer thicknesses [H ~> m or kg m-2]
-  real,                            optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp),                            optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                                  !! that converts it back to unscaled (e.g., mks)
                                                                  !! units to enable the use of the reproducing sums
-  real,                            optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
+  real(wp),                            optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
                                                                  !! variable for use in the reproducing sums
                                                                  !! that is reversed in the return value [a A-1 ~> 1],
                                                                  !! or [b B-1 ~> 1] if unscale is also present.
-  real,                            optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                            optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                                  !! that converts it back to unscaled (e.g., mks)
                                                                  !! units to enable the use of the reproducing sums, or
                                                                  !! a factor converting between rescaled units if
                                                                  !! tmp_scale is also present [B A-1 ~> b a-1].
                                                                  !! Here scale and unscale are synonymous, but unscale
                                                                  !! is preferred and takes precedence.
-  real, dimension(SZK_(GV)) :: global_layer_mean  !< The mean of the variable in the arbitrary scaled [A ~> a]
+  real(wp), dimension(SZK_(GV)) :: global_layer_mean  !< The mean of the variable in the arbitrary scaled [A ~> a]
                                                   !! or [B ~> b] or unscaled [a] units of var, depending on which
                                                   !! optional arguments are provided
 
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
-  real :: tmpForSumming(G%isc:G%iec,G%jsc:G%jec,SZK_(GV)) ! An unscaled cell integral in [L2 a m ~> a m3] or
+  real(wp) :: tmpForSumming(G%isc:G%iec,G%jsc:G%jec,SZK_(GV)) ! An unscaled cell integral in [L2 a m ~> a m3] or
                                                     ! [L2 a kg m-2 ~> a kg] or a scaled cell integral in
                                                     ! [L2 B m ~> b m3] or [L2 B m ~> b m3] or other units
                                                     ! as indicated the table below.
-  real :: weight(G%isc:G%iec,G%jsc:G%jec,SZK_(GV))  ! The volume or mass of each cell, depending on whether
+  real(wp) :: weight(G%isc:G%iec,G%jsc:G%jec,SZK_(GV))  ! The volume or mass of each cell, depending on whether
                                                     ! the model is Boussinesq, used as a weight [L2 m ~> m3]
                                                     ! or [L2 kg m-2 ~> kg]
-  real :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
+  real(wp) :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
   !__________________________________________________________________________________________________
   ! Units of weight, scalefac and tmpForSumming, depending on the presence of optional arguments    |
   !_________________________________________________________________________________________________|
@@ -288,20 +290,20 @@ function global_layer_mean(var, h, G, GV, scale, tmp_scale, unscale)
   type(EFP_type) :: laysums(2*SZK_(GV)) ! A vector of sums with heterogeneous meanings, with the first
                                         ! half being the tracer integrals in [b m3] or [b kg] and the
                                         ! second half being the summed weights in [m3] or [kg]
-  real :: global_temp_scalar   ! The global integral of the tracer over all
+  real(wp) :: global_temp_scalar   ! The global integral of the tracer over all
                                ! layers [L2 a m ~> a m3] or [L2 a kg m-2 ~> a kg]
-  real :: global_weight_scalar ! The global integral of the volume or mass over all
+  real(wp) :: global_weight_scalar ! The global integral of the volume or mass over all
                                ! layers [L2 m ~> m3] or [L2 kg m-2 ~> kg]
-  real :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
+  real(wp) :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
   integer :: i, j, k, is, ie, js, je, nz
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  temp_scale = 1.0 ; if (present(tmp_scale)) temp_scale = tmp_scale
+  temp_scale = 1.0_wp ; if (present(tmp_scale)) temp_scale = tmp_scale
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(scale)) then ; scalefac = scale ; endif
-  tmpForSumming(:,:,:) = 0. ; weight(:,:,:) = 0.
+  tmpForSumming(:,:,:) = 0._wp ; weight(:,:,:) = 0._wp
 
   do k=1,nz ; do j=js,je ; do i=is,ie
     weight(i,j,k)  =  (GV%H_to_MKS * h(i,j,k)) * (G%areaT(i,j) * G%mask2dT(i,j))
@@ -326,49 +328,49 @@ end function global_layer_mean
 function global_volume_mean(var, h, G, GV, scale, tmp_scale, unscale)
   type(ocean_grid_type),   intent(in)  :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in)  :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: var  !< The variable to average in arbitrary units [a],
                                                !! or arbitrary rescaled units [A ~> a] if unscale
                                                !! or tmp_scale is present
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: h    !< Layer thicknesses [H ~> m or kg m-2]
-  real,          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums
-  real,          optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
+  real(wp),          optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the
                                                !! variable that is reversed in the return value [a A-1 ~> 1],
                                                !! or [b B-1 ~> 1] if unscale is also present.
-  real,          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums, or
                                                !! a factor converting between rescaled units if
                                                !! tmp_scale is also present [B A-1 ~> b a-1].
                                                !! Here scale and unscale are synonymous, but unscale
                                                !! is preferred and takes precedence if both are present.
-  real :: global_volume_mean  !< The thickness-weighted average of var in the arbitrary scaled [A ~> a] or [B ~> b] or
+  real(wp) :: global_volume_mean  !< The thickness-weighted average of var in the arbitrary scaled [A ~> a] or [B ~> b] or
                               !! unscaled [a] units of var, depending on which optional arguments are provided
 
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
   ! [A ~> a] and [B ~> b] are the same units unless tmp_scale and unscale are both present.
-  real :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
-  real :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
-  real :: weight_here ! The volume or mass of a grid cell [L2 m ~> m3] or [L2 kg m-2 ~> kg]
-  real, dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! The volume or mass integral of the variable in a column
+  real(wp) :: temp_scale ! A temporary scaling factor [a A-1 ~> 1] or [b B-1 ~> 1] or [1]
+  real(wp) :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1] or [B A-1 ~> b a-1] or [1]
+  real(wp) :: weight_here ! The volume or mass of a grid cell [L2 m ~> m3] or [L2 kg m-2 ~> kg]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: tmpForSumming ! The volume or mass integral of the variable in a column
                                                   ! [B L2 m ~> b m3] or [B L2 kg m-2 ~> b kg] or
                                                   ! [L2 a m ~> a m3] or [L2 a kg m-2 ~> a kg]
-  real, dimension(SZI_(G),SZJ_(G)) :: sum_weight  ! The volume or mass of each column of water
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: sum_weight  ! The volume or mass of each column of water
                                                   ! [L2 m ~> m3] or [L2 kg m-2 ~> kg]
   integer :: i, j, k, is, ie, js, je, nz
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  temp_scale = 1.0 ; if (present(tmp_scale)) temp_scale = tmp_scale
+  temp_scale = 1.0_wp ; if (present(tmp_scale)) temp_scale = tmp_scale
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(scale)) then ; scalefac = scale ; endif
-  tmpForSumming(:,:) = 0. ; sum_weight(:,:) = 0.
+  tmpForSumming(:,:) = 0._wp ; sum_weight(:,:) = 0._wp
 
   do k=1,nz ; do j=js,je ; do i=is,ie
     weight_here  =  (GV%H_to_MKS * h(i,j,k)) * (G%areaT(i,j) * G%mask2dT(i,j))
@@ -387,28 +389,28 @@ end function global_volume_mean
 function global_mass_integral(h, G, GV, var, on_PE_only, scale, tmp_scale, unscale)
   type(ocean_grid_type),   intent(in)  :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in)  :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: h    !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                  optional, intent(in)  :: var  !< The variable to integrate in arbitrary units [a],
                                                !! or arbitrary rescaled units [A ~> a] if unscale
                                                !! or tmp_scale is present
   logical,       optional, intent(in)  :: on_PE_only  !< If present and true, the sum is only done
                                                !! on the local PE, and it is _not_ order invariant.
-  real,          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums
-  real,          optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
+  real(wp),          optional, intent(in)  :: tmp_scale !< A temporary rescaling factor for the variable
                                                !! that is reversed in the return value [a A-1 ~> 1],
                                                !! or [b B-1 ~> 1] if unscale is also present.
-  real,          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums, or
                                                !! a factor converting between rescaled units if
                                                !! tmp_scale is also present [B A-1 ~> b a-1].
                                                !! Here scale and unscale are synonymous, but unscale
                                                !! is preferred and takes precedence if both are present.
-  real :: global_mass_integral  !< The mass-weighted integral of var (or 1) in kg times the arbitrary
+  real(wp) :: global_mass_integral  !< The mass-weighted integral of var (or 1) in kg times the arbitrary
                                 !! units of var [kg a] or in [R Z L2 A ~> kg a] if tmp_scale is present
                                 !! or [R Z L2 B ~> kg b] if both unscale and tmp_scale are present
 
@@ -416,12 +418,12 @@ function global_mass_integral(h, G, GV, var, on_PE_only, scale, tmp_scale, unsca
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
   ! [A ~> a] and [B ~> b] are the same units unless tmp_scale and unscale are both present.
-  real :: tmpForSumming(SZI_(G),SZJ_(G)) ! The mass-weighted integral of the variable in a column in
+  real(wp) :: tmpForSumming(SZI_(G),SZJ_(G)) ! The mass-weighted integral of the variable in a column in
                      ! [kg a] or [kg] or if tmp_scale is present in [B R Z L2 ~> kg b] or
                      ! [A R Z L2 !> kg m] or [R Z L2 ~> kg]
-  real :: scalefac   ! An overall scaling factor for the cell mass and variable in [a kg A-1 R-1 Z-1 L-2 ~> 1]
+  real(wp) :: scalefac   ! An overall scaling factor for the cell mass and variable in [a kg A-1 R-1 Z-1 L-2 ~> 1]
                      ! or [kg R-1 Z-1 L-2 ~> 1] or [1] or [B A-1 ~> b a-1] if tmp_scale is present.
-  real :: temp_scale ! A temporary scaling factor [1] or if tmp_scale is present this could be in
+  real(wp) :: temp_scale ! A temporary scaling factor [1] or if tmp_scale is present this could be in
                      ! [kg a R-1 Z-1 L-2 A-1 ~> 1] or [kg b R-1 Z-1 L-2 B-1 ~> 1] or [kg R-1 Z-1 L-2 ~> 1]
   !_______________________________________________________________________________________
   ! Units of scalefac and tmpForSumming, depending on the presence of optional arguments |
@@ -443,9 +445,9 @@ function global_mass_integral(h, G, GV, var, on_PE_only, scale, tmp_scale, unsca
   if (present(tmp_scale)) then
     temp_scale = G%US%RZL2_to_kg * tmp_scale
     if (.not.present(var)) temp_scale = G%US%RZL2_to_kg
-    scalefac = 1.0
+    scalefac = 1.0_wp
   else
-    temp_scale = 1.0
+    temp_scale = 1.0_wp
     scalefac = G%US%RZL2_to_kg
   endif
   if (present(var)) then
@@ -453,7 +455,7 @@ function global_mass_integral(h, G, GV, var, on_PE_only, scale, tmp_scale, unsca
     elseif (present(scale)) then ; scalefac = scalefac * scale ; endif
   endif
 
-  tmpForSumming(:,:) = 0.0
+  tmpForSumming(:,:) = 0.0_wp
   if (present(var)) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       tmpForSumming(i,j) = tmpForSumming(i,j) + var(i,j,k) * &
@@ -469,7 +471,7 @@ function global_mass_integral(h, G, GV, var, on_PE_only, scale, tmp_scale, unsca
   if (global_sum) then
     global_mass_integral = reproducing_sum(tmpForSumming, unscale=temp_scale)
   else
-    global_mass_integral = 0.0
+    global_mass_integral = 0.0_wp
     do j=js,je ; do i=is,ie
       global_mass_integral = global_mass_integral + tmpForSumming(i,j)
     enddo ; enddo
@@ -482,18 +484,18 @@ end function global_mass_integral
 function global_mass_int_EFP(h, G, GV, var, on_PE_only, scale, unscale)
   type(ocean_grid_type),   intent(in)  :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in)  :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: h    !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                  optional, intent(in)  :: var  !< The variable to integrate in arbitrary units [a],
                                                !! or arbitrary rescaled units [A ~> a] if unscale
                                                !! is present
   logical,       optional, intent(in)  :: on_PE_only  !< If present and true, the sum is only done
                                                !! on the local PE, but it is still order invariant.
-  real,          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums
-  real,          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),          optional, intent(in)  :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                !! that converts it back to unscaled (e.g., mks)
                                                !! units to enable the use of the reproducing sums.
                                                !! Here scale and unscale are synonymous, but unscale
@@ -504,8 +506,8 @@ function global_mass_int_EFP(h, G, GV, var, on_PE_only, scale, unscale)
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
-  real :: tmpForSum(SZI_(G),SZJ_(G)) ! The mass-weighted integral of the variable in a column [kg a] or [kg]
-  real :: scalefac  ! An overall scaling factor for the cell mass and variable [a kg A-1 H-1 L-2 ~> kg m-3 or 1]
+  real(wp) :: tmpForSum(SZI_(G),SZJ_(G)) ! The mass-weighted integral of the variable in a column [kg a] or [kg]
+  real(wp) :: scalefac  ! An overall scaling factor for the cell mass and variable [a kg A-1 H-1 L-2 ~> kg m-3 or 1]
   integer :: i, j, k, is, ie, js, je, nz, isr, ier, jsr, jer
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -515,7 +517,7 @@ function global_mass_int_EFP(h, G, GV, var, on_PE_only, scale, unscale)
   if (present(unscale)) then ; scalefac = unscale * scalefac
   elseif (present(scale)) then ; scalefac = scale * scalefac ; endif
 
-  tmpForSum(:,:) = 0.0
+  tmpForSum(:,:) = 0.0_wp
   if (present(var)) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       tmpForSum(i,j) = tmpForSum(i,j) + var(i,j,k) * &
@@ -537,18 +539,18 @@ end function global_mass_int_EFP
 !! in a 1-d array using the local indexing. This uses reproducing sums.
 subroutine global_i_mean(array, i_mean, G, mask, scale, tmp_scale, unscale)
   type(ocean_grid_type),            intent(inout) :: G     !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: array !< The variable to integrate in arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in)    :: array !< The variable to integrate in arbitrary units [a],
                                                            !! or arbitrary rescaled units [A ~> a] if unscale
                                                            !! is present
-  real, dimension(SZJ_(G)),         intent(out)   :: i_mean !< Global mean of array along its i-axis [a] or [A ~> a]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZJ_(G)),         intent(out)   :: i_mean !< Global mean of array along its i-axis [a] or [A ~> a]
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                           optional, intent(in)    :: mask  !< An array used for weighting the i-mean [nondim]
-  real,                   optional, intent(in)    :: scale !< A rescaling factor for the output variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)    :: scale !< A rescaling factor for the output variable [a A-1 ~> 1]
                                                            !! that converts it back to unscaled (e.g., mks)
                                                            !! units to enable the use of the reproducing sums
-  real,                   optional, intent(in)    :: tmp_scale !< A rescaling factor for the internal
+  real(wp),                   optional, intent(in)    :: tmp_scale !< A rescaling factor for the internal
                                                            !! calculations that is removed from the output [a A-1 ~> 1]
-  real,                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                            !! that converts it back to unscaled (e.g., mks)
                                                            !! units to enable the use of the reproducing sums.
                                                            !! Here scale and unscale are synonymous, but unscale
@@ -559,22 +561,22 @@ subroutine global_i_mean(array, i_mean, G, mask, scale, tmp_scale, unscale)
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
   type(EFP_type), allocatable, dimension(:) :: asum      ! The masked sum of the variable in each row [a]
   type(EFP_type), allocatable, dimension(:) :: mask_sum  ! The sum of the mask values in each row [nondim]
-  real :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1]
-  real :: rescale    ! A factor for redoing any internal rescaling before output [A a-1 ~> 1]
-  real :: mask_sum_r ! The sum of the mask values in a row [nondim]
+  real(wp) :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1]
+  real(wp) :: rescale    ! A factor for redoing any internal rescaling before output [A a-1 ~> 1]
+  real(wp) :: mask_sum_r ! The sum of the mask values in a row [nondim]
   integer :: is, ie, js, je, idg_off, jdg_off
   integer :: i, j
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   idg_off = G%idg_offset ; jdg_off = G%jdg_offset
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(scale)) then ; scalefac = scale ; endif
 
-  rescale = 1.0
-  if (present(tmp_scale)) then ; if (tmp_scale /= 0.0) then
-    scalefac = scalefac * tmp_scale ; rescale = 1.0 / tmp_scale
+  rescale = 1.0_wp
+  if (present(tmp_scale)) then ; if (tmp_scale /= 0.0_wp) then
+    scalefac = scalefac * tmp_scale ; rescale = 1.0_wp / tmp_scale
   endif ; endif
   call reset_EFP_overflow_error()
 
@@ -583,7 +585,7 @@ subroutine global_i_mean(array, i_mean, G, mask, scale, tmp_scale, unscale)
     allocate(mask_sum(G%jsg:G%jeg))
 
     do j=G%jsg,G%jeg
-      asum(j) = real_to_EFP(0.0) ; mask_sum(j) = real_to_EFP(0.0)
+      asum(j) = real_to_EFP(0.0_wp) ; mask_sum(j) = real_to_EFP(0.0_wp)
     enddo
 
     do j=js,je ; do i=is,ie
@@ -602,14 +604,14 @@ subroutine global_i_mean(array, i_mean, G, mask, scale, tmp_scale, unscale)
 
     do j=js,je
       mask_sum_r = EFP_to_real(mask_sum(j+jdg_off))
-      if (mask_sum_r == 0.0 ) then ; i_mean(j) = 0.0 ; else
+      if (mask_sum_r == 0.0_wp ) then ; i_mean(j) = 0.0_wp ; else
         i_mean(j) = EFP_to_real(asum(j+jdg_off)) / mask_sum_r
       endif
     enddo
 
     deallocate(mask_sum)
   else
-    do j=G%jsg,G%jeg ; asum(j) = real_to_EFP(0.0) ; enddo
+    do j=G%jsg,G%jeg ; asum(j) = real_to_EFP(0.0_wp) ; enddo
 
     do j=js,je ; do i=is,ie
       asum(j+jdg_off) = asum(j+jdg_off) + real_to_EFP(scalefac*array(i,j))
@@ -624,11 +626,11 @@ subroutine global_i_mean(array, i_mean, G, mask, scale, tmp_scale, unscale)
       "global_i_mean overflow error occurred during sum across PEs.")
 
     do j=js,je
-      i_mean(j) = EFP_to_real(asum(j+jdg_off)) / real(G%ieg-G%isg+1)
+      i_mean(j) = EFP_to_real(asum(j+jdg_off)) / real(G%ieg-G%isg+1, wp)
     enddo
   endif
 
-  if (rescale /= 1.0) then ; do j=js,je ; i_mean(j) = rescale*i_mean(j) ; enddo ; endif
+  if (rescale /= 1.0_wp) then ; do j=js,je ; i_mean(j) = rescale*i_mean(j) ; enddo ; endif
 
   deallocate(asum)
 
@@ -638,18 +640,18 @@ end subroutine global_i_mean
 !! in a 1-d array using the local indexing. This uses reproducing sums.
 subroutine global_j_mean(array, j_mean, G, mask, scale, tmp_scale, unscale)
   type(ocean_grid_type),            intent(inout) :: G     !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: array !< The variable to integrate in arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in)    :: array !< The variable to integrate in arbitrary units [a],
                                                            !! or arbitrary rescaled units [A ~> a] if unscale
                                                            !! is present
-  real, dimension(SZI_(G)),         intent(out)   :: j_mean !<  Global mean of array along its j-axis [a] or [A ~> a]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G)),         intent(out)   :: j_mean !<  Global mean of array along its j-axis [a] or [A ~> a]
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                           optional, intent(in)    :: mask  !< An array used for weighting the j-mean [nondim]
-  real,                   optional, intent(in)    :: scale !< A rescaling factor for the output variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)    :: scale !< A rescaling factor for the output variable [a A-1 ~> 1]
                                                            !! that converts it back to unscaled (e.g., mks)
                                                            !! units to enable the use of the reproducing sums
-  real,                   optional, intent(in)    :: tmp_scale !< A rescaling factor for the internal
+  real(wp),                   optional, intent(in)    :: tmp_scale !< A rescaling factor for the internal
                                                            !! calculations that is removed from the output [a A-1 ~> 1]
-  real,                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                            !! that converts it back to unscaled (e.g., mks)
                                                            !! units to enable the use of the reproducing sums.
                                                            !! Here scale and unscale are synonymous, but unscale
@@ -660,22 +662,22 @@ subroutine global_j_mean(array, j_mean, G, mask, scale, tmp_scale, unscale)
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
   type(EFP_type), allocatable, dimension(:) :: asum      ! The masked sum of the variable in each row [a]
   type(EFP_type), allocatable, dimension(:) :: mask_sum  ! The sum of the mask values in each row [nondim]
-  real :: mask_sum_r ! The sum of the mask values in a row [nondim]
-  real :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1]
-  real :: rescale    ! A factor for redoing any internal rescaling before output [A a-1 ~> 1]
+  real(wp) :: mask_sum_r ! The sum of the mask values in a row [nondim]
+  real(wp) :: scalefac   ! A scaling factor for the variable [a A-1 ~> 1]
+  real(wp) :: rescale    ! A factor for redoing any internal rescaling before output [A a-1 ~> 1]
   integer :: is, ie, js, je, idg_off, jdg_off
   integer :: i, j
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   idg_off = G%idg_offset ; jdg_off = G%jdg_offset
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(scale)) then ; scalefac = scale ; endif
 
-  rescale = 1.0
-  if (present(tmp_scale)) then ; if (tmp_scale /= 0.0) then
-    scalefac = scalefac * tmp_scale ; rescale = 1.0 / tmp_scale
+  rescale = 1.0_wp
+  if (present(tmp_scale)) then ; if (tmp_scale /= 0.0_wp) then
+    scalefac = scalefac * tmp_scale ; rescale = 1.0_wp / tmp_scale
   endif ; endif
   call reset_EFP_overflow_error()
 
@@ -684,7 +686,7 @@ subroutine global_j_mean(array, j_mean, G, mask, scale, tmp_scale, unscale)
     allocate (mask_sum(G%isg:G%ieg))
 
     do i=G%isg,G%ieg
-      asum(i) = real_to_EFP(0.0) ; mask_sum(i) = real_to_EFP(0.0)
+      asum(i) = real_to_EFP(0.0_wp) ; mask_sum(i) = real_to_EFP(0.0_wp)
     enddo
 
     do i=is,ie ; do j=js,je
@@ -703,14 +705,14 @@ subroutine global_j_mean(array, j_mean, G, mask, scale, tmp_scale, unscale)
 
     do i=is,ie
       mask_sum_r = EFP_to_real(mask_sum(i+idg_off))
-      if (mask_sum_r == 0.0 ) then ; j_mean(i) = 0.0 ; else
+      if (mask_sum_r == 0.0_wp ) then ; j_mean(i) = 0.0_wp ; else
         j_mean(i) = EFP_to_real(asum(i+idg_off)) / mask_sum_r
       endif
     enddo
 
     deallocate(mask_sum)
   else
-    do i=G%isg,G%ieg ; asum(i) = real_to_EFP(0.0) ; enddo
+    do i=G%isg,G%ieg ; asum(i) = real_to_EFP(0.0_wp) ; enddo
 
     do i=is,ie ; do j=js,je
       asum(i+idg_off) = asum(i+idg_off) + real_to_EFP(scalefac*array(i,j))
@@ -725,11 +727,11 @@ subroutine global_j_mean(array, j_mean, G, mask, scale, tmp_scale, unscale)
       "global_j_mean overflow error occurred during sum across PEs.")
 
     do i=is,ie
-      j_mean(i) = EFP_to_real(asum(i+idg_off)) / real(G%jeg-G%jsg+1)
+      j_mean(i) = EFP_to_real(asum(i+idg_off)) / real(G%jeg-G%jsg+1, wp)
     enddo
   endif
 
-  if (rescale /= 1.0) then ; do i=is,ie ; j_mean(i) = rescale*j_mean(i) ; enddo ; endif
+  if (rescale /= 1.0_wp) then ; do i=is,ie ; j_mean(i) = rescale*j_mean(i) ; enddo ; endif
 
   deallocate(asum)
 
@@ -738,14 +740,14 @@ end subroutine global_j_mean
 !> Adjust 2d array such that area mean is zero without moving the zero contour
 subroutine adjust_area_mean_to_zero(array, G, scaling, unit_scale, unscale)
   type(ocean_grid_type),            intent(in)    :: G       !< Grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: array   !< 2D array to be adjusted in  arbitrary units [a],
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(inout) :: array   !< 2D array to be adjusted in  arbitrary units [a],
                                                              !! or arbitrary rescaled units [A ~> a] if unscale
                                                              !! is present
-  real, optional,                   intent(out)   :: scaling !< The scaling factor used [nondim]
-  real,                   optional, intent(in)    :: unit_scale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp), optional,                   intent(out)   :: scaling !< The scaling factor used [nondim]
+  real(wp),                   optional, intent(in)    :: unit_scale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                              !! that converts it back to unscaled (e.g., mks)
                                                              !! units to enable the use of the reproducing sums
-  real,                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
+  real(wp),                   optional, intent(in)    :: unscale !< A rescaling factor for the variable [a A-1 ~> 1]
                                                              !! that converts it back to unscaled (e.g., mks)
                                                              !! units to enable the use of the reproducing sums.
                                                              !! Here unit_scale and unscale are synonymous, but unscale
@@ -753,17 +755,17 @@ subroutine adjust_area_mean_to_zero(array, G, scaling, unit_scale, unscale)
   ! Local variables
   ! In the following comments, [A ~> a] is used to indicate the arbitrary, possibly rescaled units of the
   ! input array while [a] indicates the unscaled (e.g., mks) units that can be used with the reproducing sums
-  real :: posVals(G%isc:G%iec, G%jsc:G%jec) ! The positive values in a cell or 0 [A ~> a]
-  real :: negVals(G%isc:G%iec, G%jsc:G%jec) ! The negative values in a cell or 0 [A ~> a]
-  real :: areaXposVals(G%isc:G%iec, G%jsc:G%jec) ! The cell area integral of the positive values [L2 A ~> m2 a]
-  real :: areaXnegVals(G%isc:G%iec, G%jsc:G%jec) ! The cell area integral of the negative values [L2 A ~> m2 a]
+  real(wp) :: posVals(G%isc:G%iec, G%jsc:G%jec) ! The positive values in a cell or 0 [A ~> a]
+  real(wp) :: negVals(G%isc:G%iec, G%jsc:G%jec) ! The negative values in a cell or 0 [A ~> a]
+  real(wp) :: areaXposVals(G%isc:G%iec, G%jsc:G%jec) ! The cell area integral of the positive values [L2 A ~> m2 a]
+  real(wp) :: areaXnegVals(G%isc:G%iec, G%jsc:G%jec) ! The cell area integral of the negative values [L2 A ~> m2 a]
   type(EFP_type), dimension(2) :: areaInt_EFP ! An EFP version integral of the values on the current PE [m2 a]
-  real :: scalefac  ! A scaling factor for the variable [a A-1 ~> 1]
-  real :: areaIntPosVals, areaIntNegVals ! The global area integral of the positive and negative values [m2 a]
-  real :: posScale, negScale ! The scaling factor to apply to positive or negative values [nondim]
+  real(wp) :: scalefac  ! A scaling factor for the variable [a A-1 ~> 1]
+  real(wp) :: areaIntPosVals, areaIntNegVals ! The global area integral of the positive and negative values [m2 a]
+  real(wp) :: posScale, negScale ! The scaling factor to apply to positive or negative values [nondim]
   integer :: i,j
 
-  scalefac = 1.0
+  scalefac = 1.0_wp
   if (present(unscale)) then ; scalefac = unscale
   elseif (present(unit_scale)) then ; scalefac = unit_scale ; endif
 
@@ -771,9 +773,9 @@ subroutine adjust_area_mean_to_zero(array, G, scaling, unit_scale, unscale)
   ! areaXnegVals(:,:) = 0.  ! This zeros out halo points.
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    posVals(i,j) = max(0., array(i,j))
+    posVals(i,j) = max(0._wp, array(i,j))
     areaXposVals(i,j) = G%areaT(i,j) * posVals(i,j)
-    negVals(i,j) = min(0., array(i,j))
+    negVals(i,j) = min(0._wp, array(i,j))
     areaXnegVals(i,j) = G%areaT(i,j) * negVals(i,j)
   enddo ; enddo
 
@@ -784,8 +786,8 @@ subroutine adjust_area_mean_to_zero(array, G, scaling, unit_scale, unscale)
   areaIntPosVals = EFP_to_real( areaInt_EFP(1) )
   areaIntNegVals = EFP_to_real( areaInt_EFP(2) )
 
-  posScale = 0.0 ; negScale = 0.0
-  if ((areaIntPosVals>0.).and.(areaIntNegVals<0.)) then ! Only adjust if possible
+  posScale = 0.0_wp ; negScale = 0.0_wp
+  if ((areaIntPosVals>0._wp).and.(areaIntNegVals<0._wp)) then ! Only adjust if possible
     if (areaIntPosVals>-areaIntNegVals) then ! Scale down positive values
       posScale = - areaIntNegVals / areaIntPosVals
       do j=G%jsc,G%jec ; do i=G%isc,G%iec
@@ -813,31 +815,31 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
                                 xgmin, ygmin, zgmin, xgmax, ygmax, zgmax, unscale)
   integer,                      intent(in)  :: nk    !< The number of vertical levels
   type(ocean_grid_type),        intent(in)  :: G     !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G),nk), intent(in)  :: tr_array !< The tracer array to search for
+  real(wp), dimension(SZI_(G),SZJ_(G),nk), intent(in)  :: tr_array !< The tracer array to search for
                                                      !! extrema in arbitrary concentration units [CU ~> conc]
-  real,                         intent(out) :: g_min !< The global minimum of tr_array, either in
+  real(wp),                         intent(out) :: g_min !< The global minimum of tr_array, either in
                                                      !! the same units as tr_array [CU ~> conc] or in
                                                      !! unscaled units if unscale is present [conc]
-  real,                         intent(out) :: g_max !< The global maximum of tr_array, either in
+  real(wp),                         intent(out) :: g_max !< The global maximum of tr_array, either in
                                                      !! the same units as tr_array [CU ~> conc] or in
                                                      !! unscaled units if unscale is present [conc]
-  real,               optional, intent(out) :: xgmin !< The x-position of the global minimum in the
+  real(wp),               optional, intent(out) :: xgmin !< The x-position of the global minimum in the
                                                      !! units of G%geoLonT, often [degrees_E] or [km] or [m]
-  real,               optional, intent(out) :: ygmin !< The y-position of the global minimum in the
+  real(wp),               optional, intent(out) :: ygmin !< The y-position of the global minimum in the
                                                      !! units of G%geoLatT, often [degrees_N] or [km] or [m]
-  real,               optional, intent(out) :: zgmin !< The z-position of the global minimum [layer]
-  real,               optional, intent(out) :: xgmax !< The x-position of the global maximum in the
+  real(wp),               optional, intent(out) :: zgmin !< The z-position of the global minimum [layer]
+  real(wp),               optional, intent(out) :: xgmax !< The x-position of the global maximum in the
                                                      !! units of G%geoLonT, often [degrees_E] or [km] or [m]
-  real,               optional, intent(out) :: ygmax !< The y-position of the global maximum in the
+  real(wp),               optional, intent(out) :: ygmax !< The y-position of the global maximum in the
                                                      !! units of G%geoLatT, often [degrees_N] or [km] or [m]
-  real,               optional, intent(out) :: zgmax !< The z-position of the global maximum [layer]
-  real,               optional, intent(in)  :: unscale !< A factor to use to undo any scaling of
+  real(wp),               optional, intent(out) :: zgmax !< The z-position of the global maximum [layer]
+  real(wp),               optional, intent(in)  :: unscale !< A factor to use to undo any scaling of
                                                      !! the input tracer array [conc CU-1 ~> 1]
 
   ! Local variables
-  real    :: tmax, tmin      ! Maximum and minimum tracer values, in the same units as tr_array [CU ~> conc]
+  real(wp)    :: tmax, tmin      ! Maximum and minimum tracer values, in the same units as tr_array [CU ~> conc]
   integer :: ijk_min_max(2)  ! Integers encoding the global grid positions of the global minimum and maximum values
-  real    :: xyz_min_max(6)  ! A single array with the x-, y- and z-positions of the minimum and
+  real(wp)    :: xyz_min_max(6)  ! A single array with the x-, y- and z-positions of the minimum and
                              ! maximum values in units that vary between the array elements [various]
   logical :: valid_PE        ! True if there are any valid points on the local PE.
   logical :: find_location   ! If true, report the locations of the extrema
@@ -860,7 +862,7 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
     valid_PE = .false.
     itmax = 0 ; jtmax = 0 ; ktmax = 0 ; ijk_loc_max = 0
     itmin = 0 ; jtmin = 0 ; ktmin = 0 ; ijk_loc_min = 0
-    do k=1,nk ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+    do k=1,nk ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0_wp) then
       valid_PE = .true.
       if (tr_array(i,j,k) > tmax) then
         tmax = tr_array(i,j,k)
@@ -887,7 +889,7 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
     endif ; enddo ; enddo ; enddo
   else
     ! Only the maximum and minimum values are needed, and not their positions.
-    do k=1,nk ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+    do k=1,nk ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0_wp) then
       if (tr_array(i,j,k) > tmax) tmax = tr_array(i,j,k)
       if (tr_array(i,j,k) < tmin) tmin = tr_array(i,j,k)
     endif ; enddo ; enddo ; enddo
@@ -901,7 +903,7 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
   if (find_location) then
     if (g_max < g_min) then
       ! This only occurs if there are no unmasked points anywhere in the domain.
-      xyz_min_max(:) = 0.0
+      xyz_min_max(:) = 0.0_wp
     else
       ! Find the global indices of the maximum and minimum locations.  This can
       ! occur on multiple PEs.
@@ -922,12 +924,12 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
         if (ijk_min_max(1) == ijk_loc_min) then
           xyz_min_max(1) = G%geoLonT(itmin,jtmin)
           xyz_min_max(2) = G%geoLatT(itmin,jtmin)
-          xyz_min_max(3) = real(ktmin)
+          xyz_min_max(3) = real(ktmin, wp)
         endif
         if (ijk_min_max(2) == ijk_loc_max) then
           xyz_min_max(4) = G%geoLonT(itmax,jtmax)
           xyz_min_max(5) = G%geoLatT(itmax,jtmax)
-          xyz_min_max(6) = real(ktmax)
+          xyz_min_max(6) = real(ktmax, wp)
         endif
       endif
 
@@ -944,7 +946,7 @@ subroutine array_global_min_max(tr_array, G, nk, g_min, g_max, &
 
   if (g_max < g_min) then
     ! There are no unmasked points anywhere in the domain.
-    g_max = 0.0 ; g_min = 0.0
+    g_max = 0.0_wp ; g_min = 0.0_wp
   endif
 
   if (present(unscale)) then

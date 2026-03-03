@@ -62,6 +62,8 @@ program Shelf_main
   use MOM_ice_shelf, only : initialize_ice_shelf, ice_shelf_end, ice_shelf_CS
   use MOM_ice_shelf, only : ice_shelf_save_restart, solo_step_ice_shelf
 
+use MOM_datatypes, only : wp
+
   implicit none
 
 #include <MOM_memory.h>
@@ -101,13 +103,13 @@ program Shelf_main
   type(time_type) :: time_chg           ! An amount of time to adjust the segment_start_time
                                         ! and elapsed time to avoid roundoff problems.
 
-  real    :: elapsed_time = 0.0   ! Elapsed time in this run [T ~> s].
+  real(wp)    :: elapsed_time = 0.0_wp   ! Elapsed time in this run [T ~> s].
 
   logical :: elapsed_time_master  ! If true, elapsed time is used to set the
                                   ! model's master clock (Time).  This is needed
                                   ! if Time_step_shelf is not an exact
                                   ! representation of time_step.
-  real :: time_step               ! The time step [T ~> s]
+  real(wp) :: time_step               ! The time step [T ~> s]
 
   ! A pointer to a structure containing metrics and related information.
   type(ocean_grid_type), pointer :: ocn_grid => NULL()
@@ -132,7 +134,7 @@ program Shelf_main
                                 ! restart file is saved at the end of a run segment
                                 ! unless Restart_control is negative.
 
-  real            :: Time_unit       ! The time unit for the following input fields [s].
+  real(wp)            :: Time_unit       ! The time unit for the following input fields [s].
   type(time_type) :: restint         ! The time between saves of the restart file.
   type(time_type) :: daymax          ! The final day of the simulation.
 
@@ -221,7 +223,7 @@ program Shelf_main
     Start_time = set_date(date_init(1),date_init(2), date_init(3), &
          date_init(4),date_init(5),date_init(6))
   else
-    Start_time = real_to_time(0.0)
+    Start_time = real_to_time(0.0_wp)
   endif
 
   ! Determining the internal unit scaling factors for this run.
@@ -299,17 +301,17 @@ program Shelf_main
 !   grid => ice_shelf_CSp%grid
 
   segment_start_time = Time
-  elapsed_time = 0.0
+  elapsed_time = 0.0_wp
 
   Time_step_shelf = real_to_time(US%T_to_s*time_step)
-  elapsed_time_master = (abs(time_step - US%s_to_T*time_type_to_real(Time_step_shelf)) > 1.0e-12*time_step)
+  elapsed_time_master = (abs(time_step - US%s_to_T*time_type_to_real(Time_step_shelf)) > 1.0e-12_wp*time_step)
   if (elapsed_time_master) &
     call MOM_mesg("Using real elapsed time for the master clock.", 2)
 
   ! Determine the segment end time, either from the namelist file or parsed input file.
   call get_param(param_file, mod_name, "TIMEUNIT", Time_unit, &
                  "The time unit for DAYMAX and RESTINT.", &
-                 units="s", default=86400.0)
+                 units="s", default=86400.0_wp)
   if (years+months+days+hours+minutes+seconds > 0) then
     Time_end = increment_date(Time, years, months, days, hours, minutes, seconds)
     call MOM_mesg('Segment run length determined from ice_solo_nml.', 2)
@@ -343,7 +345,7 @@ program Shelf_main
   call get_param(param_file, mod_name, "RESTINT", restint, &
                  "The interval between saves of the restart file in units "//&
                  "of TIMEUNIT.  Use 0 (the default) to not save "//&
-                 "incremental restart files at all.", default=real_to_time(0.0), &
+                 "incremental restart files at all.", default=real_to_time(0.0_wp), &
                  timeunit=Time_unit)
   call get_param(param_file, mod_name, "WRITE_CPU_STEPS", cpu_steps, &
                  "The number of coupled timesteps between writing the cpu "//&
@@ -378,7 +380,7 @@ program Shelf_main
   if (((.not.BTEST(Restart_control,1)) .and. (.not.BTEST(Restart_control,0))) &
       .or. (Restart_control < 0)) permit_incr_restart = .false.
 
-  if (restint > real_to_time(0.0)) then
+  if (restint > real_to_time(0.0_wp)) then
     ! restart_time is the next integral multiple of restint.
     restart_time = Start_time + restint * &
         (1 + ((Time + Time_step_shelf) - Start_time) / restint)
@@ -405,7 +407,7 @@ program Shelf_main
 !   Time = Time + Time_step_shelf
 !   This is here to enable fractional-second time steps.
     elapsed_time = elapsed_time + time_step
-    if (elapsed_time > 2.0e9*US%s_to_T) then
+    if (elapsed_time > 2.0e9_wp*US%s_to_T) then
       ! This is here to ensure that the conversion from a real to an integer can be accurately
       ! represented in long runs (longer than ~63 years). It will also ensure that elapsed time
       ! does not lose resolution of order the timetype's resolution, provided that the timestep and

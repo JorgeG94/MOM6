@@ -163,11 +163,12 @@ MOM6_FC_CHECK_LIB([netcdff], [nf90_create], [netcdf], [path,cmode,ncid], [rc], [
 )
 
 
-# Force 8-byte reals
-AX_FC_REAL8
-AS_IF([test "$enable_real8" != no],
-  [FCFLAGS="$FCFLAGS $REAL8_FCFLAGS"]
-)
+# NOTE: -r8 is no longer needed; MOM6 now uses explicit kind parameters
+# via MOM_datatypes (wp = selected_real_kind(15, 307)).
+#AX_FC_REAL8
+#AS_IF([test "$enable_real8" != no],
+#  [FCFLAGS="$FCFLAGS $REAL8_FCFLAGS"]
+#)
 
 
 # OpenMP configuration
@@ -242,7 +243,9 @@ AX_FC_CHECK_MODULE([fms2_io_mod], [
 AX_FC_CHECK_MODULE([gsw_mod_toolbox], [], [
   AC_MSG_ERROR([Could not find module gsw_mod_toolbox.])
 ])
-MOM6_FC_CHECK_LIB([gsw], [gsw_rho], [gsw_mod_toolbox], [sa,ct,p], [rho], [],
+MOM6_FC_CHECK_LIB([gsw], [gsw_rho], [gsw_mod_toolbox], [sa,ct,p], [rho], [
+      use gsw_mod_kinds, only : r8
+      real(r8) :: sa, ct, p, rho],
   [], [
     AC_MSG_ERROR([Could not find gsw_rho in gsw_mod_toolbox.])
   ]

@@ -16,6 +16,8 @@ use MOM_string_functions, only : lowercase, uppercase, slasher
 use MOM_time_manager,  only : time_type
 use MOM_unit_scaling,  only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MOM_IS_diag_mediator_infrastructure_init
@@ -42,9 +44,9 @@ type, private :: diag_type
   logical :: in_use              !< This diagnostic is in use
   integer :: fms_diag_id         !< underlying FMS diag id
   character(len=24) :: name      !< The diagnostic name
-  real :: conversion_factor = 0. !< A factor to multiply data by before posting to FMS, if non-zero.
-  real, pointer, dimension(:,:)   :: mask2d => null()      !< A 2-d mask on the data domain for this diagnostic [nondim]
-  real, pointer, dimension(:,:)   :: mask2d_comp => null() !< A 2-d mask on the computational domain
+  real(wp) :: conversion_factor = 0._wp !< A factor to multiply data by before posting to FMS, if non-zero.
+  real(wp), pointer, dimension(:,:)   :: mask2d => null()      !< A 2-d mask on the data domain for this diagnostic [nondim]
+  real(wp), pointer, dimension(:,:)   :: mask2d_comp => null() !< A 2-d mask on the computational domain
                                                            !! for this diagnostic [nondim]
 end type diag_type
 
@@ -66,7 +68,7 @@ type, public :: diag_ctrl
   integer :: ied !< The end i-index of cell centers within the data domain
   integer :: jsd !< The start j-index of cell centers within the data domain
   integer :: jed !< The end j-index of cell centers within the data domain
-  real :: time_int              !< The time interval for any fields that are offered for averaging [s].
+  real(wp) :: time_int              !< The time interval for any fields that are offered for averaging [s].
   type(time_type) :: time_end   !< The end time of the valid interval for any offered field.
   logical :: ave_enabled = .false. !< .true. if averaging is enabled.
 
@@ -81,18 +83,18 @@ type, public :: diag_ctrl
   !!@}
 
   ! Mask arrays for diagnostics
-  real, dimension(:,:),   pointer :: mask2dT   => null() !< 2D mask array for cell-center points
-  real, dimension(:,:),   pointer :: mask2dBu  => null() !< 2D mask array for cell-corners
-  real, dimension(:,:),   pointer :: mask2dCu  => null() !< 2D mask array for east-faces
-  real, dimension(:,:),   pointer :: mask2dCv  => null() !< 2D mask array for north-faces
+  real(wp), dimension(:,:),   pointer :: mask2dT   => null() !< 2D mask array for cell-center points
+  real(wp), dimension(:,:),   pointer :: mask2dBu  => null() !< 2D mask array for cell-corners
+  real(wp), dimension(:,:),   pointer :: mask2dCu  => null() !< 2D mask array for east-faces
+  real(wp), dimension(:,:),   pointer :: mask2dCv  => null() !< 2D mask array for north-faces
   !> Computational domain mask arrays for diagnostics.
-  real, dimension(:,:),   pointer :: mask2dT_comp => null()
+  real(wp), dimension(:,:),   pointer :: mask2dT_comp => null()
 
 #define DIAG_ALLOC_CHUNK_SIZE 15
   type(diag_type), dimension(:), allocatable :: diags !< The array of diagnostics
   integer :: next_free_diag_id !< The next unused diagnostic ID
   !> default missing value to be sent to ALL diagnostics registerations [various]
-  real :: missing_value = -1.0e34
+  real(wp) :: missing_value = -1.0e34_wp
 
   type(unit_scale_type), pointer :: US => null() !< A dimensional unit scaling type
 
@@ -132,7 +134,7 @@ subroutine set_IS_axes_info(G, param_file, diag_cs, axes_set_name)
 
   G%x_axis_units = "degrees_E" ; G%y_axis_units = "degrees_N"
   G%x_ax_unit_short = "degrees_E" ; G%y_ax_unit_short = "degrees_N"
-  G%grid_unit_to_L = 0.0
+  G%grid_unit_to_L = 0.0_wp
 
   if (index(lowercase(trim(grid_config)),"cartesian") > 0) then
     ! This is a cartesian grid, and may have different axis units.
@@ -146,7 +148,7 @@ subroutine set_IS_axes_info(G, param_file, diag_cs, axes_set_name)
     if (units_temp(1:1) == 'k') then
       G%x_axis_units = "kilometers" ; G%y_axis_units = "kilometers"
       G%x_ax_unit_short = "km" ; G%y_ax_unit_short = "km"
-      G%grid_unit_to_L = 1000.0*diag_cs%US%m_to_L
+      G%grid_unit_to_L = 1000.0_wp*diag_cs%US%m_to_L
     elseif (units_temp(1:1) == 'm') then
       G%x_axis_units = "meters" ; G%y_axis_units = "meters"
       G%x_ax_unit_short = "m" ; G%y_ax_unit_short = "m"
@@ -215,14 +217,14 @@ end subroutine set_IS_diag_mediator_grid
 subroutine post_IS_data(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
                                               !! previous call to register_diag_field.
-  real,    target,   intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
+  real(wp),    target,   intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
   type(diag_ctrl), target, &
                      intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
   logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
   logical, optional, intent(in) :: mask(:,:) !< If present, use this logical array as the data mask.
 
   ! Local variables
-  real, dimension(:,:), pointer :: locfield
+  real(wp), dimension(:,:), pointer :: locfield
   logical :: used, is_stat
   logical :: i_data, j_data
   integer :: isv, iev, jsv, jev, i, j
@@ -268,7 +270,7 @@ subroutine post_IS_data(diag_field_id, field, diag_cs, is_static, mask)
     call MOM_error(FATAL,"post_MOM_IS_data_2d: peculiar size in j-direction "//trim(diag%name))
   endif
 
-  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.)) then
+  if ((diag%conversion_factor /= 0._wp) .and. (diag%conversion_factor /= 1._wp)) then
     allocate( locfield( lbound(field,1):ubound(field,1), lbound(field,2):ubound(field,2) ) )
     do j=jsv,jev ; do i=isv,iev
       if (field(i,j) == diag_cs%missing_value) then
@@ -344,7 +346,7 @@ subroutine post_IS_data(diag_field_id, field, diag_cs, is_static, mask)
     endif
   endif
 
-  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.) ) deallocate( locfield )
+  if ((diag%conversion_factor /= 0._wp) .and. (diag%conversion_factor /= 1._wp) ) deallocate( locfield )
 
 end subroutine post_IS_data
 
@@ -352,12 +354,12 @@ end subroutine post_IS_data
 subroutine post_IS_data_0d(diag_field_id, field, diag_cs, is_static)
   integer,           intent(in) :: diag_field_id !< The id for an output variable returned by a
                                                  !! previous call to register_diag_field.
-  real,              intent(in) :: field         !< real value being offered for output or averaging
+  real(wp),              intent(in) :: field         !< real value being offered for output or averaging
                                                  !! in internally scaled arbitrary units [A ~> a]
   type(diag_ctrl), target, intent(in) :: diag_CS !< Structure used to regulate diagnostic output
   logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
   ! Local variables
-  real :: locfield ! The field being offered in arbitrary unscaled units [a]
+  real(wp) :: locfield ! The field being offered in arbitrary unscaled units [a]
   logical :: used, is_stat
   type(diag_type), pointer :: diag => null()
 
@@ -368,7 +370,7 @@ subroutine post_IS_data_0d(diag_field_id, field, diag_cs, is_static)
   diag => diag_cs%diags(diag_field_id)
 
   locfield = field
-  if (diag%conversion_factor /= 0.) &
+  if (diag%conversion_factor /= 0._wp) &
     locfield = locfield * diag%conversion_factor
 
   if (is_stat) then
@@ -381,7 +383,7 @@ end subroutine post_IS_data_0d
 
 !> Enable the accumulation of time averages over the specified time interval.
 subroutine enable_averaging(time_int_in, time_end_in, diag_cs)
-  real,            intent(in)    :: time_int_in !< The time interval over which any values
+  real(wp),            intent(in)    :: time_int_in !< The time interval over which any values
                                                 !! that are offered are valid [s].
   type(time_type), intent(in)    :: time_end_in !< The end time of the valid interval.
   type(diag_ctrl), intent(inout) :: diag_cs     !< A structure that is used to regulate diagnostic output
@@ -397,18 +399,18 @@ end subroutine enable_averaging
 subroutine disable_averaging(diag_cs)
   type(diag_ctrl), intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 
-  diag_cs%time_int = 0.0
+  diag_cs%time_int = 0.0_wp
   diag_cs%ave_enabled = .false.
 
 end subroutine disable_averaging
 
 !> Enable the accumulation of time averages over the specified time interval in time units.
 subroutine enable_averages(time_int, time_end, diag_CS, T_to_s)
-  real,            intent(in)    :: time_int !< The time interval over which any values
+  real(wp),            intent(in)    :: time_int !< The time interval over which any values
                                              !! that are offered are valid [T ~> s].
   type(time_type), intent(in)    :: time_end !< The end time of the valid interval.
   type(diag_ctrl), intent(inout) :: diag_CS  !< A structure that is used to regulate diagnostic output
-  real,  optional, intent(in)    :: T_to_s   !< A conversion factor for time_int to seconds [s T-1 ~> 1].
+  real(wp),  optional, intent(in)    :: T_to_s   !< A conversion factor for time_int to seconds [s T-1 ~> 1].
   ! This subroutine enables the accumulation of time averages over the specified time interval.
 
   if (present(T_to_s)) then
@@ -425,7 +427,7 @@ end subroutine enable_averages
 !> Indicate whether averaging diagnostics is currently enabled
 logical function query_averaging_enabled(diag_cs, time_int, time_end)
   type(diag_ctrl),           intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
-  real,            optional, intent(out) :: time_int !< The current setting of diag_cs%time_int [s].
+  real(wp),            optional, intent(out) :: time_int !< The current setting of diag_cs%time_int [s].
   type(time_type), optional, intent(out) :: time_end !< The current setting of diag_cs%time_end.
 
   if (present(time_int)) time_int = diag_cs%time_int
@@ -463,9 +465,9 @@ function register_MOM_IS_diag_field(module_name, field_name, axes, init_time, &
   character(len=*), optional, intent(in) :: long_name !< Long name of a field.
   character(len=*), optional, intent(in) :: units !< Units of a field.
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
-  real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
+  real(wp),             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
+  real(wp),             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
                                                      !! in arbitrary units [a]
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
                                                          !! post_IS_data calls (not used in MOM?)
@@ -476,12 +478,12 @@ function register_MOM_IS_diag_field(module_name, field_name, axes, init_time, &
   character(len=*), optional, intent(in) :: interp_method !< If 'none' indicates the field should not
                                                           !! be interpolated as a scalar
   integer,          optional, intent(in) :: tile_count !< no clue (not used in MOM_IS?)
-  real,             optional, intent(in) :: conversion !< A value to multiply data by before writing to file,
+  real(wp),             optional, intent(in) :: conversion !< A value to multiply data by before writing to file,
                                                        !! often including factors to undo internal scaling and
                                                        !! in units of [a A-1 ~> 1]
   ! Local variables
   character(len=240) :: mesg
-  real :: MOM_missing_value ! A value used to indicate missing values in output files, in arbitrary units [a]
+  real(wp) :: MOM_missing_value ! A value used to indicate missing values in output files, in arbitrary units [a]
   integer :: primary_id, fms_id
   type(diag_ctrl), pointer :: diag_cs => NULL() ! A structure that is used
                                                ! to regulate diagnostic output
@@ -562,16 +564,16 @@ function register_MOM_IS_scalar_field(module_name, field_name, axes, init_time, 
   character(len=*), optional, intent(in) :: long_name !< Long name of a field.
   character(len=*), optional, intent(in) :: units !< Units of a field.
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
-  real,             optional, intent(in) :: missing_value !< A value that indicates missing values.
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
+  real(wp),             optional, intent(in) :: missing_value !< A value that indicates missing values.
+  real(wp),             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
   logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in MOM?)
   character(len=*), optional, intent(out):: err_msg !< String into which an error message might be
                                                          !! placed (not used in MOM?)
-  real,             optional, intent(in) :: conversion !< A value to multiply data by before writing to file
+  real(wp),             optional, intent(in) :: conversion !< A value to multiply data by before writing to file
 
   ! Local variables
   character(len=240) :: mesg
-  real :: MOM_missing_value
+  real(wp) :: MOM_missing_value
   integer :: primary_id, fms_id
   type(diag_ctrl), pointer :: diag_cs => NULL() ! A structure that is used
                                                ! to regulate diagnostic output
@@ -626,8 +628,8 @@ function register_MOM_IS_static_field(module_name, field_name, axes, &
   character(len=*), optional, intent(in) :: long_name !< Long name of a field.
   character(len=*), optional, intent(in) :: units !< Units of a field.
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
-  real,             optional, intent(in) :: missing_value !< A value that indicates missing values.
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
+  real(wp),             optional, intent(in) :: missing_value !< A value that indicates missing values.
+  real(wp),             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
                                                          !! post_IS_data calls (not used in MOM?)
   logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in MOM?)
@@ -636,7 +638,7 @@ function register_MOM_IS_static_field(module_name, field_name, axes, &
   integer,          optional, intent(in) :: tile_count   !< no clue (not used in MOM_IS?)
 
   ! Local variables
-  real :: MOM_missing_value
+  real(wp) :: MOM_missing_value
   integer :: primary_id, fms_id
   type(diag_ctrl), pointer :: diag_cs !< A structure that is used to regulate diagnostic output
 
@@ -777,14 +779,14 @@ subroutine MOM_IS_diag_mediator_init(G, US, param_file, diag_cs, component, err_
     endif
   endif
 
-  call diag_masks_set(G, -1.0e34, diag_cs)
+  call diag_masks_set(G, -1.0e34_wp, diag_cs)
 
 end subroutine MOM_IS_diag_mediator_init
 
 subroutine diag_masks_set(G, missing_value, diag_cs)
 ! Setup the 2d masks for diagnostics
   type(ocean_grid_type), target, intent(in)    :: G   !< The horizontal grid type
-  real,                            intent(in)    :: missing_value !< A fill value for missing points
+  real(wp),                            intent(in)    :: missing_value !< A fill value for missing points
   type(diag_ctrl),             intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 
   ! Local variables

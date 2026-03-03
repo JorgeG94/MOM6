@@ -7,7 +7,8 @@ use MOM_hor_index,    only : hor_index_type
 use MOM_time_manager, only : time_type, set_date, get_date
 
 use iso_fortran_env,  only : stdout=>output_unit, stderr=>error_unit
-use iso_fortran_env, only : int32
+
+use MOM_datatypes, only : int32, int64, wp
 
 implicit none ; private
 
@@ -52,7 +53,7 @@ end type PRNG
 contains
 
 !> Returns a random number between 0 and 1
-real function random_01(CS)
+real(wp) function random_01(CS)
   type(PRNG), intent(inout) :: CS !< Container for pseudo-random number generators
 
   random_01 = getRandomReal(CS%stream0d)
@@ -62,8 +63,7 @@ end function random_01
 !> Returns a random number between 0 and 1
 !! See https://arxiv.org/abs/2004.06278. Not an exact reproduction of "squares" because Fortran
 !! doesn't have a uint64 type, and not all compilers provide integers with > 64 bits...
-real function random_01_CB(ctr, key)
-  use iso_fortran_env, only : int64
+real(wp) function random_01_CB(ctr, key)
   integer, intent(in)  :: ctr !< ctr should be incremented each time you call the function
   integer, intent(in)  :: key !< key is like a seed: use a different key for each random stream
   integer(kind=int64) :: x, y, z ! Follows "Squares" naming convention
@@ -78,19 +78,19 @@ real function random_01_CB(ctr, key)
   x = x*x + y
   x = ior(ishft(x,32),ishft(x,-32))
   x = x*x + z
-  random_01_CB = .5*(1. + .5*real(int(ishft(x,-32)))/real(2**30))
+  random_01_CB = .5_wp*(1._wp + .5_wp*real(int(ishft(x,-32)), wp)/real(2**30, wp))
 
 end function
 
 !> Returns an approximately normally distributed random number with mean 0 and variance 1
-real function random_norm(CS)
+real(wp) function random_norm(CS)
   type(PRNG), intent(inout) :: CS !< Container for pseudo-random number generators
   ! Local variables
   integer :: i
 
-  random_norm = getRandomReal(CS%stream0d) - 0.5
+  random_norm = getRandomReal(CS%stream0d) - 0.5_wp
   do i = 1,11
-    random_norm = random_norm + ( getRandomReal(CS%stream0d) - 0.5 )
+    random_norm = random_norm + ( getRandomReal(CS%stream0d) - 0.5_wp )
   enddo
 
 end function random_norm
@@ -99,7 +99,7 @@ end function random_norm
 subroutine random_2d_01(CS, HI, rand)
   type(PRNG),           intent(inout) :: CS !< Container for pseudo-random number generators
   type(hor_index_type), intent(in)    :: HI !< Horizontal index structure
-  real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), intent(out) :: rand !< Random numbers between 0 and 1 [nondim]
+  real(wp), dimension(HI%isd:HI%ied,HI%jsd:HI%jed), intent(out) :: rand !< Random numbers between 0 and 1 [nondim]
   ! Local variables
   integer :: i,j
 
@@ -116,17 +116,17 @@ end subroutine random_2d_01
 subroutine random_2d_norm(CS, HI, rand)
   type(PRNG),           intent(inout) :: CS !< Container for pseudo-random number generators
   type(hor_index_type), intent(in)    :: HI !< Horizontal index structure
-  real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), intent(out) :: rand !< Random numbers between 0 and 1 [nondim]
+  real(wp), dimension(HI%isd:HI%ied,HI%jsd:HI%jed), intent(out) :: rand !< Random numbers between 0 and 1 [nondim]
   ! Local variables
   integer :: i,j,n
 
   do j = HI%jsd,HI%jed
     do i = HI%isd,HI%ied
-      rand(i,j) = getRandomReal( CS%stream2d(i,j) ) - 0.5
+      rand(i,j) = getRandomReal( CS%stream2d(i,j) ) - 0.5_wp
     enddo
     do n = 1,11
       do i = HI%isd,HI%ied
-        rand(i,j) = rand(i,j) + ( getRandomReal( CS%stream2d(i,j) ) - 0.5 )
+        rand(i,j) = rand(i,j) + ( getRandomReal( CS%stream2d(i,j) ) - 0.5_wp )
       enddo
     enddo
   enddo
@@ -249,16 +249,16 @@ end function getRandomInt
 !> Return a random real number on interval [0,1]
 !!
 !! Code was based on getRandomReal() from the FMS implementation of the Mersenne Twistor
-double precision function getRandomReal(twister)
+real(wp) function getRandomReal(twister)
   type(randomNumberSequence), intent(inout) :: twister
   ! Local variables
   integer :: localInt
 
   localInt = getRandomInt(twister)
   if (localInt < 0) then
-    getRandomReal = dble(localInt + 2.0d0**32)/(2.0d0**32 - 1.0d0)
+    getRandomReal = dble(localInt + 2.0e0_wp**32)/(2.0e0_wp**32 - 1.0e0_wp)
   else
-    getRandomReal = dble(localInt            )/(2.0d0**32 - 1.0d0)
+    getRandomReal = dble(localInt            )/(2.0e0_wp**32 - 1.0e0_wp)
   end if
 end function getRandomReal
 
@@ -318,14 +318,14 @@ logical function random_unit_tests(verbose)
   ! Local variables
   type(PRNG) :: test_rng ! Generator
   type(time_type) :: Time ! Model time
-  real :: r1, r2, r3 ! Some random numbers and re-used work variables [nondim]
-  real :: mean, var, ar1, std ! Some statistics [nondim]
+  real(wp) :: r1, r2, r3 ! Some random numbers and re-used work variables [nondim]
+  real(wp) :: mean, var, ar1, std ! Some statistics [nondim]
   integer :: stdunit ! For messages
   integer, parameter :: n_samples = 800
   integer :: i, j, ni, nj
   ! Fake being on a decomposed domain
   type(hor_index_type), pointer :: HI => null() !< Not the real HI
-  real, dimension(:,:), allocatable :: r2d ! Random numbers [nondim]
+  real(wp), dimension(:,:), allocatable :: r2d ! Random numbers [nondim]
 
   ! Fake a decomposed domain
   ni = 6
@@ -364,31 +364,31 @@ logical function random_unit_tests(verbose)
   call random_0d_constructor(test_rng, Time, 1)
   r1 = random_01(test_rng)
   random_unit_tests = random_unit_tests .or. &
-       test_fn(verbose, abs(r1-4.75310122e-2)<1.e-9, 'first call', r1)
+       test_fn(verbose, abs(r1-4.75310122e-2_wp)<1.e-9_wp, 'first call', r1)
 
   ! Check that we get a different number, r2, on a second call
   r2 = random_01(test_rng)
   random_unit_tests = random_unit_tests .or. &
-       test_fn(verbose, abs(r2-2.71289742e-1)<1.e-9, 'consecutive test', r2)
+       test_fn(verbose, abs(r2-2.71289742e-1_wp)<1.e-9_wp, 'consecutive test', r2)
 
   ! Check that we can reproduce r1 by resetting the seed
   call random_0d_constructor(test_rng, Time, 1)
   r2 = random_01(test_rng)
   random_unit_tests = random_unit_tests .or. &
-       test_fn(verbose, abs(r2-r1)==0., 'reproduce test', r2)
+       test_fn(verbose, abs(r2-r1)==0._wp, 'reproduce test', r2)
 
   ! Check that we get a different number, r2, with a different seed but same date
   call random_0d_constructor(test_rng, Time, 2)
   r2 = random_01(test_rng)
   random_unit_tests = random_unit_tests .or. &
-       test_fn(verbose, abs(r2-7.15508473e-1)<1.e-9, 'different seed test', r2)
+       test_fn(verbose, abs(r2-7.15508473e-1_wp)<1.e-9_wp, 'different seed test', r2)
 
   ! Check that we get a different number, r2, for a different date but same seed
   Time = set_date(1903, 11, 21, 13, 0, 29)
   call random_0d_constructor(test_rng, Time, 1)
   r2 = random_01(test_rng)
   random_unit_tests = random_unit_tests .or. &
-       test_fn(verbose, abs(r2-9.56667163e-1)<1.e-9, 'different date test', r2)
+       test_fn(verbose, abs(r2-9.56667163e-1_wp)<1.e-9_wp, 'different date test', r2)
 
   if (verbose) write(stdunit,'(1x,"random: ",a)') '-- index-based seeds --------------------'
   ! Check index-based seed
@@ -414,21 +414,21 @@ logical function random_unit_tests(verbose)
   ! could fail for different sample sizes but happen to pass here.
 
   ! Check statistics of large samples for uniform generator
-  mean = 0. ; var = 0. ; ar1 = 0. ; r2 = 0.
+  mean = 0._wp ; var = 0._wp ; ar1 = 0._wp ; r2 = 0._wp
   do i = 1, n_samples
-    r1 = random_01(test_rng) - 0.5
+    r1 = random_01(test_rng) - 0.5_wp
     mean = mean + r1
     var = var + r1**2
     ar1 = ar1 + r1*r2
     r2 = r1 ! Keep copy of last value
   enddo
-  mean = mean / real(n_samples) ! Expected mean is 0
-  var = var / real(n_samples) ! Expected variance is 1/12
-  ar1 = ar1 / real(n_samples-1) ! Autocovariance
+  mean = mean / real(n_samples, wp) ! Expected mean is 0
+  var = var / real(n_samples, wp) ! Expected variance is 1/12
+  ar1 = ar1 / real(n_samples-1, wp) ! Autocovariance
   std = sqrt(var) ! Expected std is sqrt(1/12)
-  r2 = mean*sqrt(real(12*n_samples)) ! Normalized error in mean
-  r3 = std*sqrt(12.) ! Normalized standard deviation
-  r1 = ( ar1 * sqrt(real(n_samples-1)) ) / var
+  r2 = mean*sqrt(real(12*n_samples, wp)) ! Normalized error in mean
+  r3 = std*sqrt(12._wp) ! Normalized standard deviation
+  r1 = ( ar1 * sqrt(real(n_samples-1, wp)) ) / var
   if (verbose) then
     write(stdunit,'(1x,"random: ",a)') '-- Uniform -0.5 .. 0.5 generator --------'
     write(stdunit,'(1x,"random: ",a,f12.9)') 'mean =',mean,'std =',std,'AR1 =',ar1
@@ -436,17 +436,17 @@ logical function random_unit_tests(verbose)
                                              'norm. std =',r3,'norm. AR1 =',r1
   endif
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r2)<2., &
+                      test_fn(verbose, abs(r2)<2._wp, &
                               'n>>1, mean within 2 sigma [uniform]', r2)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r3-1.)<1./sqrt(real(n_samples)), &
-                              'n>>1, std ~ 1/sqrt(12) [uniform]', r3-1.)
+                      test_fn(verbose, abs(r3-1._wp)<1._wp/sqrt(real(n_samples, wp)), &
+                              'n>>1, std ~ 1/sqrt(12) [uniform]', r3-1._wp)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r1)<2., &
+                      test_fn(verbose, abs(r1)<2._wp, &
                               'n>>1, AR1 < std/sqrt(n) [uniform]', r1)
 
   ! Check statistics of large samples for normal generator
-  mean = 0. ; var = 0. ; ar1 = 0. ; r2 = 0.
+  mean = 0._wp ; var = 0._wp ; ar1 = 0._wp ; r2 = 0._wp
   do i = 1, n_samples
     r1 = random_norm(test_rng)
     mean = mean + r1
@@ -454,14 +454,14 @@ logical function random_unit_tests(verbose)
     ar1 = ar1 + r1*r2
     r2 = r1 ! Keep copy of last value for AR calculation
   enddo
-  mean = mean / real(n_samples)
-  var = var / real(n_samples)
-  ar1 = ar1 / real(n_samples)
+  mean = mean / real(n_samples, wp)
+  var = var / real(n_samples, wp)
+  ar1 = ar1 / real(n_samples, wp)
   std = sqrt(var)
-  r3 = 1./sqrt(real(n_samples)) ! Standard error of mean
-  r2 = mean*sqrt(real(n_samples)) ! Normalized error in mean
+  r3 = 1._wp/sqrt(real(n_samples, wp)) ! Standard error of mean
+  r2 = mean*sqrt(real(n_samples, wp)) ! Normalized error in mean
   r3 = std ! Normalized standard deviation
-  r1 = ( ar1 * sqrt(real(n_samples-1)) ) / var
+  r1 = ( ar1 * sqrt(real(n_samples-1, wp)) ) / var
   if (verbose) then
     write(stdunit,'(1x,"random: ",a)') '-- Normal distribution generator --------'
     write(stdunit,'(1x,"random: ",a,f12.9)') 'mean =',mean,'std =',std,'AR1 =',ar1
@@ -469,32 +469,32 @@ logical function random_unit_tests(verbose)
                                              'norm. standard deviation =',r3,'norm. AR1 =',r1
   endif
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r2)<2., &
+                      test_fn(verbose, abs(r2)<2._wp, &
                               'n>>1, mean within 2 sigma [norm]', r2)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r3-1.)<1./sqrt(real(n_samples)), &
-                              'n>>1, std ~ 1 [norm]', r3-1.)
+                      test_fn(verbose, abs(r3-1._wp)<1._wp/sqrt(real(n_samples, wp)), &
+                              'n>>1, std ~ 1 [norm]', r3-1._wp)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r1)<2., &
+                      test_fn(verbose, abs(r1)<2._wp, &
                               'n>>1, AR1 < std/sqrt(n) [norm]', r1)
 
   if (verbose) write(stdunit,'(1x,"random: ",a)') '-- 2d PRNG ------------------------------'
   ! Check 2d random number generator 0..1
   allocate( r2d(HI%isd:HI%ied,HI%jsd:HI%jed) )
   call random_2d_constructor(test_rng, HI, Time, 123)
-  r2d(:,:) = -999. ! Use -9. to detect unset values
+  r2d(:,:) = -999._wp ! Use -9. to detect unset values
   call random_2d_01(test_rng, HI, r2d)
-  if (any(abs(r2d(:,:)+999.)<=0.)) random_unit_tests=.true.
+  if (any(abs(r2d(:,:)+999._wp)<=0._wp)) random_unit_tests=.true.
   r1 = minval(r2d)
   r2 = maxval(r2d)
-  random_unit_tests = random_unit_tests .or. test_fn(verbose, r1>=0., '2d all set', r1)
-  random_unit_tests = random_unit_tests .or. test_fn(verbose, r2<=1., '2d all valid', r2)
-  mean = sum( r2d(1:ni,1:nj) - 0.5 )/real(ni*nj)
-  var = sum( (r2d(1:ni,1:nj) - 0.5 - mean)**2 )/real(ni*nj)
+  random_unit_tests = random_unit_tests .or. test_fn(verbose, r1>=0._wp, '2d all set', r1)
+  random_unit_tests = random_unit_tests .or. test_fn(verbose, r2<=1._wp, '2d all valid', r2)
+  mean = sum( r2d(1:ni,1:nj) - 0.5_wp )/real(ni*nj, wp)
+  var = sum( (r2d(1:ni,1:nj) - 0.5_wp - mean)**2 )/real(ni*nj, wp)
   std = sqrt(var)
-  r3 = 1./sqrt(real(12*ni*nj)) ! Standard error of mean
-  r2 = mean*sqrt(real(12*ni*nj)) ! Normalized error in mean
-  r3 = std*sqrt(12.) ! Normalized standard deviation
+  r3 = 1._wp/sqrt(real(12*ni*nj, wp)) ! Standard error of mean
+  r2 = mean*sqrt(real(12*ni*nj, wp)) ! Normalized error in mean
+  r3 = std*sqrt(12._wp) ! Normalized standard deviation
   if (verbose) then
     write(stdunit,'(1x,"random: ",a)') '2D uniform 0..1 generator'
     write(stdunit,'(1x,"random: ",a,f12.9)') 'mean =',mean,'std =',std
@@ -502,11 +502,11 @@ logical function random_unit_tests(verbose)
     write(stdunit,'(1x,"random: ",a,f12.9)') 'norm. standard deviation =',r3
   endif
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r2)<2., &
+                      test_fn(verbose, abs(r2)<2._wp, &
                               '2d, mean within 2 sigma [uniform]', r2)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r3-1.)<1./sqrt(real(ni*nj)), &
-                              '2d, std ~ 1/sqrt(12) [uniform]', r3-1.)
+                      test_fn(verbose, abs(r3-1._wp)<1._wp/sqrt(real(ni*nj, wp)), &
+                              '2d, std ~ 1/sqrt(12) [uniform]', r3-1._wp)
   if (verbose) then
     write(stdunit,'(1x,"random:")')
     write(stdunit,'(1x,"random:",8f8.5)') r2d
@@ -515,11 +515,11 @@ logical function random_unit_tests(verbose)
 
   ! Check 2d normal random number generator
   call random_2d_norm(test_rng, HI, r2d)
-  mean = sum( r2d(1:ni,1:nj) )/real(ni*nj)
-  var = sum( r2d(1:ni,1:nj)**2 )/real(ni*nj)
+  mean = sum( r2d(1:ni,1:nj) )/real(ni*nj, wp)
+  var = sum( r2d(1:ni,1:nj)**2 )/real(ni*nj, wp)
   std = sqrt(var)
-  r3 = 1./sqrt(real(ni*nj)) ! Standard error of mean
-  r2 = mean*sqrt(real(ni*nj)) ! Normalized error in mean
+  r3 = 1._wp/sqrt(real(ni*nj, wp)) ! Standard error of mean
+  r2 = mean*sqrt(real(ni*nj, wp)) ! Normalized error in mean
   r3 = std ! Normalized standard deviation
   if (verbose) then
     write(stdunit,'(1x,"random: ",a)') '2D normal generator'
@@ -528,11 +528,11 @@ logical function random_unit_tests(verbose)
     write(stdunit,'(1x,"random: ",a,f12.9)') 'norm. standard deviation =',r3
   endif
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r2)<2., &
+                      test_fn(verbose, abs(r2)<2._wp, &
                               '2d, mean within 2 sigma [norm]', r2)
   random_unit_tests = random_unit_tests .or. &
-                      test_fn(verbose, abs(r3-1.)<1./sqrt(real(ni*nj)), &
-                              '2d, std ~ 1/sqrt(12) [norm]', r3-1.)
+                      test_fn(verbose, abs(r3-1._wp)<1._wp/sqrt(real(ni*nj, wp)), &
+                              '2d, std ~ 1/sqrt(12) [norm]', r3-1._wp)
 
   ! Clean up
   deallocate(r2d)
@@ -547,7 +547,7 @@ logical function test_fn(verbose, good, label, rvalue, ivalue)
   logical,          intent(in) :: verbose !< Verbosity
   logical,          intent(in) :: good !< True if pass, false otherwise
   character(len=*), intent(in) :: label !< Label for messages
-  real,             intent(in) :: rvalue !< Result of calculation [nondim]
+  real(wp),             intent(in) :: rvalue !< Result of calculation [nondim]
   integer,          intent(in) :: ivalue !< Result of calculation
   optional :: rvalue, ivalue
 

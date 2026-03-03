@@ -11,6 +11,8 @@ module Recon1d_EPPM_CWK
 use Recon1d_type, only : Recon1d, testing
 use Recon1d_PPM_CWK, only : PPM_CWK
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public EPPM_CWK, testing
@@ -47,17 +49,17 @@ contains
 !> Calculate a 1D EPPM_CWK reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(EPPM_CWK), intent(inout) :: this !< This reconstruction
-  real,            intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,            intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),            intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),            intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: dul, dur ! Left and right cell PLM slopes [A]
-  real :: u0, u1, u2 ! Far left, left, and right cell values [A]
-  real :: edge ! Edge value between cell k-1 and k [A]
-  real :: u_min, u_max ! Minimum and maximum value across edge [A]
-  real :: a6 ! Colella and Woodward curvature [A]
-  real :: du ! Difference between edges across cell [A]
-  real :: slp(this%n) ! PLM slope [A]
-  real, parameter :: one_sixth = 1. / 6. ! 1/6 [nondim]
+  real(wp) :: dul, dur ! Left and right cell PLM slopes [A]
+  real(wp) :: u0, u1, u2 ! Far left, left, and right cell values [A]
+  real(wp) :: edge ! Edge value between cell k-1 and k [A]
+  real(wp) :: u_min, u_max ! Minimum and maximum value across edge [A]
+  real(wp) :: a6 ! Colella and Woodward curvature [A]
+  real(wp) :: du ! Difference between edges across cell [A]
+  real(wp) :: slp(this%n) ! PLM slope [A]
+  real(wp), parameter :: one_sixth = 1._wp / 6._wp ! 1/6 [nondim]
   integer :: k, n
 
   n = this%n
@@ -81,8 +83,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,         intent(in)    :: stdout  !< I/O channel for stdout
   integer,         intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -97,35 +99,35 @@ logical function unit_tests(this, verbose, stdout, stderr)
   allocate( um(5), ul(5), ur(5), ull(5), urr(5) )
 
   ! Straight line, f(x) = x , or  f(K) = 2*K
-  call this%reconstruct( (/2.,2.,2.,2.,2./), (/1.,4.,7.,10.,13./) )
-  call test%real_arr(5, this%u_mean, (/1.,4.,7.,10.,13./), 'Setting cell values')
-  call test%real_arr(5, this%ul, (/-0.5,2.5,5.5,8.5,11.5/), 'Left edge values')
-  call test%real_arr(5, this%ur, (/2.5,5.5,8.5,11.5,14.5/), 'Right edge values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp,2._wp,2._wp/), (/1._wp,4._wp,7._wp,10._wp,13._wp/) )
+  call test%real_arr(5, this%u_mean, (/1._wp,4._wp,7._wp,10._wp,13._wp/), 'Setting cell values')
+  call test%real_arr(5, this%ul, (/-0.5_wp,2.5_wp,5.5_wp,8.5_wp,11.5_wp/), 'Left edge values')
+  call test%real_arr(5, this%ur, (/2.5_wp,5.5_wp,8.5_wp,11.5_wp,14.5_wp/), 'Right edge values')
 
   do k = 1, 5
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
   call test%real_arr(5, ul, this%ul, 'Evaluation on left edge')
-  call test%real_arr(5, um, (/1.,4.,7.,10.,13./), 'Evaluation in center')
+  call test%real_arr(5, um, (/1._wp,4._wp,7._wp,10._wp,13._wp/), 'Evaluation in center')
   call test%real_arr(5, ur, this%ur, 'Evaluation on right edge')
 
   do k = 1, 5
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
   ! Most of these values are affected by the PLM boundary cells
-  call test%real_arr(5, ul, (/3.,3.,3.,3.,3./), 'dfdx on left edge')
-  call test%real_arr(5, um, (/3.,3.,3.,3.,3./), 'dfdx in center')
-  call test%real_arr(5, ur, (/3.,3.,3.,3.,3./), 'dfdx on right edge')
+  call test%real_arr(5, ul, (/3._wp,3._wp,3._wp,3._wp,3._wp/), 'dfdx on left edge')
+  call test%real_arr(5, um, (/3._wp,3._wp,3._wp,3._wp,3._wp/), 'dfdx in center')
+  call test%real_arr(5, ur, (/3._wp,3._wp,3._wp,3._wp,3._wp/), 'dfdx on right edge')
 
   do k = 1, 5
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
   ! Most of these values are affected by the PLM boundary cells
-  call test%real_arr(5, um, (/1.375,4.375,7.375,10.375,13.375/), 'Return interval average')
+  call test%real_arr(5, um, (/1.375_wp,4.375_wp,7.375_wp,10.375_wp,13.375_wp/), 'Return interval average')
 
   if (verbose) write(stdout,'(a)') 'EPPM_CWK:unit_tests testing with parabola'
 
@@ -137,30 +139,30 @@ logical function unit_tests(this, verbose, stdout, stderr)
   ! edges:        0,  1, 12, 27, 48, 75
   ! means:          1,  7, 19, 37, 61
   ! centers:      0.75, 6.75, 18.75, 36.75, 60.75
-  call this%reconstruct( (/2.,2.,2.,2.,2./), (/1.,7.,19.,37.,61./) )
+  call this%reconstruct( (/2._wp,2._wp,2._wp,2._wp,2._wp/), (/1._wp,7._wp,19._wp,37._wp,61._wp/) )
   do k = 1, 5
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(5, ul, (/-1.,3.,12.,27.,48./), 'Return left edge')
-  call test%real_arr(5, um, (/1.,6.75,18.75,36.75,61./), 'Return center')
-  call test%real_arr(5, ur, (/3.,12.,27.,48.,74./), 'Return right edge')
+  call test%real_arr(5, ul, (/-1._wp,3._wp,12._wp,27._wp,48._wp/), 'Return left edge')
+  call test%real_arr(5, um, (/1._wp,6.75_wp,18.75_wp,36.75_wp,61._wp/), 'Return center')
+  call test%real_arr(5, ur, (/3._wp,12._wp,27._wp,48._wp,74._wp/), 'Return right edge')
 
   ! x = 3 i   i=0 at origin
   ! f(x) = x^2 / 3   = 3 i^2
   ! f[i] = [ ( 3 i )^3 - ( 3 i - 3 )^3 ]    i=1,2,3,4,5
   ! means:   1, 7, 19, 37, 61
   ! edges:  0, 3, 12, 27, 48, 75
-  call this%reconstruct( (/3.,3.,3.,3.,3./), (/1.,7.,19.,37.,61./) )
+  call this%reconstruct( (/3._wp,3._wp,3._wp,3._wp,3._wp/), (/1._wp,7._wp,19._wp,37._wp,61._wp/) )
   do k = 1, 5
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(5, ul, (/-1.,3.,12.,27.,48./), 'Return left edge')
-  call test%real_arr(5, um, (/1.,6.75,18.75,36.75,61./), 'Return center')
-  call test%real_arr(5, ur, (/3.,12.,27.,48.,74./), 'Return right edge')
+  call test%real_arr(5, ul, (/-1._wp,3._wp,12._wp,27._wp,48._wp/), 'Return left edge')
+  call test%real_arr(5, um, (/1._wp,6.75_wp,18.75_wp,36.75_wp,61._wp/), 'Return center')
+  call test%real_arr(5, ur, (/3._wp,12._wp,27._wp,48._wp,74._wp/), 'Return right edge')
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )

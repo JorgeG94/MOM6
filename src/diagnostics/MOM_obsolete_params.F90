@@ -7,6 +7,8 @@ module MOM_obsolete_params
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : read_param, log_version, param_file_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -92,7 +94,7 @@ subroutine find_obsolete_params(param_file)
   call obsolete_char(param_file, "CONTINUITY_SCHEME", warning_val="PPM", &
                      hint="Only one continuity scheme is available so this need not be specified.")
   call obsolete_real(param_file, "ETA_TOLERANCE_AUX", only_warn=.true.)
-  call obsolete_real(param_file, "BT_MASS_SOURCE_LIMIT", 0.0)
+  call obsolete_real(param_file, "BT_MASS_SOURCE_LIMIT", 0.0_wp)
   call obsolete_real(param_file, "FIRST_GUESS_SURFACE_LAYER_DEPTH")
   call obsolete_logical(param_file, "CORRECT_SURFACE_LAYER_AVERAGE")
   call obsolete_int(param_file, "SEAMOUNT_LENGTH_SCALE", hint="Use SEAMOUNT_X_LENGTH_SCALE instead.")
@@ -241,18 +243,18 @@ end subroutine obsolete_char
 subroutine obsolete_real(param_file, varname, warning_val, hint, only_warn)
   type(param_file_type), intent(in) :: param_file  !< Structure containing parameter file data.
   character(len=*),      intent(in) :: varname     !< Name of obsolete REAL parameter.
-  real,        optional, intent(in) :: warning_val !< An allowed value that causes a warning instead of an error.
+  real(wp),        optional, intent(in) :: warning_val !< An allowed value that causes a warning instead of an error.
   character(len=*), optional, intent(in) :: hint   !< A hint to the user about what to do.
   logical,     optional, intent(in) :: only_warn   !< If present and true, issue warnings instead of fatal errors.
 
   ! Local variables
-  real :: test_val, warn_val
+  real(wp) :: test_val, warn_val
   logical :: var_is_set  ! True if this value was read by read_param.
   logical :: issue_warning
   character(len=128) :: hint_msg
 
-  test_val = -9e35; call read_param(param_file, varname, test_val, set=var_is_set)
-  warn_val = -9e35; if (present(warning_val)) warn_val = warning_val
+  test_val = -9e35_wp; call read_param(param_file, varname, test_val, set=var_is_set)
+  warn_val = -9e35_wp; if (present(warning_val)) warn_val = warning_val
   hint_msg = " " ; if (present(hint)) hint_msg = hint
   issue_warning = .false. ; if (present(only_warn)) issue_warning = only_warn
 

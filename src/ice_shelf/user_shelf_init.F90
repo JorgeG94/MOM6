@@ -10,6 +10,8 @@ use MOM_grid,          only : ocean_grid_type
 use MOM_time_manager,  only : time_type, set_time, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -24,13 +26,13 @@ public USER_init_ice_thickness
 
 !> The control structure for the user_ice_shelf module
 type, public :: user_ice_shelf_CS ; private
-  real :: Rho_ocean  !< The ocean's typical density [R ~> kg m-3].
-  real :: max_draft  !< The maximum ocean draft of the ice shelf [Z ~> m].
-  real :: min_draft  !< The minimum ocean draft of the ice shelf [Z ~> m].
-  real :: flat_shelf_width !< The range over which the shelf is min_draft thick [km].
-  real :: shelf_slope_scale !< The range over which the shelf slopes [km].
-  real :: pos_shelf_edge_0 !< The x-position of the shelf edge at time 0 [km].
-  real :: shelf_speed  !< The ice shelf speed of translation [km day-1]
+  real(wp) :: Rho_ocean  !< The ocean's typical density [R ~> kg m-3].
+  real(wp) :: max_draft  !< The maximum ocean draft of the ice shelf [Z ~> m].
+  real(wp) :: min_draft  !< The minimum ocean draft of the ice shelf [Z ~> m].
+  real(wp) :: flat_shelf_width !< The range over which the shelf is min_draft thick [km].
+  real(wp) :: shelf_slope_scale !< The range over which the shelf slopes [km].
+  real(wp) :: pos_shelf_edge_0 !< The x-position of the shelf edge at time 0 [km].
+  real(wp) :: shelf_speed  !< The ice shelf speed of translation [km day-1]
   logical :: first_call = .true. !< If true, this module has not been called before.
 end type user_ice_shelf_CS
 
@@ -40,14 +42,14 @@ contains
 subroutine USER_initialize_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, US, CS, param_file, new_sim)
 
   type(ocean_grid_type),   intent(in)  :: G    !< The ocean's grid structure
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: mass_shelf !< The ice shelf mass per unit area averaged
                                                   !! over the full ocean cell [R Z ~> kg m-2].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: h_shelf !< The ice shelf thickness [Z ~> m].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: area_shelf_h !< The area per cell covered by the ice shelf [L2 ~> m2].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: hmask !< A mask indicating which tracer points are
                                                 !! partly or fully covered by an ice-shelf
   type(unit_scale_type),   intent(in)  :: US    !< A structure containing unit conversion factors
@@ -72,19 +74,19 @@ subroutine USER_initialize_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, 
                  "calculate accelerations and the mass for conservation "//&
                  "properties, or with BOUSSINSEQ false to convert some "//&
                  "parameters from vertical units of m to kg m-2.", &
-                 units="kg m-3", default=1035.0, scale=US%kg_m3_to_R)
+                 units="kg m-3", default=1035.0_wp, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "SHELF_MAX_DRAFT", CS%max_draft, &
-                 units="m", default=1.0, scale=US%m_to_Z)
+                 units="m", default=1.0_wp, scale=US%m_to_Z)
   call get_param(param_file, mdl, "SHELF_MIN_DRAFT", CS%min_draft, &
-                 units="m", default=1.0, scale=US%m_to_Z)
+                 units="m", default=1.0_wp, scale=US%m_to_Z)
   call get_param(param_file, mdl, "FLAT_SHELF_WIDTH", CS%flat_shelf_width, &
-                 units="axis_units", default=0.0)
+                 units="axis_units", default=0.0_wp)
   call get_param(param_file, mdl, "SHELF_SLOPE_SCALE", CS%shelf_slope_scale, &
-                 units="axis_units", default=0.0)
+                 units="axis_units", default=0.0_wp)
   call get_param(param_file, mdl, "SHELF_EDGE_POS_0", CS%pos_shelf_edge_0, &
-                 units="axis_units", default=0.0)
+                 units="axis_units", default=0.0_wp)
   call get_param(param_file, mdl, "SHELF_SPEED", CS%shelf_speed, &
-                 units="axis_units day-1", default=0.0)
+                 units="axis_units day-1", default=0.0_wp)
 
   call USER_update_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, CS, set_time(0,0), new_sim)
 
@@ -93,11 +95,11 @@ end subroutine USER_initialize_shelf_mass
 !> This subroutine updates the ice shelf thickness, as specified by user-provided code.
 subroutine USER_init_ice_thickness(h_shelf, area_shelf_h, hmask, G, US, param_file)
   type(ocean_grid_type),   intent(in)  :: G    !< The ocean's grid structure
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: h_shelf !< The ice shelf thickness [Z ~> m].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: area_shelf_h !< The area per cell covered by the ice shelf [L2 ~> m2].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(out) :: hmask !< A mask indicating which tracer points are
                                                 !! partly or fully covered by an ice-shelf [nondim]
   type(unit_scale_type),   intent(in)  :: US    !< A structure containing unit conversion factors
@@ -105,7 +107,7 @@ subroutine USER_init_ice_thickness(h_shelf, area_shelf_h, hmask, G, US, param_fi
 
   ! This subroutine initializes the ice shelf thickness.  Currently it does so
   ! calling USER_initialize_shelf_mass, but this can be revised as needed.
-  real, dimension(SZI_(G),SZJ_(G)) :: mass_shelf ! The ice shelf mass per unit area averaged
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: mass_shelf ! The ice shelf mass per unit area averaged
                                                  ! over the full ocean cell [R Z ~> kg m-2].
   type(user_ice_shelf_CS), pointer :: CS => NULL()
 
@@ -116,14 +118,14 @@ end subroutine USER_init_ice_thickness
 !> This subroutine updates the ice shelf mass, as specified by user-provided code.
 subroutine USER_update_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, CS, Time, new_sim)
   type(ocean_grid_type),   intent(in)    :: G    !< The ocean's grid structure
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(inout) :: mass_shelf !< The ice shelf mass per unit area averaged
                                                   !! over the full ocean cell [R Z ~> kg m-2].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(inout) :: area_shelf_h !< The area per cell covered by the ice shelf [L2 ~> m2].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(inout) :: h_shelf !< The ice shelf thickness [Z ~> m].
-  real, dimension(SZDI_(G),SZDJ_(G)), &
+  real(wp), dimension(SZDI_(G),SZDJ_(G)), &
                            intent(inout) :: hmask !< A mask indicating which tracer points are
                                                   !! partly or fully covered by an ice-shelf [nondim]
   type(user_ice_shelf_CS), pointer       :: CS   !< A pointer to the user ice shelf control structure
@@ -131,15 +133,15 @@ subroutine USER_update_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, C
   logical,                 intent(in)    :: new_sim !< If true, this the start of a new run.
 
 
-  real :: c1        ! The inverse of the range over which the shelf slopes [km-1]
-  real :: edge_pos  ! The time-evolving position the ice shelf edge [km]
-  real :: slope_pos ! The time-evolving position of the start of the ice shelf slope [km]
+  real(wp) :: c1        ! The inverse of the range over which the shelf slopes [km-1]
+  real(wp) :: edge_pos  ! The time-evolving position the ice shelf edge [km]
+  real(wp) :: slope_pos ! The time-evolving position of the start of the ice shelf slope [km]
   integer :: i, j
 
-  edge_pos = CS%pos_shelf_edge_0 + CS%shelf_speed*(time_type_to_real(Time) / 86400.0)
+  edge_pos = CS%pos_shelf_edge_0 + CS%shelf_speed*(time_type_to_real(Time) / 86400.0_wp)
 
   slope_pos = edge_pos - CS%flat_shelf_width
-  c1 = 0.0 ; if (CS%shelf_slope_scale > 0.0) c1 = 1.0 / CS%shelf_slope_scale
+  c1 = 0.0_wp ; if (CS%shelf_slope_scale > 0.0_wp) c1 = 1.0_wp / CS%shelf_slope_scale
 
 
   do j=G%jsd,G%jed
@@ -155,18 +157,18 @@ subroutine USER_update_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, C
         if ((j >= G%jsc) .and. (j <= G%jec)) then
           if (new_sim) then ; if (G%geoLonCu(i-1,j) >= edge_pos) then
             ! Everything past the edge is open ocean.
-            mass_shelf(i,j) = 0.0
-            area_shelf_h(i,j) = 0.0
-            hmask (i,j) = 0.0
-            h_shelf (i,j) = 0.0
+            mass_shelf(i,j) = 0.0_wp
+            area_shelf_h(i,j) = 0.0_wp
+            hmask (i,j) = 0.0_wp
+            h_shelf (i,j) = 0.0_wp
           else
             if (G%geoLonCu(i,j) > edge_pos) then
               area_shelf_h(i,j) = G%areaT(i,j) * (edge_pos - G%geoLonCu(i-1,j)) / &
                                   (G%geoLonCu(i,j) - G%geoLonCu(i-1,j))
-              hmask (i,j) = 2.0
+              hmask (i,j) = 2.0_wp
             else
               area_shelf_h(i,j) = G%areaT(i,j)
-              hmask (i,j) = 1.0
+              hmask (i,j) = 1.0_wp
             endif
 
             if (G%geoLonT(i,j) > slope_pos) then
@@ -175,16 +177,16 @@ subroutine USER_update_shelf_mass(mass_shelf, area_shelf_h, h_shelf, hmask, G, C
             else
               mass_shelf(i,j) = CS%Rho_ocean * (CS%min_draft + &
                      (CS%max_draft - CS%min_draft) * &
-                     min(1.0, (c1*(slope_pos - G%geoLonT(i,j)))**2) )
+                     min(1.0_wp, (c1*(slope_pos - G%geoLonT(i,j)))**2) )
               h_shelf(i,j) = (CS%min_draft + &
                      (CS%max_draft - CS%min_draft) * &
-                     min(1.0, (c1*(slope_pos - G%geoLonT(i,j)))**2) )
+                     min(1.0_wp, (c1*(slope_pos - G%geoLonT(i,j)))**2) )
             endif
           endif ; endif
         endif
 
         if ((i+G%idg_offset) == G%domain%nihalo+1) then
-          hmask(i-1,j) = 3.0
+          hmask(i-1,j) = 3.0_wp
         endif
 
       enddo

@@ -14,6 +14,8 @@ use regrid_consts,     only : coordinateMode, DEFAULT_COORDINATE_MODE
 use regrid_consts,     only : REGRIDDING_LAYER, REGRIDDING_ZSTAR
 use regrid_consts,     only : REGRIDDING_RHO, REGRIDDING_SIGMA
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 character(len=40) :: mdl = "adjustment_initialization" !< This module's name.
@@ -35,34 +37,34 @@ subroutine adjustment_initialize_thickness ( h, G, GV, US, param_file, just_read
   type(ocean_grid_type),   intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: h           !< The thickness that is being initialized [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   logical,                 intent(in)  :: just_read   !< If true, this call will only read
                                                       !! parameters without changing h.
   ! Local variables
-  real :: e0(SZK_(GV)+1)    ! The resting interface heights, in depth units [Z ~> m], usually
+  real(wp) :: e0(SZK_(GV)+1)    ! The resting interface heights, in depth units [Z ~> m], usually
                             ! negative because it is positive upward.
-  real :: eta1D(SZK_(GV)+1) ! Interface height relative to the sea surface
+  real(wp) :: eta1D(SZK_(GV)+1) ! Interface height relative to the sea surface
                             ! positive upward, in depth units [Z ~> m].
-  real :: dRho_dS           ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1].
+  real(wp) :: dRho_dS           ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1].
                             ! In this subroutine it is hard coded at 1.0 kg m-3 ppt-1.
-  real :: x, y, yy          ! Fractional positions in the x- and y-directions [nondim]
-  real :: y_lat             ! y-positions in the units of latitude [m] or [km] or [degrees]
-  real :: S_ref             ! Reference salinity within surface layer [S ~> ppt]
-  real :: S_range           ! Range of salinities in the vertical [S ~> ppt]
-  real :: dSdz              ! Vertical salinity gradient [S Z-1 ~> ppt m-1]
-  real :: delta_S           ! The local salinity perturbation [S ~> ppt]
-  real :: delta_S_strat     ! Top-to-bottom salinity difference of stratification [S ~> ppt]
-  real :: min_thickness     ! The minimum layer thickness [Z ~> m]
-  real :: adjustment_delta  ! Interface height anomalies, positive downward [Z ~> m]
-  real :: adjustment_width  ! Width of the frontal zone [m] or [km] or [degrees]
-  real :: adjustment_deltaS ! Salinity difference across front [S ~> ppt]
-  real :: front_wave_amp    ! Amplitude of trans-frontal wave perturbation [m] or [km] or [degrees]
-  real :: front_wave_length ! Wave-length of trans-frontal wave perturbation [m] or [km] or [degrees]
-  real :: front_wave_asym   ! Amplitude of frontal asymmetric perturbation [m] or [km] or [degrees]
-  real :: target_values(SZK_(GV)+1)  ! Target densities or density anomalies [R ~> kg m-3]
+  real(wp) :: x, y, yy          ! Fractional positions in the x- and y-directions [nondim]
+  real(wp) :: y_lat             ! y-positions in the units of latitude [m] or [km] or [degrees]
+  real(wp) :: S_ref             ! Reference salinity within surface layer [S ~> ppt]
+  real(wp) :: S_range           ! Range of salinities in the vertical [S ~> ppt]
+  real(wp) :: dSdz              ! Vertical salinity gradient [S Z-1 ~> ppt m-1]
+  real(wp) :: delta_S           ! The local salinity perturbation [S ~> ppt]
+  real(wp) :: delta_S_strat     ! Top-to-bottom salinity difference of stratification [S ~> ppt]
+  real(wp) :: min_thickness     ! The minimum layer thickness [Z ~> m]
+  real(wp) :: adjustment_delta  ! Interface height anomalies, positive downward [Z ~> m]
+  real(wp) :: adjustment_width  ! Width of the frontal zone [m] or [km] or [degrees]
+  real(wp) :: adjustment_deltaS ! Salinity difference across front [S ~> ppt]
+  real(wp) :: front_wave_amp    ! Amplitude of trans-frontal wave perturbation [m] or [km] or [degrees]
+  real(wp) :: front_wave_length ! Wave-length of trans-frontal wave perturbation [m] or [km] or [degrees]
+  real(wp) :: front_wave_asym   ! Amplitude of frontal asymmetric perturbation [m] or [km] or [degrees]
+  real(wp) :: target_values(SZK_(GV)+1)  ! Target densities or density anomalies [R ~> kg m-3]
   character(len=20) :: verticalCoordinate
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
@@ -76,12 +78,12 @@ subroutine adjustment_initialize_thickness ( h, G, GV, US, param_file, just_read
   ! Parameters used by main model initialization
   if (.not.just_read) call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "S_REF", S_ref, 'Reference salinity', &
-                 default=35.0, units='ppt', scale=US%ppt_to_S, do_not_log=just_read)
+                 default=35.0_wp, units='ppt', scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "MIN_THICKNESS", min_thickness, 'Minimum layer thickness', &
-                 default=1.0e-3, units='m', scale=US%m_to_Z, do_not_log=just_read)
+                 default=1.0e-3_wp, units='m', scale=US%m_to_Z, do_not_log=just_read)
   call get_param(param_file, mdl, "DRHO_DS", dRho_dS, &
                  "The partial derivative of density with salinity with a linear equation of state.", &
-                 units="kg m-3 ppt-1", default=0.8, scale=US%kg_m3_to_R*US%S_to_ppt)
+                 units="kg m-3 ppt-1", default=0.8_wp, scale=US%kg_m3_to_R*US%S_to_ppt)
 
   ! Parameters specific to this experiment configuration
   call get_param(param_file, mdl, "REGRIDDING_COORDINATE_MODE", verticalCoordinate, &
@@ -97,13 +99,13 @@ subroutine adjustment_initialize_thickness ( h, G, GV, US, param_file, just_read
                  units="ppt", scale=US%ppt_to_S, fail_if_missing=.not.just_read, do_not_log=just_read)
   call get_param(param_file, mdl, "FRONT_WAVE_AMP", front_wave_amp,         &
                  "Amplitude of trans-frontal wave perturbation",         &
-                 units=G%x_ax_unit_short, default=0., do_not_log=just_read)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=just_read)
   call get_param(param_file, mdl, "FRONT_WAVE_LENGTH", front_wave_length,   &
                  "Wave-length of trans-frontal wave perturbation",       &
-                 units=G%x_ax_unit_short, default=0., do_not_log=just_read)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=just_read)
   call get_param(param_file, mdl, "FRONT_WAVE_ASYM", front_wave_asym,       &
                  "Amplitude of frontal asymmetric perturbation",         &
-                 units=G%x_ax_unit_short, default=0., do_not_log=just_read)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
@@ -120,56 +122,56 @@ subroutine adjustment_initialize_thickness ( h, G, GV, US, param_file, just_read
   select case ( coordinateMode(verticalCoordinate) )
 
     case ( REGRIDDING_LAYER, REGRIDDING_RHO )
-      if (delta_S_strat /= 0.) then
+      if (delta_S_strat /= 0._wp) then
         ! This was previously coded ambiguously.
         adjustment_delta = (adjustment_deltaS / delta_S_strat) * G%max_depth
         do k=1,nz+1
-          e0(k) = adjustment_delta - (G%max_depth + 2*adjustment_delta) * (real(k-1) / real(nz))
+          e0(k) = adjustment_delta - (G%max_depth + 2*adjustment_delta) * (real(k-1, wp) / real(nz, wp))
         enddo
       else
-        adjustment_delta = 2.*G%max_depth
+        adjustment_delta = 2._wp*G%max_depth
         do k=1,nz+1
-          e0(k) = -G%max_depth * (real(k-1) / real(nz))
+          e0(k) = -G%max_depth * (real(k-1, wp) / real(nz, wp))
         enddo
       endif
       if (nz > 1) then
-        target_values(1)    = ( GV%Rlay(1) + 0.5*(GV%Rlay(1)-GV%Rlay(2)) )
-        target_values(nz+1) = ( GV%Rlay(nz) + 0.5*(GV%Rlay(nz)-GV%Rlay(nz-1)) )
+        target_values(1)    = ( GV%Rlay(1) + 0.5_wp*(GV%Rlay(1)-GV%Rlay(2)) )
+        target_values(nz+1) = ( GV%Rlay(nz) + 0.5_wp*(GV%Rlay(nz)-GV%Rlay(nz-1)) )
       else ! This might not be needed, but it avoids segmentation faults if nz=1.
-        target_values(1)    = 0.0
-        target_values(nz+1) = 2.0 * GV%Rlay(1)
+        target_values(1)    = 0.0_wp
+        target_values(nz+1) = 2.0_wp * GV%Rlay(1)
       endif
       do k = 2,nz
         target_values(k) = target_values(k-1) + ( GV%Rlay(nz) - GV%Rlay(1) ) / (nz-1)
       enddo
-      target_values(:) = target_values(:) - 1000.0*US%kg_m3_to_R
+      target_values(:) = target_values(:) - 1000.0_wp*US%kg_m3_to_R
       do j=js,je ; do i=is,ie
-        if (front_wave_length /= 0.) then
-          y = ( 0.125 + G%geoLatT(i,j) / front_wave_length ) * ( 4. * acos(0.) )
-          yy = 2. * ( G%geoLatT(i,j) - 0.5 * G%len_lat ) / adjustment_width
-          yy = min(1.0, yy); yy = max(-1.0, yy)
-          yy = yy * 2. * acos( 0. )
+        if (front_wave_length /= 0._wp) then
+          y = ( 0.125_wp + G%geoLatT(i,j) / front_wave_length ) * ( 4._wp * acos(0._wp) )
+          yy = 2._wp * ( G%geoLatT(i,j) - 0.5_wp * G%len_lat ) / adjustment_width
+          yy = min(1.0_wp, yy); yy = max(-1.0_wp, yy)
+          yy = yy * 2._wp * acos( 0._wp )
           y_lat = front_wave_amp*sin(y) + front_wave_asym*sin(yy)
         else
-          y_lat = 0.
+          y_lat = 0._wp
         endif
-        x = ( ( G%geoLonT(i,j) - 0.5 * G%len_lon ) + y_lat ) / adjustment_width
-        x = min(1.0, x); x = max(-1.0, x)
-        x = x * acos( 0. )
-        delta_S = adjustment_deltaS * 0.5 * (1. - sin( x ) )
+        x = ( ( G%geoLonT(i,j) - 0.5_wp * G%len_lon ) + y_lat ) / adjustment_width
+        x = min(1.0_wp, x); x = max(-1.0_wp, x)
+        x = x * acos( 0._wp )
+        delta_S = adjustment_deltaS * 0.5_wp * (1._wp - sin( x ) )
         do k=2,nz
-          if (dRho_dS*dSdz /= 0.) then
+          if (dRho_dS*dSdz /= 0._wp) then
             eta1D(k) = ( target_values(k) - dRho_dS*( S_ref + delta_S ) ) / (dRho_dS*dSdz)
           else
-            eta1D(k) = e0(k) - (0.5*adjustment_delta) * sin( x )
+            eta1D(k) = e0(k) - (0.5_wp*adjustment_delta) * sin( x )
           endif
           eta1D(k) = max( eta1D(k), -G%max_depth )
-          eta1D(k) = min( eta1D(k), 0. )
+          eta1D(k) = min( eta1D(k), 0._wp )
         enddo
-        eta1D(1) = 0.; eta1D(nz+1) = -G%max_depth
+        eta1D(1) = 0._wp; eta1D(nz+1) = -G%max_depth
         do k=nz,1,-1
-          if (eta1D(k) > 0.) then
-            eta1D(k) = max( eta1D(k+1) + min_thickness, 0. )
+          if (eta1D(k) > 0._wp) then
+            eta1D(k) = max( eta1D(k+1) + min_thickness, 0._wp )
             h(i,j,k) = max( eta1D(k) - eta1D(k+1), min_thickness )
           elseif (eta1D(k) <= (eta1D(k+1) + min_thickness)) then
             eta1D(k) = eta1D(k+1) + min_thickness
@@ -182,8 +184,8 @@ subroutine adjustment_initialize_thickness ( h, G, GV, US, param_file, just_read
 
     case ( REGRIDDING_ZSTAR, REGRIDDING_SIGMA )
       do k=1,nz+1
-        eta1D(k) = -G%max_depth * (real(k-1) / real(nz))
-        eta1D(k) = max(min(eta1D(k), 0.), -G%max_depth)
+        eta1D(k) = -G%max_depth * (real(k-1, wp) / real(nz, wp))
+        eta1D(k) = max(min(eta1D(k), 0._wp), -G%max_depth)
       enddo
       do j=js,je ; do i=is,ie
         do k=nz,1,-1
@@ -204,34 +206,34 @@ subroutine adjustment_initialize_temperature_salinity(T, S, h, depth_tot, G, GV,
   type(ocean_grid_type),   intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: T           !< The temperature that is being initialized [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: S           !< The salinity that is being initialized [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)  :: h           !< The model thicknesses [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                            intent(in)  :: depth_tot   !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file to
                                                       !! parse for model parameter values.
   logical,                 intent(in)  :: just_read   !< If true, this call will only read
                                                       !! parameters without changing T & S.
 
-  real :: x, y, yy          ! Fractional positions in the x- and y-directions [nondim]
-  real :: y_lat             ! y-position in the units of latitude [m] or [km] or [degrees]
-  real :: S_ref             ! Reference salinity within surface layer [S ~> ppt]
-  real :: T_ref             ! Reference temperature within surface layer [C ~> degC]
-  real :: S_range           ! Range of salinities in the vertical [S ~> ppt]
-  real :: T_range           ! Range of temperatures in the vertical [C ~> degC]
-  real :: dSdz              ! Vertical salinity gradient [S Z-1 ~> ppt m-1]
-  real :: delta_S           ! The local salinity perturbation [S ~> ppt]
-  real :: delta_S_strat     ! Top-to-bottom salinity difference of stratification [S ~> ppt]
-  real :: adjustment_width  ! Width of the frontal zone [m] or [km] or [degrees]
-  real :: adjustment_deltaS ! Salinity difference across front [S ~> ppt]
-  real :: front_wave_amp    ! Amplitude of trans-frontal wave perturbation [m] or [km] or [degrees]
-  real :: front_wave_length ! Wave-length of trans-frontal wave perturbation [m] or [km] or [degrees]
-  real :: front_wave_asym   ! Amplitude of frontal asymmetric perturbation [m] or [km] or [degrees]
-  real :: eta1d(SZK_(GV)+1) ! Interface heights [Z ~> m]
+  real(wp) :: x, y, yy          ! Fractional positions in the x- and y-directions [nondim]
+  real(wp) :: y_lat             ! y-position in the units of latitude [m] or [km] or [degrees]
+  real(wp) :: S_ref             ! Reference salinity within surface layer [S ~> ppt]
+  real(wp) :: T_ref             ! Reference temperature within surface layer [C ~> degC]
+  real(wp) :: S_range           ! Range of salinities in the vertical [S ~> ppt]
+  real(wp) :: T_range           ! Range of temperatures in the vertical [C ~> degC]
+  real(wp) :: dSdz              ! Vertical salinity gradient [S Z-1 ~> ppt m-1]
+  real(wp) :: delta_S           ! The local salinity perturbation [S ~> ppt]
+  real(wp) :: delta_S_strat     ! Top-to-bottom salinity difference of stratification [S ~> ppt]
+  real(wp) :: adjustment_width  ! Width of the frontal zone [m] or [km] or [degrees]
+  real(wp) :: adjustment_deltaS ! Salinity difference across front [S ~> ppt]
+  real(wp) :: front_wave_amp    ! Amplitude of trans-frontal wave perturbation [m] or [km] or [degrees]
+  real(wp) :: front_wave_length ! Wave-length of trans-frontal wave perturbation [m] or [km] or [degrees]
+  real(wp) :: front_wave_asym   ! Amplitude of frontal asymmetric perturbation [m] or [km] or [degrees]
+  real(wp) :: eta1d(SZK_(GV)+1) ! Interface heights [Z ~> m]
   character(len=20) :: verticalCoordinate
   integer   :: i, j, k, is, ie, js, je, nz
 
@@ -239,13 +241,13 @@ subroutine adjustment_initialize_temperature_salinity(T, S, h, depth_tot, G, GV,
 
   ! Parameters used by main model initialization
   call get_param(param_file, mdl, "S_REF", S_ref, 'Reference salinity', &
-                 default=35.0, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
+                 default=35.0_wp, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "T_REF", T_ref, 'Reference temperature', &
                  units="degC", scale=US%degC_to_C, fail_if_missing=.not.just_read, do_not_log=just_read)
   call get_param(param_file, mdl, "S_RANGE", S_range, 'Initial salinity range',  &
-                 default=2.0, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
+                 default=2.0_wp, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl, "T_RANGE", T_range, 'Initial temperature range', &
-                 default=1.0, units='degC', scale=US%degC_to_C, do_not_log=just_read)
+                 default=1.0_wp, units='degC', scale=US%degC_to_C, do_not_log=just_read)
   ! Parameters specific to this experiment configuration BUT logged in previous s/r
   call get_param(param_file, mdl, "REGRIDDING_COORDINATE_MODE", verticalCoordinate, &
                  default=DEFAULT_COORDINATE_MODE, do_not_log=just_read)
@@ -256,16 +258,16 @@ subroutine adjustment_initialize_temperature_salinity(T, S, h, depth_tot, G, GV,
   call get_param(param_file, mdl, "DELTA_S_STRAT", delta_S_strat, &
                  units="ppt", scale=US%ppt_to_S, fail_if_missing=.not.just_read, do_not_log=.true.)
   call get_param(param_file, mdl, "FRONT_WAVE_AMP", front_wave_amp, &
-                 units=G%x_ax_unit_short, default=0., do_not_log=.true.)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=.true.)
   call get_param(param_file, mdl, "FRONT_WAVE_LENGTH", front_wave_length, &
-                 units=G%x_ax_unit_short, default=0., do_not_log=.true.)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=.true.)
   call get_param(param_file, mdl, "FRONT_WAVE_ASYM", front_wave_asym, &
-                 units=G%x_ax_unit_short, default=0., do_not_log=.true.)
+                 units=G%x_ax_unit_short, default=0._wp, do_not_log=.true.)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
-  T(:,:,:) = 0.0
-  S(:,:,:) = 0.0
+  T(:,:,:) = 0.0_wp
+  S(:,:,:) = 0.0_wp
 
   ! Linear salinity profile
   select case ( coordinateMode(verticalCoordinate) )
@@ -277,23 +279,23 @@ subroutine adjustment_initialize_temperature_salinity(T, S, h, depth_tot, G, GV,
         do k=nz,1,-1
           eta1d(k) = eta1d(k+1) + h(i,j,k)
         enddo
-        if (front_wave_length /= 0.) then
-          y = ( 0.125 + G%geoLatT(i,j) / front_wave_length ) * ( 4. * acos(0.) )
-          yy = 2. * ( G%geoLatT(i,j) - 0.5 * G%len_lat ) / front_wave_length
-          yy = min(1.0, yy); yy = max(-1.0, yy)
-          yy = yy * 2. * acos( 0. )
+        if (front_wave_length /= 0._wp) then
+          y = ( 0.125_wp + G%geoLatT(i,j) / front_wave_length ) * ( 4._wp * acos(0._wp) )
+          yy = 2._wp * ( G%geoLatT(i,j) - 0.5_wp * G%len_lat ) / front_wave_length
+          yy = min(1.0_wp, yy); yy = max(-1.0_wp, yy)
+          yy = yy * 2._wp * acos( 0._wp )
           y_lat = front_wave_amp*sin(y) + front_wave_asym*sin(yy)
         else
-          y_lat = 0.
+          y_lat = 0._wp
         endif
-        x = ( ( G%geoLonT(i,j) - 0.5 * G%len_lon ) + y_lat ) / adjustment_width
-        x = min(1.0, x); x = max(-1.0, x)
-        x = x * acos( 0. )
-        delta_S = adjustment_deltaS * 0.5 * (1. - sin( x ) )
+        x = ( ( G%geoLonT(i,j) - 0.5_wp * G%len_lon ) + y_lat ) / adjustment_width
+        x = min(1.0_wp, x); x = max(-1.0_wp, x)
+        x = x * acos( 0._wp )
+        delta_S = adjustment_deltaS * 0.5_wp * (1._wp - sin( x ) )
         do k=1,nz
-          S(i,j,k) = S_ref + delta_S + 0.5 * ( eta1D(k)+eta1D(k+1) ) * dSdz
-          x = abs(S(i,j,k) - 0.5*real(nz-1)/real(nz)*S_range)/S_range*real(2*nz)
-          x = 1. - min(1., x)
+          S(i,j,k) = S_ref + delta_S + 0.5_wp * ( eta1D(k)+eta1D(k+1) ) * dSdz
+          x = abs(S(i,j,k) - 0.5_wp*real(nz-1, wp)/real(nz, wp)*S_range)/S_range*real(2*nz, wp)
+          x = 1._wp - min(1._wp, x)
           T(i,j,k) = T_range * x
         enddo
    !    x = sum(T(i,j,:)*h(i,j,:))
@@ -302,7 +304,7 @@ subroutine adjustment_initialize_temperature_salinity(T, S, h, depth_tot, G, GV,
 
     case ( REGRIDDING_LAYER, REGRIDDING_RHO )
       do k = 1,nz
-        S(:,:,k) = S_ref + S_range * ( (real(k)-0.5) / real( nz ) )
+        S(:,:,k) = S_ref + S_range * ( (real(k, wp)-0.5_wp) / real( nz , wp) )
    !    x = abs(S(1,1,k) - 0.5*real(nz-1)/real(nz)*S_range)/S_range*real(2*nz)
    !    x = 1.-min(1., x)
    !    T(:,:,k) = T_range * x

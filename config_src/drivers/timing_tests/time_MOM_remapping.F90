@@ -6,6 +6,8 @@ use MOM_remapping, only : remapping_CS
 use MOM_remapping, only : initialize_remapping
 use MOM_remapping, only : remapping_core_h
 
+use MOM_datatypes, only : wp
+
 implicit none
 
 type(remapping_CS) :: CS
@@ -33,16 +35,16 @@ character(len=16) :: scheme_labels(nschemes) = [ character(len=16) :: &
       'C_PPM_CW', &
       'C_PPM_CWK', &
       'C_EPPM_CWK' ]
-real, dimension(nschemes) :: timings ! Time for nits of nij calls for each scheme [s]
-real, dimension(nschemes) :: tmean ! Mean time for a call [s]
-real, dimension(nschemes) :: tstd ! Standard deviation of time for a call [s]
-real, dimension(nschemes) :: tmin ! Shortest time for a call [s]
-real, dimension(nschemes) :: tmax ! Longest time for a call [s]
-real, dimension(:,:), allocatable :: u0, u1 ! Source/target values [arbitrary but same units as each other]
-real, dimension(:,:), allocatable :: h0, h1 ! Source target thicknesses [0..1] [nondim]
-real :: start, finish ! Times [s]
-real :: h_neglect    ! A negligible thickness [nondim]
-real :: h0sum, h1sum ! Totals of h0 and h1 [nondim]
+real(wp), dimension(nschemes) :: timings ! Time for nits of nij calls for each scheme [s]
+real(wp), dimension(nschemes) :: tmean ! Mean time for a call [s]
+real(wp), dimension(nschemes) :: tstd ! Standard deviation of time for a call [s]
+real(wp), dimension(nschemes) :: tmin ! Shortest time for a call [s]
+real(wp), dimension(nschemes) :: tmax ! Longest time for a call [s]
+real(wp), dimension(:,:), allocatable :: u0, u1 ! Source/target values [arbitrary but same units as each other]
+real(wp), dimension(:,:), allocatable :: h0, h1 ! Source target thicknesses [0..1] [nondim]
+real(wp) :: start, finish ! Times [s]
+real(wp) :: h_neglect    ! A negligible thickness [nondim]
+real(wp) :: h0sum, h1sum ! Totals of h0 and h1 [nondim]
 integer :: ij, k, isamp, iter, ischeme ! Indices and counters
 integer :: seed_size ! Number of integers used by seed
 integer, allocatable :: seed(:) ! Random number seed
@@ -59,8 +61,8 @@ call random_number(u0) ! In range 0-1
 call random_number(h0) ! In range 0-1
 call random_number(h1) ! In range 0-1
 do ij = 1, nij
-  h0(:,ij) = max(0., h0(:,ij) - 0.05) ! Make 5% of values equal to zero
-  h1(:,ij) = max(0., h1(:,ij) - 0.05) ! Make 5% of values equal to zero
+  h0(:,ij) = max(0._wp, h0(:,ij) - 0.05_wp) ! Make 5% of values equal to zero
+  h1(:,ij) = max(0._wp, h1(:,ij) - 0.05_wp) ! Make 5% of values equal to zero
   h0sum = h0(1,ij)
   h1sum = h1(1,ij)
   do k = 2, nk
@@ -70,13 +72,13 @@ do ij = 1, nij
   h0(:,ij) = h0(:,ij) / h0sum
   h1(:,ij) = h1(:,ij) / h1sum
 enddo
-h_neglect = 1.0-30
+h_neglect = 1.0_wp-30
 
 ! Loop over many samples of timing loop to collect statistics
-tmean(:) = 0.
-tstd(:) = 0.
-tmin(:) = 1.e9
-tmax(:) = 0.
+tmean(:) = 0._wp
+tstd(:) = 0._wp
+tmin(:) = 1.e9_wp
+tmax(:) = 0._wp
 do isamp = 1, nsamp
   ! Time reconstruction + remapping
   do ischeme = 1, nschemes
@@ -89,17 +91,17 @@ do isamp = 1, nsamp
       enddo
     enddo
     call cpu_time(finish)
-    timings(ischeme) = (finish-start)/real(nits*nij) ! Average time per call
+    timings(ischeme) = (finish-start)/real(nits*nij, wp) ! Average time per call
   enddo
   tmean(:) = tmean(:) + timings(:)
   tstd(:) = tstd(:) + timings(:)**2 ! tstd contains sum of squares here
   tmin(:) = min( tmin(:), timings(:) )
   tmax(:) = max( tmax(:), timings(:) )
 enddo
-tmean(:) = tmean(:) / real(nsamp) ! convert to mean
-tstd(:) = tstd(:) / real(nsamp) ! convert to mean of squares
+tmean(:) = tmean(:) / real(nsamp, wp) ! convert to mean
+tstd(:) = tstd(:) / real(nsamp, wp) ! convert to mean of squares
 tstd(:) = tstd(:) - tmean(:)**2  ! convert to variance
-tstd(:) = sqrt( tstd(:) * real(nsamp) / real(nsamp-1) ) ! convert to standard deviation
+tstd(:) = sqrt( tstd(:) * real(nsamp, wp) / real(nsamp-1, wp) ) ! convert to standard deviation
 
 
 ! Display results in YAML

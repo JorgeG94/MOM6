@@ -3,6 +3,7 @@ module MOM_EOS_base_type
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public EOS_base
@@ -66,77 +67,77 @@ interface
   !> In situ density [kg m-3]
   !!
   !! This is an elemental function that can be applied to any combination of scalar and array inputs.
-  real elemental function i_density_elem(this, T, S, pressure)
-    import :: EOS_base
+  real(wp) elemental function i_density_elem(this, T, S, pressure)
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,            intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in) :: S        !< Salinity [PSU]
-    real,            intent(in) :: pressure !< Pressure [Pa]
+    real(wp),            intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in) :: S        !< Salinity [PSU]
+    real(wp),            intent(in) :: pressure !< Pressure [Pa]
 
   end function i_density_elem
 
   !> In situ density anomaly [kg m-3]
   !!
   !! This is an elemental function that can be applied to any combination of scalar and array inputs.
-  real elemental function i_density_anomaly_elem(this, T, S, pressure, rho_ref)
-    import :: EOS_base
+  real(wp) elemental function i_density_anomaly_elem(this, T, S, pressure, rho_ref)
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,            intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in) :: S        !< Salinity [PSU]
-    real,            intent(in) :: pressure !< Pressure [Pa]
-    real,            intent(in) :: rho_ref  !< A reference density [kg m-3]
+    real(wp),            intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in) :: S        !< Salinity [PSU]
+    real(wp),            intent(in) :: pressure !< Pressure [Pa]
+    real(wp),            intent(in) :: rho_ref  !< A reference density [kg m-3]
 
   end function i_density_anomaly_elem
 
   !> In situ specific volume [m3 kg-1]
   !!
   !! This is an elemental function that can be applied to any combination of scalar and array inputs.
-  real elemental function i_spec_vol_elem(this, T, S, pressure)
-    import :: EOS_base
+  real(wp) elemental function i_spec_vol_elem(this, T, S, pressure)
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,            intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in) :: S        !< Salinity [PSU]
-    real,            intent(in) :: pressure !< Pressure [Pa]
+    real(wp),            intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in) :: S        !< Salinity [PSU]
+    real(wp),            intent(in) :: pressure !< Pressure [Pa]
 
   end function i_spec_vol_elem
 
   !> In situ specific volume anomaly [m3 kg-1]
   !!
   !! This is an elemental function that can be applied to any combination of scalar and array inputs.
-  real elemental function i_spec_vol_anomaly_elem(this, T, S, pressure, spv_ref)
-    import :: EOS_base
+  real(wp) elemental function i_spec_vol_anomaly_elem(this, T, S, pressure, spv_ref)
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,            intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in) :: S        !< Salinity [PSU]
-    real,            intent(in) :: pressure !< Pressure [Pa]
-    real,            intent(in) :: spv_ref  !< A reference specific volume [m3 kg-1]
+    real(wp),            intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in) :: S        !< Salinity [PSU]
+    real(wp),            intent(in) :: pressure !< Pressure [Pa]
+    real(wp),            intent(in) :: spv_ref  !< A reference specific volume [m3 kg-1]
 
   end function i_spec_vol_anomaly_elem
 
   !> Calculate the partial derivatives of density with potential temperature and salinity
   elemental subroutine i_calculate_density_derivs_elem(this, T, S, pressure, drho_dT, drho_dS)
-    import :: EOS_base
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this      !< This EOS
-    real,            intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in)  :: S        !< Salinity [PSU]
-    real,            intent(in)  :: pressure !< Pressure [Pa]
-    real,            intent(out) :: drho_dT  !< The partial derivative of density with potential
+    real(wp),            intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in)  :: S        !< Salinity [PSU]
+    real(wp),            intent(in)  :: pressure !< Pressure [Pa]
+    real(wp),            intent(out) :: drho_dT  !< The partial derivative of density with potential
                                              !! temperature [kg m-3 degC-1]
-    real,            intent(out) :: drho_dS  !< The partial derivative of density with salinity,
+    real(wp),            intent(out) :: drho_dS  !< The partial derivative of density with salinity,
                                              !! in [kg m-3 PSU-1]
 
   end subroutine i_calculate_density_derivs_elem
 
   !> Calculate the partial derivatives of specific volume with temperature and salinity
   elemental subroutine i_calculate_specvol_derivs_elem(this, T, S, pressure, dSV_dT, dSV_dS)
-    import :: EOS_base
+    import :: EOS_base, wp
     class(EOS_base), intent(in)    :: this     !< This EOS
-    real,            intent(in)    :: T        !< Potential temperature [degC]
-    real,            intent(in)    :: S        !< Salinity [PSU]
-    real,            intent(in)    :: pressure !< Pressure [Pa]
-    real,            intent(inout) :: dSV_dT   !< The partial derivative of specific volume with
+    real(wp),            intent(in)    :: T        !< Potential temperature [degC]
+    real(wp),            intent(in)    :: S        !< Salinity [PSU]
+    real(wp),            intent(in)    :: pressure !< Pressure [Pa]
+    real(wp),            intent(inout) :: dSV_dT   !< The partial derivative of specific volume with
                                                !! potential temperature [m3 kg-1 degC-1]
-    real,            intent(inout) :: dSV_dS   !< The partial derivative of specific volume with
+    real(wp),            intent(inout) :: dSV_dS   !< The partial derivative of specific volume with
                                                !! salinity [m3 kg-1 PSU-1]
 
   end subroutine i_calculate_specvol_derivs_elem
@@ -144,20 +145,20 @@ interface
   !> Calculate second derivatives of density with respect to temperature, salinity, and pressure
   elemental subroutine i_calculate_density_second_derivs_elem(this, T, S, pressure, &
                           drho_ds_ds, drho_ds_dt, drho_dt_dt, drho_ds_dp, drho_dt_dp)
-    import :: EOS_base
+    import :: EOS_base, wp
     class(EOS_base), intent(in)    :: this     !< This EOS
-    real,            intent(in)    :: T !< Potential temperature referenced to 0 dbar [degC]
-    real,            intent(in)    :: S !< Salinity [PSU]
-    real,            intent(in)    :: pressure !< Pressure [Pa]
-    real,            intent(inout) :: drho_ds_ds !< Partial derivative of beta with respect
+    real(wp),            intent(in)    :: T !< Potential temperature referenced to 0 dbar [degC]
+    real(wp),            intent(in)    :: S !< Salinity [PSU]
+    real(wp),            intent(in)    :: pressure !< Pressure [Pa]
+    real(wp),            intent(inout) :: drho_ds_ds !< Partial derivative of beta with respect
                                                  !! to S [kg m-3 PSU-2]
-    real,            intent(inout) :: drho_ds_dt !< Partial derivative of beta with respect
+    real(wp),            intent(inout) :: drho_ds_dt !< Partial derivative of beta with respect
                                                  !! to T [kg m-3 PSU-1 degC-1]
-    real,            intent(inout) :: drho_dt_dt !< Partial derivative of alpha with respect
+    real(wp),            intent(inout) :: drho_dt_dt !< Partial derivative of alpha with respect
                                                  !! to T [kg m-3 degC-2]
-    real,            intent(inout) :: drho_ds_dp !< Partial derivative of beta with respect
+    real(wp),            intent(inout) :: drho_ds_dp !< Partial derivative of beta with respect
                                                  !! to pressure [kg m-3 PSU-1 Pa-1] = [s2 m-2 PSU-1]
-    real,            intent(inout) :: drho_dt_dp !< Partial derivative of alpha with respect
+    real(wp),            intent(inout) :: drho_dt_dp !< Partial derivative of alpha with respect
                                                  !! to pressure [kg m-3 degC-1 Pa-1] = [s2 m-2 degC-1]
 
   end subroutine i_calculate_density_second_derivs_elem
@@ -165,13 +166,13 @@ interface
   !> Compute the in situ density of sea water (rho) and the compressibility (drho/dp == C_sound^-2)
   !! at the given salinity, potential temperature and pressure
   elemental subroutine i_calculate_compress_elem(this, T, S, pressure, rho, drho_dp)
-    import :: EOS_base
+    import :: EOS_base, wp
     class(EOS_base), intent(in)  :: this     !< This EOS
-    real,            intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real,            intent(in)  :: S        !< Salinity [PSU]
-    real,            intent(in)  :: pressure !< Pressure [Pa]
-    real,            intent(out) :: rho      !< In situ density [kg m-3]
-    real,            intent(out) :: drho_dp  !< The partial derivative of density with pressure (or
+    real(wp),            intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),            intent(in)  :: S        !< Salinity [PSU]
+    real(wp),            intent(in)  :: pressure !< Pressure [Pa]
+    real(wp),            intent(out) :: rho      !< In situ density [kg m-3]
+    real(wp),            intent(out) :: drho_dp  !< The partial derivative of density with pressure (or
                                              !! the inverse of the square of sound speed) [s2 m-2]
 
   end subroutine i_calculate_compress_elem
@@ -179,14 +180,14 @@ interface
   !> Return the range of temperatures, salinities and pressures for which the equations of state has been
   !! fitted or is valid. Care should be taken when applying this equation of state outside of its fit range.
   subroutine i_EOS_fit_range(this, T_min, T_max, S_min, S_max, p_min, p_max)
-    import :: EOS_base
+    import :: EOS_base, wp
     class(EOS_base), intent(in) :: this     !< This EOS
-    real, optional, intent(out) :: T_min !< The minimum potential temperature over which this EoS is fitted [degC]
-    real, optional, intent(out) :: T_max !< The maximum potential temperature over which this EoS is fitted [degC]
-    real, optional, intent(out) :: S_min !< The minimum practical salinity over which this EoS is fitted [PSU]
-    real, optional, intent(out) :: S_max !< The maximum practical salinity over which this EoS is fitted [PSU]
-    real, optional, intent(out) :: p_min !< The minimum pressure over which this EoS is fitted [Pa]
-    real, optional, intent(out) :: p_max !< The maximum pressure over which this EoS is fitted [Pa]
+    real(wp), optional, intent(out) :: T_min !< The minimum potential temperature over which this EoS is fitted [degC]
+    real(wp), optional, intent(out) :: T_max !< The maximum potential temperature over which this EoS is fitted [degC]
+    real(wp), optional, intent(out) :: S_min !< The minimum practical salinity over which this EoS is fitted [PSU]
+    real(wp), optional, intent(out) :: S_max !< The maximum practical salinity over which this EoS is fitted [PSU]
+    real(wp), optional, intent(out) :: p_min !< The minimum pressure over which this EoS is fitted [Pa]
+    real(wp), optional, intent(out) :: p_max !< The maximum pressure over which this EoS is fitted [Pa]
 
   end subroutine i_EOS_fit_range
 
@@ -195,12 +196,12 @@ end interface
 contains
 
   !> In situ density [kg m-3]
-  real function a_density_fn(this, T, S, pressure, rho_ref)
+  real(wp) function a_density_fn(this, T, S, pressure, rho_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,           intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,           intent(in) :: S        !< Salinity [PSU]
-    real,           intent(in) :: pressure !< Pressure [Pa]
-    real, optional, intent(in) :: rho_ref  !< A reference density [kg m-3]
+    real(wp),           intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),           intent(in) :: S        !< Salinity [PSU]
+    real(wp),           intent(in) :: pressure !< Pressure [Pa]
+    real(wp), optional, intent(in) :: rho_ref  !< A reference density [kg m-3]
 
     if (present(rho_ref)) then
       a_density_fn = this%density_anomaly_elem(T, S, pressure, rho_ref)
@@ -213,11 +214,11 @@ contains
   !> Calculate the in-situ density for scalar inputs and outputs.
   subroutine a_calculate_density_scalar(this, T, S, pressure, rho, rho_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,           intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real,           intent(in)  :: S        !< Salinity [PSU]
-    real,           intent(in)  :: pressure !< Pressure [Pa]
-    real,           intent(out) :: rho      !< In situ density [kg m-3]
-    real, optional, intent(in)  :: rho_ref  !< A reference density [kg m-3]
+    real(wp),           intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),           intent(in)  :: S        !< Salinity [PSU]
+    real(wp),           intent(in)  :: pressure !< Pressure [Pa]
+    real(wp),           intent(out) :: rho      !< In situ density [kg m-3]
+    real(wp), optional, intent(in)  :: rho_ref  !< A reference density [kg m-3]
 
     if (present(rho_ref)) then
       rho = this%density_anomaly_elem(T, S, pressure, rho_ref)
@@ -230,13 +231,13 @@ contains
   !> Calculate the in-situ density for 1D arraya inputs and outputs.
   subroutine a_calculate_density_array(this, T, S, pressure, rho, start, npts, rho_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real, dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real, dimension(:), intent(in)  :: S        !< Salinity [PSU]
-    real, dimension(:), intent(in)  :: pressure !< Pressure [Pa]
-    real, dimension(:), intent(out) :: rho      !< In situ density [kg m-3]
+    real(wp), dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp), dimension(:), intent(in)  :: S        !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)  :: pressure !< Pressure [Pa]
+    real(wp), dimension(:), intent(out) :: rho      !< In situ density [kg m-3]
     integer,            intent(in)  :: start    !< The starting index for calculations
     integer,            intent(in)  :: npts     !< The number of values to calculate
-    real,     optional, intent(in)  :: rho_ref  !< A reference density [kg m-3]
+    real(wp),     optional, intent(in)  :: rho_ref  !< A reference density [kg m-3]
 
     ! Local variables
     integer :: js, je
@@ -253,12 +254,12 @@ contains
   end subroutine a_calculate_density_array
 
   !> In situ specific volume [m3 kg-1]
-  real function a_spec_vol_fn(this, T, S, pressure, spv_ref)
+  real(wp) function a_spec_vol_fn(this, T, S, pressure, spv_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,           intent(in) :: T        !< Potential temperature relative to the surface [degC]
-    real,           intent(in) :: S        !< Salinity [PSU]
-    real,           intent(in) :: pressure !< Pressure [Pa]
-    real, optional, intent(in) :: spv_ref  !< A reference specific volume [m3 kg-1]
+    real(wp),           intent(in) :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),           intent(in) :: S        !< Salinity [PSU]
+    real(wp),           intent(in) :: pressure !< Pressure [Pa]
+    real(wp), optional, intent(in) :: spv_ref  !< A reference specific volume [m3 kg-1]
 
     if (present(spv_ref)) then
       a_spec_vol_fn = this%spec_vol_anomaly_elem(T, S, pressure, spv_ref)
@@ -271,11 +272,11 @@ contains
   !> Calculate the in-situ specific volume for scalar inputs and outputs.
   subroutine a_calculate_spec_vol_scalar(this, T, S, pressure, specvol, spv_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real,           intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real,           intent(in)  :: S        !< Salinity [PSU]
-    real,           intent(in)  :: pressure !< Pressure [Pa]
-    real,           intent(out) :: specvol  !< In situ specific volume [m3 kg-1]
-    real, optional, intent(in)  :: spv_ref  !< A reference specific volume [m3 kg-1]
+    real(wp),           intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp),           intent(in)  :: S        !< Salinity [PSU]
+    real(wp),           intent(in)  :: pressure !< Pressure [Pa]
+    real(wp),           intent(out) :: specvol  !< In situ specific volume [m3 kg-1]
+    real(wp), optional, intent(in)  :: spv_ref  !< A reference specific volume [m3 kg-1]
 
     if (present(spv_ref)) then
       specvol = this%spec_vol_anomaly_elem(T, S, pressure, spv_ref)
@@ -288,13 +289,13 @@ contains
   !> Calculate the in-situ specific volume for 1D array inputs and outputs.
   subroutine a_calculate_spec_vol_array(this, T, S, pressure, specvol, start, npts, spv_ref)
     class(EOS_base), intent(in) :: this     !< This EOS
-    real, dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real, dimension(:), intent(in)  :: S        !< Salinity [PSU]
-    real, dimension(:), intent(in)  :: pressure !< Pressure [Pa]
-    real, dimension(:), intent(out) :: specvol  !< In situ specific volume [m3 kg-1]
+    real(wp), dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp), dimension(:), intent(in)  :: S        !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)  :: pressure !< Pressure [Pa]
+    real(wp), dimension(:), intent(out) :: specvol  !< In situ specific volume [m3 kg-1]
     integer,            intent(in)  :: start    !< The starting index for calculations
     integer,            intent(in)  :: npts     !< The number of values to calculate
-    real,     optional, intent(in)  :: spv_ref  !< A reference specific volume [m3 kg-1]
+    real(wp),     optional, intent(in)  :: spv_ref  !< A reference specific volume [m3 kg-1]
 
     ! Local variables
     integer :: js, je
@@ -314,12 +315,12 @@ contains
   !! for scalar inputs
   subroutine a_calculate_density_derivs_scalar(this, T, S, P, drho_dT, drho_dS)
     class(EOS_base), intent(in) :: this !< This EOS
-    real, intent(in)  :: T       !< Potential temperature referenced to 0 dbar
-    real, intent(in)  :: S       !< Salinity [PSU]
-    real, intent(in)  :: P       !< Pressure [Pa]
-    real, intent(out) :: drho_dT !< The partial derivative of density with potential
+    real(wp), intent(in)  :: T       !< Potential temperature referenced to 0 dbar
+    real(wp), intent(in)  :: S       !< Salinity [PSU]
+    real(wp), intent(in)  :: P       !< Pressure [Pa]
+    real(wp), intent(out) :: drho_dT !< The partial derivative of density with potential
                                  !! temperature [kg m-3 degC-1]
-    real, intent(out) :: drho_dS !< The partial derivative of density with salinity,
+    real(wp), intent(out) :: drho_dS !< The partial derivative of density with salinity,
                                  !! in [kg m-3 PSU-1]
 
     call this%calculate_density_derivs_elem(T, S, P, drho_dt, drho_ds)
@@ -330,12 +331,12 @@ contains
   !! for array inputs
   subroutine a_calculate_density_derivs_array(this, T, S, pressure, drho_dT, drho_dS, start, npts)
     class(EOS_base),    intent(in)  :: this     !< This EOS
-    real, dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real, dimension(:), intent(in)  :: S        !< Salinity [PSU]
-    real, dimension(:), intent(in)  :: pressure !< Pressure [Pa]
-    real, dimension(:), intent(out) :: drho_dT  !< The partial derivative of density with potential
+    real(wp), dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp), dimension(:), intent(in)  :: S        !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)  :: pressure !< Pressure [Pa]
+    real(wp), dimension(:), intent(out) :: drho_dT  !< The partial derivative of density with potential
                                                 !! temperature [kg m-3 degC-1]
-    real, dimension(:), intent(out) :: drho_dS  !< The partial derivative of density with salinity,
+    real(wp), dimension(:), intent(out) :: drho_dS  !< The partial derivative of density with salinity,
                                                 !! in [kg m-3 PSU-1]
     integer,            intent(in)  :: start    !< The starting index for calculations
     integer,            intent(in)  :: npts     !< The number of values to calculate
@@ -355,18 +356,18 @@ contains
   subroutine a_calculate_density_second_derivs_scalar(this, T, S, pressure, &
                      drho_ds_ds, drho_ds_dt, drho_dt_dt, drho_ds_dp, drho_dt_dp)
     class(EOS_base), intent(in)  :: this       !< This EOS
-    real,            intent(in)  :: T          !< Potential temperature referenced to 0 dbar
-    real,            intent(in)  :: S          !< Salinity [PSU]
-    real,            intent(in)  :: pressure   !< Pressure [Pa]
-    real,            intent(out) :: drho_ds_ds !< Partial derivative of beta with respect
+    real(wp),            intent(in)  :: T          !< Potential temperature referenced to 0 dbar
+    real(wp),            intent(in)  :: S          !< Salinity [PSU]
+    real(wp),            intent(in)  :: pressure   !< Pressure [Pa]
+    real(wp),            intent(out) :: drho_ds_ds !< Partial derivative of beta with respect
                                                !! to S [kg m-3 PSU-2]
-    real,            intent(out) :: drho_ds_dt !< Partial derivative of beta with respect
+    real(wp),            intent(out) :: drho_ds_dt !< Partial derivative of beta with respect
                                                !! to T [kg m-3 PSU-1 degC-1]
-    real,            intent(out) :: drho_dt_dt !< Partial derivative of alpha with respect
+    real(wp),            intent(out) :: drho_dt_dt !< Partial derivative of alpha with respect
                                                !! to T [kg m-3 degC-2]
-    real,            intent(out) :: drho_ds_dp !< Partial derivative of beta with respect
+    real(wp),            intent(out) :: drho_ds_dp !< Partial derivative of beta with respect
                                                !! to pressure [kg m-3 PSU-1 Pa-1] = [s2 m-2 PSU-1]
-    real,            intent(out) :: drho_dt_dp !< Partial derivative of alpha with respect
+    real(wp),            intent(out) :: drho_dt_dp !< Partial derivative of alpha with respect
                                                !! to pressure [kg m-3 degC-1 Pa-1] = [s2 m-2 degC-1]
 
     call this%calculate_density_second_derivs_elem(T, S, pressure, &
@@ -379,18 +380,18 @@ contains
   subroutine a_calculate_density_second_derivs_array(this, T, S, pressure, &
                      drho_ds_ds, drho_ds_dt, drho_dt_dt, drho_ds_dp, drho_dt_dp, start, npts)
     class(EOS_base),    intent(in)  :: this       !< This EOS
-    real, dimension(:), intent(in)  :: T          !< Potential temperature referenced to 0 dbar
-    real, dimension(:), intent(in)  :: S          !< Salinity [PSU]
-    real, dimension(:), intent(in)  :: pressure   !< Pressure [Pa]
-    real, dimension(:), intent(out) :: drho_ds_ds !< Partial derivative of beta with respect
+    real(wp), dimension(:), intent(in)  :: T          !< Potential temperature referenced to 0 dbar
+    real(wp), dimension(:), intent(in)  :: S          !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)  :: pressure   !< Pressure [Pa]
+    real(wp), dimension(:), intent(out) :: drho_ds_ds !< Partial derivative of beta with respect
                                                   !! to S [kg m-3 PSU-2]
-    real, dimension(:), intent(out) :: drho_ds_dt !< Partial derivative of beta with respect
+    real(wp), dimension(:), intent(out) :: drho_ds_dt !< Partial derivative of beta with respect
                                                   !! to T [kg m-3 PSU-1 degC-1]
-    real, dimension(:), intent(out) :: drho_dt_dt !< Partial derivative of alpha with respect
+    real(wp), dimension(:), intent(out) :: drho_dt_dt !< Partial derivative of alpha with respect
                                                   !! to T [kg m-3 degC-2]
-    real, dimension(:), intent(out) :: drho_ds_dp !< Partial derivative of beta with respect
+    real(wp), dimension(:), intent(out) :: drho_ds_dp !< Partial derivative of beta with respect
                                                   !! to pressure [kg m-3 PSU-1 Pa-1] = [s2 m-2 PSU-1]
-    real, dimension(:), intent(out) :: drho_dt_dp !< Partial derivative of alpha with respect
+    real(wp), dimension(:), intent(out) :: drho_dt_dp !< Partial derivative of alpha with respect
                                                   !! to pressure [kg m-3 degC-1 Pa-1] = [s2 m-2 degC-1]
     integer,            intent(in)  :: start      !< The starting index for calculations
     integer,            intent(in)  :: npts       !< The number of values to calculate
@@ -411,12 +412,12 @@ contains
   !! for array inputs
   subroutine a_calculate_specvol_derivs_array(this, T, S, pressure, dSV_dT, dSV_dS, start, npts)
     class(EOS_base),    intent(in)    :: this     !< This EOS
-    real, dimension(:), intent(in)    :: T        !< Potential temperature [degC]
-    real, dimension(:), intent(in)    :: S        !< Salinity [PSU]
-    real, dimension(:), intent(in)    :: pressure !< Pressure [Pa]
-    real, dimension(:), intent(inout) :: dSV_dT   !< The partial derivative of specific volume with
+    real(wp), dimension(:), intent(in)    :: T        !< Potential temperature [degC]
+    real(wp), dimension(:), intent(in)    :: S        !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)    :: pressure !< Pressure [Pa]
+    real(wp), dimension(:), intent(inout) :: dSV_dT   !< The partial derivative of specific volume with
                                                   !! potential temperature [m3 kg-1 degC-1]
-    real, dimension(:), intent(inout) :: dSV_dS   !< The partial derivative of specific volume with
+    real(wp), dimension(:), intent(inout) :: dSV_dS   !< The partial derivative of specific volume with
                                                   !! salinity [m3 kg-1 PSU-1]
     integer,            intent(in)    :: start    !< The starting index for calculations
     integer,            intent(in)    :: npts     !< The number of values to calculate
@@ -436,11 +437,11 @@ contains
   !! at the given salinity, potential temperature and pressure for array inputs
   subroutine a_calculate_compress_array(this, T, S, pressure, rho, drho_dp, start, npts)
     class(EOS_base),    intent(in)  :: this     !< This EOS
-    real, dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
-    real, dimension(:), intent(in)  :: S        !< Salinity [PSU]
-    real, dimension(:), intent(in)  :: pressure !< Pressure [Pa]
-    real, dimension(:), intent(out) :: rho      !< In situ density [kg m-3]
-    real, dimension(:), intent(out) :: drho_dp  !< The partial derivative of density with pressure (or
+    real(wp), dimension(:), intent(in)  :: T        !< Potential temperature relative to the surface [degC]
+    real(wp), dimension(:), intent(in)  :: S        !< Salinity [PSU]
+    real(wp), dimension(:), intent(in)  :: pressure !< Pressure [Pa]
+    real(wp), dimension(:), intent(out) :: rho      !< In situ density [kg m-3]
+    real(wp), dimension(:), intent(out) :: drho_dp  !< The partial derivative of density with pressure (or
                                                 !! the inverse of the square of sound speed) [s2 m-2]
     integer,            intent(in)  :: start    !< The starting index for calculations
     integer,            intent(in)  :: npts     !< The number of values to calculate

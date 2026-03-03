@@ -31,6 +31,8 @@ use MOM_diabatic_driver,       only : diabatic_CS, extract_diabatic_member
 use MOM_io,                    only : stdout, stderr
 use MOM_hor_bnd_diffusion,     only : boundary_k_range, SURFACE, BOTTOM
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -48,9 +50,9 @@ type, public :: neutral_diffusion_CS ; private
   logical :: debug = .false. !< If true, write verbose debugging messages
   logical :: hard_fail_heff !< Bring down the model if a problem with heff is detected
   integer :: max_iter !< Maximum number of iterations if refine_position is defined
-  real :: drho_tol    !< Convergence criterion representing density difference from true neutrality [R ~> kg m-3]
-  real :: x_tol       !< Convergence criterion for how small an update of the position can be [nondim]
-  real :: ref_pres    !< Reference pressure, negative if using locally referenced neutral
+  real(wp) :: drho_tol    !< Convergence criterion representing density difference from true neutrality [R ~> kg m-3]
+  real(wp) :: x_tol       !< Convergence criterion for how small an update of the position can be [nondim]
+  real(wp) :: ref_pres    !< Reference pressure, negative if using locally referenced neutral
                       !! density [R L2 T-2 ~> Pa]
   logical :: interior_only !< If true, only applies neutral diffusion in the ocean interior.
                       !! That is, the algorithm will exclude the surface and bottom boundary layers.
@@ -61,49 +63,49 @@ type, public :: neutral_diffusion_CS ; private
                                  !! for tracer diffusivity.
   logical :: use_unmasked_transport_bug !< If true, use an older form for the accumulation of
                       !! neutral-diffusion transports that were unmasked, as used prior to Jan 2018.
-  real,    allocatable, dimension(:,:)  :: hbl    !< Boundary layer depth [H ~> m or kg m-2]
+  real(wp),    allocatable, dimension(:,:)  :: hbl    !< Boundary layer depth [H ~> m or kg m-2]
   ! Coefficients used to apply tapering from neutral to horizontal direction
-  real,    allocatable, dimension(:) :: coeff_l   !< Non-dimensional coefficient in the left column,
+  real(wp),    allocatable, dimension(:) :: coeff_l   !< Non-dimensional coefficient in the left column,
                                                   !! at cell interfaces [nondim]
-  real,    allocatable, dimension(:) :: coeff_r   !< Non-dimensional coefficient in the right column,
+  real(wp),    allocatable, dimension(:) :: coeff_r   !< Non-dimensional coefficient in the right column,
                                                   !! at cell interfaces [nondim]
   ! Array used when KhTh_use_vert_struct is true
-  real,    allocatable, dimension(:,:,:) :: Coef_h !< Coef_x and Coef_y averaged at t-points [L2 ~> m2]
+  real(wp),    allocatable, dimension(:,:,:) :: Coef_h !< Coef_x and Coef_y averaged at t-points [L2 ~> m2]
   ! Positions of neutral surfaces in both the u, v directions
-  real,    allocatable, dimension(:,:,:) :: uPoL  !< Non-dimensional position with left layer uKoL-1, u-point [nondim]
-  real,    allocatable, dimension(:,:,:) :: uPoR  !< Non-dimensional position with right layer uKoR-1, u-point [nondim]
+  real(wp),    allocatable, dimension(:,:,:) :: uPoL  !< Non-dimensional position with left layer uKoL-1, u-point [nondim]
+  real(wp),    allocatable, dimension(:,:,:) :: uPoR  !< Non-dimensional position with right layer uKoR-1, u-point [nondim]
   integer, allocatable, dimension(:,:,:) :: uKoL  !< Index of left interface corresponding to neutral surface,
                                                   !! at a u-point
   integer, allocatable, dimension(:,:,:) :: uKoR  !< Index of right interface corresponding to neutral surface,
                                                   !! at a u-point
-  real,    allocatable, dimension(:,:,:) :: uHeff !< Effective thickness at u-point [H ~> m or kg m-2]
-  real,    allocatable, dimension(:,:,:) :: vPoL  !< Non-dimensional position with left layer uKoL-1, v-point [nondim]
-  real,    allocatable, dimension(:,:,:) :: vPoR  !< Non-dimensional position with right layer uKoR-1, v-point [nondim]
+  real(wp),    allocatable, dimension(:,:,:) :: uHeff !< Effective thickness at u-point [H ~> m or kg m-2]
+  real(wp),    allocatable, dimension(:,:,:) :: vPoL  !< Non-dimensional position with left layer uKoL-1, v-point [nondim]
+  real(wp),    allocatable, dimension(:,:,:) :: vPoR  !< Non-dimensional position with right layer uKoR-1, v-point [nondim]
   integer, allocatable, dimension(:,:,:) :: vKoL  !< Index of left interface corresponding to neutral surface,
                                                   !! at a v-point
   integer, allocatable, dimension(:,:,:) :: vKoR  !< Index of right interface corresponding to neutral surface,
                                                   !! at a v-point
-  real,    allocatable, dimension(:,:,:) :: vHeff !< Effective thickness at v-point [H ~> m or kg m-2]
+  real(wp),    allocatable, dimension(:,:,:) :: vHeff !< Effective thickness at v-point [H ~> m or kg m-2]
   ! Coefficients of polynomial reconstructions for temperature and salinity
-  real,    allocatable, dimension(:,:,:,:) :: ppoly_coeffs_T !< Polynomial coefficients of the
+  real(wp),    allocatable, dimension(:,:,:,:) :: ppoly_coeffs_T !< Polynomial coefficients of the
                                                   !! sub-gridscale temperatures [C ~> degC]
-  real,    allocatable, dimension(:,:,:,:) :: ppoly_coeffs_S !< Polynomial coefficients of the
+  real(wp),    allocatable, dimension(:,:,:,:) :: ppoly_coeffs_S !< Polynomial coefficients of the
                                                   !! sub-gridscale salinity [S ~> ppt]
   ! Variables needed for continuous reconstructions
-  real,    allocatable, dimension(:,:,:) :: dRdT !< dRho/dT [R C-1 ~> kg m-3 degC-1] at interfaces
-  real,    allocatable, dimension(:,:,:) :: dRdS !< dRho/dS [R S-1 ~> kg m-3 ppt-1] at interfaces
-  real,    allocatable, dimension(:,:,:) :: Tint !< Interface T [C ~> degC]
-  real,    allocatable, dimension(:,:,:) :: Sint !< Interface S [S ~> ppt]
-  real,    allocatable, dimension(:,:,:) :: Pint !< Interface pressure [R L2 T-2 ~> Pa]
+  real(wp),    allocatable, dimension(:,:,:) :: dRdT !< dRho/dT [R C-1 ~> kg m-3 degC-1] at interfaces
+  real(wp),    allocatable, dimension(:,:,:) :: dRdS !< dRho/dS [R S-1 ~> kg m-3 ppt-1] at interfaces
+  real(wp),    allocatable, dimension(:,:,:) :: Tint !< Interface T [C ~> degC]
+  real(wp),    allocatable, dimension(:,:,:) :: Sint !< Interface S [S ~> ppt]
+  real(wp),    allocatable, dimension(:,:,:) :: Pint !< Interface pressure [R L2 T-2 ~> Pa]
   ! Variables needed for discontinuous reconstructions
-  real,    allocatable, dimension(:,:,:,:) :: T_i    !< Top edge reconstruction of temperature [C ~> degC]
-  real,    allocatable, dimension(:,:,:,:) :: S_i    !< Top edge reconstruction of salinity [S ~> ppt]
-  real,    allocatable, dimension(:,:,:,:) :: P_i    !< Interface pressures [R L2 T-2 ~> Pa]
-  real,    allocatable, dimension(:,:,:,:) :: dRdT_i !< dRho/dT [R C-1 ~> kg m-3 degC-1] at top edge
-  real,    allocatable, dimension(:,:,:,:) :: dRdS_i !< dRho/dS [R S-1 ~> kg m-3 ppt-1] at top edge
+  real(wp),    allocatable, dimension(:,:,:,:) :: T_i    !< Top edge reconstruction of temperature [C ~> degC]
+  real(wp),    allocatable, dimension(:,:,:,:) :: S_i    !< Top edge reconstruction of salinity [S ~> ppt]
+  real(wp),    allocatable, dimension(:,:,:,:) :: P_i    !< Interface pressures [R L2 T-2 ~> Pa]
+  real(wp),    allocatable, dimension(:,:,:,:) :: dRdT_i !< dRho/dT [R C-1 ~> kg m-3 degC-1] at top edge
+  real(wp),    allocatable, dimension(:,:,:,:) :: dRdS_i !< dRho/dS [R S-1 ~> kg m-3 ppt-1] at top edge
   integer, allocatable, dimension(:,:)     :: ns     !< Number of interfaces in a column
   logical, allocatable, dimension(:,:,:) :: stable_cell !< True if the cell is stably stratified wrt to the next cell
-  real :: R_to_kg_m3 = 1.0                   !< A rescaling factor translating density to kg m-3 for
+  real(wp) :: R_to_kg_m3 = 1.0_wp                   !< A rescaling factor translating density to kg m-3 for
                                              !! use in diagnostic messages [kg m-3 R-1 ~> 1].
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
                                              !! regulate the timing of diagnostic output.
@@ -187,7 +189,7 @@ logical function neutral_diffusion_init(Time, G, GV, US, param_file, diag, EOS, 
   call get_param(param_file, mdl, "NDIFF_REF_PRES", CS%ref_pres,                    &
                  "The reference pressure (Pa) used for the derivatives of "//&
                  "the equation of state. If negative (default), local pressure is used.", &
-                 units="Pa", default=-1., scale=US%Pa_to_RL2_T2)
+                 units="Pa", default=-1._wp, scale=US%Pa_to_RL2_T2)
   call get_param(param_file, mdl, "NDIFF_INTERIOR_ONLY", CS%interior_only, &
                  "If true, only applies neutral diffusion in the ocean interior."//&
                  "That is, the algorithm will exclude the surface and bottom"//&
@@ -270,11 +272,11 @@ logical function neutral_diffusion_init(Time, G, GV, US, param_file, diag, EOS, 
       call get_param(param_file, mdl, "NDIFF_DRHO_TOL", CS%drho_tol, &
                      "Sets the convergence criterion for finding the neutral "// &
                      "position within a layer in kg m-3.", &
-                     units="kg m-3", default=1.e-10, scale=US%kg_m3_to_R)
+                     units="kg m-3", default=1.e-10_wp, scale=US%kg_m3_to_R)
       call get_param(param_file, mdl, "NDIFF_X_TOL", CS%x_tol, &
                      "Sets the convergence criterion for a change in nondimensional "// &
                      "position within a layer.", &
-                     units="nondim", default=0.)
+                     units="nondim", default=0._wp)
       call get_param(param_file, mdl, "NDIFF_MAX_ITER", CS%max_iter,              &
                      "The maximum number of iterations to be done before "//     &
                      "exiting the iterative loop to find the neutral surface",    &
@@ -290,7 +292,7 @@ logical function neutral_diffusion_init(Time, G, GV, US, param_file, diag, EOS, 
   endif
 
   if (CS%interior_only) then
-    allocate(CS%hbl(SZI_(G),SZJ_(G)), source=0.)
+    allocate(CS%hbl(SZI_(G),SZJ_(G)), source=0._wp)
     call extract_diabatic_member(diabatic_CSp, KPP_CSp=CS%KPP_CSp)
     call extract_diabatic_member(diabatic_CSp, energetic_PBL_CSp=CS%energetic_PBL_CSp)
     if ( .not. ASSOCIATED(CS%energetic_PBL_CSp) .and. .not. ASSOCIATED(CS%KPP_CSp) ) then
@@ -298,14 +300,14 @@ logical function neutral_diffusion_init(Time, G, GV, US, param_file, diag, EOS, 
     endif
 
     if (CS%tapering) then
-      allocate(CS%coeff_l(SZK_(GV)+1), source=1.)
-      allocate(CS%coeff_r(SZK_(GV)+1), source=1.)
+      allocate(CS%coeff_l(SZK_(GV)+1), source=1._wp)
+      allocate(CS%coeff_r(SZK_(GV)+1), source=1._wp)
     endif
   endif
 
   CS%KhTh_use_vert_struct = KhTh_use_ebt_struct .or. KhTh_use_sqg_struct
   if (CS%KhTh_use_vert_struct) &
-     allocate(CS%Coef_h(G%isd:G%ied,G%jsd:G%jed,SZK_(GV)+1), source=0.)
+     allocate(CS%Coef_h(G%isd:G%ied,G%jsd:G%jed,SZK_(GV)+1), source=0._wp)
 
   ! Store a rescaling factor for use in diagnostic messages.
   CS%R_to_kg_m3 = US%R_to_kg_m3
@@ -313,36 +315,36 @@ logical function neutral_diffusion_init(Time, G, GV, US, param_file, diag, EOS, 
 !  call closeParameterBlock(param_file)
   if (CS%continuous_reconstruction) then
     CS%nsurf = 2*GV%ke+2 ! Continuous reconstruction means that every interface has two connections
-    allocate(CS%dRdT(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0.)
-    allocate(CS%dRdS(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0.)
+    allocate(CS%dRdT(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0._wp)
+    allocate(CS%dRdS(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0._wp)
   else
     CS%nsurf = 4*GV%ke   ! Discontinuous means that every interface has four connections
-    allocate(CS%T_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0.)
-    allocate(CS%S_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0.)
-    allocate(CS%P_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0.)
-    allocate(CS%dRdT_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0.)
-    allocate(CS%dRdS_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0.)
-    allocate(CS%ppoly_coeffs_T(SZI_(G),SZJ_(G),SZK_(GV),CS%deg+1), source=0.)
-    allocate(CS%ppoly_coeffs_S(SZI_(G),SZJ_(G),SZK_(GV),CS%deg+1), source=0.)
+    allocate(CS%T_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0._wp)
+    allocate(CS%S_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0._wp)
+    allocate(CS%P_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0._wp)
+    allocate(CS%dRdT_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0._wp)
+    allocate(CS%dRdS_i(SZI_(G),SZJ_(G),SZK_(GV),2), source=0._wp)
+    allocate(CS%ppoly_coeffs_T(SZI_(G),SZJ_(G),SZK_(GV),CS%deg+1), source=0._wp)
+    allocate(CS%ppoly_coeffs_S(SZI_(G),SZJ_(G),SZK_(GV),CS%deg+1), source=0._wp)
     allocate(CS%ns(SZI_(G),SZJ_(G)), source=0)
   endif
   ! T-points
-  allocate(CS%Tint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0.)
-  allocate(CS%Sint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0.)
-  allocate(CS%Pint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0.)
+  allocate(CS%Tint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0._wp)
+  allocate(CS%Sint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0._wp)
+  allocate(CS%Pint(SZI_(G),SZJ_(G),SZK_(GV)+1), source=0._wp)
   allocate(CS%stable_cell(SZI_(G),SZJ_(G),SZK_(GV)), source=.true.)
   ! U-points
-  allocate(CS%uPoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0.)
-  allocate(CS%uPoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0.)
+  allocate(CS%uPoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0._wp)
+  allocate(CS%uPoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0._wp)
   allocate(CS%uKoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0)
   allocate(CS%uKoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0)
-  allocate(CS%uHeff(G%isd:G%ied,G%jsd:G%jed,CS%nsurf-1), source=0.)
+  allocate(CS%uHeff(G%isd:G%ied,G%jsd:G%jed,CS%nsurf-1), source=0._wp)
   ! V-points
-  allocate(CS%vPoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0.)
-  allocate(CS%vPoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0.)
+  allocate(CS%vPoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0._wp)
+  allocate(CS%vPoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0._wp)
   allocate(CS%vKoL(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0)
   allocate(CS%vKoR(G%isd:G%ied,G%jsd:G%jed, CS%nsurf), source=0)
-  allocate(CS%vHeff(G%isd:G%ied,G%jsd:G%jed,CS%nsurf-1), source=0.)
+  allocate(CS%vHeff(G%isd:G%ied,G%jsd:G%jed,CS%nsurf-1), source=0._wp)
 
 end function neutral_diffusion_init
 
@@ -352,37 +354,37 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
   type(ocean_grid_type),                     intent(in) :: G   !< Ocean grid structure
   type(verticalGrid_type),                   intent(in) :: GV  !< ocean vertical grid structure
   type(unit_scale_type),                     intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: T   !< Potential temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: S   !< Salinity [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: T   !< Potential temperature [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: S   !< Salinity [S ~> ppt]
   type(vertvisc_type),                       intent(in) :: visc !< Structure with vertical viscosities,
                                                                !! boundary layer properties and related fields
   type(neutral_diffusion_CS),                pointer    :: CS  !< Neutral diffusion control structure
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: p_surf !< Surface pressure to include in pressures used
+  real(wp), dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: p_surf !< Surface pressure to include in pressures used
                                                               !! for equation of state calculations [R L2 T-2 ~> Pa]
 
   ! Local variables
   integer, dimension(2) :: EOSdom ! The i-computational domain for the equation of state
   integer :: i, j, k
   ! Variables used for reconstructions
-  real, dimension(SZK_(GV),2) :: ppoly_r_S  ! Reconstruction slopes that are unused here, in units of a vertical
+  real(wp), dimension(SZK_(GV),2) :: ppoly_r_S  ! Reconstruction slopes that are unused here, in units of a vertical
                               ! gradient, which for temperature would be [C H-1 ~> degC m-1 or degC m2 kg-1].
-  real, dimension(SZI_(G), SZJ_(G)) :: hEff_sum ! Summed effective face thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G), SZJ_(G)) :: hEff_sum ! Summed effective face thicknesses [H ~> m or kg m-2]
   integer :: iMethod
-  real, dimension(SZI_(G)) :: ref_pres ! Reference pressure used to calculate alpha/beta [R L2 T-2 ~> Pa]
-  real :: h_neglect, h_neglect_edge    ! Negligible thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G)) :: ref_pres ! Reference pressure used to calculate alpha/beta [R L2 T-2 ~> Pa]
+  real(wp) :: h_neglect, h_neglect_edge    ! Negligible thicknesses [H ~> m or kg m-2]
   integer, dimension(SZI_(G), SZJ_(G)) :: k_top  ! Index of the first layer within the boundary
-  real,    dimension(SZI_(G), SZJ_(G)) :: zeta_top ! Distance from the top of a layer to the intersection of the
+  real(wp),    dimension(SZI_(G), SZJ_(G)) :: zeta_top ! Distance from the top of a layer to the intersection of the
                                                    ! top extent of the boundary layer (0 at top, 1 at bottom) [nondim]
   integer, dimension(SZI_(G), SZJ_(G)) :: k_bot    ! Index of the last layer within the boundary
-  real,    dimension(SZI_(G), SZJ_(G)) :: zeta_bot ! Distance of the lower layer to the boundary layer depth [nondim]
-  real :: pa_to_H                      ! A conversion factor from rescaled pressure to thickness
+  real(wp),    dimension(SZI_(G), SZJ_(G)) :: zeta_bot ! Distance of the lower layer to the boundary layer depth [nondim]
+  real(wp) :: pa_to_H                      ! A conversion factor from rescaled pressure to thickness
                                        ! (H) units [H T2 R-1 Z-2 ~> m Pa-1 or s2 m-1]
 
-  pa_to_H = 1. / (GV%H_to_RZ * GV%g_Earth)
+  pa_to_H = 1._wp / (GV%H_to_RZ * GV%g_Earth)
 
   k_top(:,:) = 1     ; k_bot(:,:) = 1
-  zeta_top(:,:) = 0. ; zeta_bot(:,:) = 0.
+  zeta_top(:,:) = 0._wp ; zeta_bot(:,:) = 0._wp
 
   ! Check if hbl needs to be extracted
   if (CS%interior_only) then
@@ -395,7 +397,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
 
     ! get k-indices and zeta
     do j=G%jsc-1, G%jec+1 ; do i=G%isc-1,G%iec+1
-      if (G%mask2dT(i,j) > 0.0) then
+      if (G%mask2dT(i,j) > 0.0_wp) then
         call boundary_k_range(SURFACE, G%ke, h(i,j,:), CS%hbl(i,j), k_top(i,j), zeta_top(i,j), k_bot(i,j), &
                               zeta_bot(i,j))
       endif
@@ -408,27 +410,27 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
   if (.not. CS%continuous_reconstruction) then
     if (CS%remap_answer_date < 20190101) then
       if (GV%Boussinesq) then
-        h_neglect = GV%m_to_H*1.0e-30 ; h_neglect_edge = GV%m_to_H*1.0e-10
+        h_neglect = GV%m_to_H*1.0e-30_wp ; h_neglect_edge = GV%m_to_H*1.0e-10_wp
       else
-        h_neglect = GV%kg_m2_to_H*1.0e-30 ; h_neglect_edge = GV%kg_m2_to_H*1.0e-10
+        h_neglect = GV%kg_m2_to_H*1.0e-30_wp ; h_neglect_edge = GV%kg_m2_to_H*1.0e-10_wp
       endif
     endif
   endif
 
   ! If doing along isopycnal diffusion (as opposed to neutral diffusion, set the reference pressure)
-  if (CS%ref_pres>=0.) then
+  if (CS%ref_pres>=0._wp) then
     ref_pres(:) = CS%ref_pres
   endif
 
   if (CS%continuous_reconstruction) then
-    CS%dRdT(:,:,:) = 0.
-    CS%dRdS(:,:,:) = 0.
+    CS%dRdT(:,:,:) = 0._wp
+    CS%dRdS(:,:,:) = 0._wp
   else
-    CS%T_i(:,:,:,:) = 0.
-    CS%S_i(:,:,:,:) = 0.
-    CS%dRdT_i(:,:,:,:) = 0.
-    CS%dRdS_i(:,:,:,:) = 0.
-    CS%ns(:,:) = 0.
+    CS%T_i(:,:,:,:) = 0._wp
+    CS%S_i(:,:,:,:) = 0._wp
+    CS%dRdT_i(:,:,:,:) = 0._wp
+    CS%dRdS_i(:,:,:,:) = 0._wp
+    CS%ns(:,:) = 0._wp
     CS%stable_cell(:,:,:) = .true.
   endif
 
@@ -438,7 +440,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
       CS%Pint(i,j,1) = p_surf(i,j)
     enddo ; enddo
   else
-    CS%Pint(:,:,1) = 0.
+    CS%Pint(:,:,1) = 0._wp
   endif
   do k=1,GV%ke ; do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1
     CS%Pint(i,j,k+1) = CS%Pint(i,j,k) + h(i,j,k)*(GV%g_Earth*GV%H_to_RZ)
@@ -454,7 +456,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
       enddo ; enddo
     else
       do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1
-        CS%P_i(i,j,1,1) = 0.
+        CS%P_i(i,j,1,1) = 0._wp
         CS%P_i(i,j,1,2) = h(i,j,1)*(GV%H_to_RZ*GV%g_Earth)
       enddo ; enddo
     endif
@@ -479,10 +481,10 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
         ! In the current ALE formulation, interface values are not exactly at the 0. or 1. of the
         ! polynomial reconstructions
         do k=1,GV%ke
-           CS%T_i(i,j,k,1) = evaluation_polynomial( CS%ppoly_coeffs_T(i,j,k,:), CS%deg+1, 0. )
-           CS%T_i(i,j,k,2) = evaluation_polynomial( CS%ppoly_coeffs_T(i,j,k,:), CS%deg+1, 1. )
-           CS%S_i(i,j,k,1) = evaluation_polynomial( CS%ppoly_coeffs_S(i,j,k,:), CS%deg+1, 0. )
-           CS%S_i(i,j,k,2) = evaluation_polynomial( CS%ppoly_coeffs_S(i,j,k,:), CS%deg+1, 1. )
+           CS%T_i(i,j,k,1) = evaluation_polynomial( CS%ppoly_coeffs_T(i,j,k,:), CS%deg+1, 0._wp )
+           CS%T_i(i,j,k,2) = evaluation_polynomial( CS%ppoly_coeffs_T(i,j,k,:), CS%deg+1, 1._wp )
+           CS%S_i(i,j,k,1) = evaluation_polynomial( CS%ppoly_coeffs_S(i,j,k,:), CS%deg+1, 0._wp )
+           CS%S_i(i,j,k,2) = evaluation_polynomial( CS%ppoly_coeffs_S(i,j,k,:), CS%deg+1, 1._wp )
         enddo
       endif
     enddo
@@ -512,7 +514,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
     do j = G%jsc-1, G%jec+1 ; do i = G%isc-1, G%iec+1
       call mark_unstable_cells( CS, GV%ke, CS%T_i(i,j,:,:), CS%S_i(i,j,:,:), CS%P_i(i,j,:,:), CS%stable_cell(i,j,:) )
       if (CS%interior_only) then
-        if (.not. CS%stable_cell(i,j,k_bot(i,j))) zeta_bot(i,j) = -1.
+        if (.not. CS%stable_cell(i,j,k_bot(i,j))) zeta_bot(i,j) = -1._wp
         ! set values in the surface and bottom boundary layer to false.
         do k = 1, k_bot(i,j)
           CS%stable_cell(i,j,k) = .false.
@@ -521,12 +523,12 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
     enddo ; enddo
   endif
 
-  CS%uhEff(:,:,:) = 0.
-  CS%vhEff(:,:,:) = 0.
-  CS%uPoL(:,:,:) = 0.
-  CS%vPoL(:,:,:) = 0.
-  CS%uPoR(:,:,:) = 0.
-  CS%vPoR(:,:,:) = 0.
+  CS%uhEff(:,:,:) = 0._wp
+  CS%vhEff(:,:,:) = 0._wp
+  CS%uPoL(:,:,:) = 0._wp
+  CS%vPoL(:,:,:) = 0._wp
+  CS%uPoR(:,:,:) = 0._wp
+  CS%vPoR(:,:,:) = 0._wp
   CS%uKoL(:,:,:) = 1
   CS%vKoL(:,:,:) = 1
   CS%uKoR(:,:,:) = 1
@@ -534,7 +536,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
 
   ! Neutral surface factors at U points
   do j = G%jsc, G%jec ; do I = G%isc-1, G%iec
-    if (G%mask2dCu(I,j) > 0.0) then
+    if (G%mask2dCu(I,j) > 0.0_wp) then
       if (CS%continuous_reconstruction) then
         call find_neutral_surface_positions_continuous(GV%ke,                                    &
                 CS%Pint(i,j,:), CS%Tint(i,j,:), CS%Sint(i,j,:), CS%dRdT(i,j,:), CS%dRdS(i,j,:),            &
@@ -555,7 +557,7 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
 
   ! Neutral surface factors at V points
   do J = G%jsc-1, G%jec ; do i = G%isc, G%iec
-    if (G%mask2dCv(i,J) > 0.0) then
+    if (G%mask2dCv(i,J) > 0.0_wp) then
       if (CS%continuous_reconstruction) then
         call find_neutral_surface_positions_continuous(GV%ke,                                              &
                 CS%Pint(i,j,:), CS%Tint(i,j,:), CS%Sint(i,j,:), CS%dRdT(i,j,:), CS%dRdS(i,j,:),           &
@@ -590,23 +592,23 @@ subroutine neutral_diffusion_calc_coeffs(G, GV, US, h, T, S, visc, CS, p_surf)
       enddo ; enddo ; enddo
     else
       do k = 1, CS%nsurf-1 ; do j = G%jsc, G%jec ; do I = G%isc-1, G%iec
-        if (G%mask2dCu(I,j) > 0.0) CS%uhEff(I,j,k) = CS%uhEff(I,j,k) * pa_to_H
+        if (G%mask2dCu(I,j) > 0.0_wp) CS%uhEff(I,j,k) = CS%uhEff(I,j,k) * pa_to_H
       enddo ; enddo ; enddo
       do k = 1, CS%nsurf-1 ; do J = G%jsc-1, G%jec ; do i = G%isc, G%iec
-        if (G%mask2dCv(i,J) > 0.0) CS%vhEff(i,J,k) = CS%vhEff(i,J,k) * pa_to_H
+        if (G%mask2dCv(i,J) > 0.0_wp) CS%vhEff(i,J,k) = CS%vhEff(i,J,k) * pa_to_H
       enddo ; enddo ; enddo
     endif
   endif
 
   if (CS%id_uhEff_2d>0) then
-    hEff_sum(:,:) = 0.
+    hEff_sum(:,:) = 0._wp
     do k = 1,CS%nsurf-1 ; do j=G%jsc,G%jec ; do i=G%isc-1,G%iec
       hEff_sum(i,j) = hEff_sum(i,j) + CS%uhEff(i,j,k)
     enddo ; enddo ; enddo
     call post_data(CS%id_uhEff_2d, hEff_sum, CS%diag)
   endif
   if (CS%id_vhEff_2d>0) then
-    hEff_sum(:,:) = 0.
+    hEff_sum(:,:) = 0._wp
     do k = 1,CS%nsurf-1 ; do j=G%jsc-1,G%jec ; do i=G%isc,G%iec
       hEff_sum(i,j) = hEff_sum(i,j) + CS%vhEff(i,j,k)
     enddo ; enddo ; enddo
@@ -619,75 +621,75 @@ end subroutine neutral_diffusion_calc_coeffs
 subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
   type(ocean_grid_type),                        intent(in)    :: G      !< Ocean grid structure
   type(verticalGrid_type),                      intent(in)    :: GV     !< ocean vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),    intent(in)    :: h      !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: Coef_x !< dt * Kh * dy / dx at u-points [L2 ~> m2]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), intent(in)    :: Coef_y !< dt * Kh * dx / dy at v-points [L2 ~> m2]
-  real,                                         intent(in)    :: dt     !< Tracer time step * I_numitts [T ~> s]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),    intent(in)    :: h      !< Layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), intent(in)    :: Coef_x !< dt * Kh * dy / dx at u-points [L2 ~> m2]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), intent(in)    :: Coef_y !< dt * Kh * dx / dy at v-points [L2 ~> m2]
+  real(wp),                                         intent(in)    :: dt     !< Tracer time step * I_numitts [T ~> s]
                                                                         !! (I_numitts is in tracer_hordiff)
   type(tracer_registry_type),                   pointer       :: Reg    !< Tracer registry
   type(unit_scale_type),                        intent(in)    :: US     !< A dimensional unit scaling type
   type(neutral_diffusion_CS),                   pointer       :: CS     !< Neutral diffusion control structure
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G),CS%nsurf-1) :: uFlx        ! Zonal flux of tracer in units that vary between a
+  real(wp), dimension(SZIB_(G),SZJ_(G),CS%nsurf-1) :: uFlx        ! Zonal flux of tracer in units that vary between a
                         ! thickness times a concentration ([C H ~> degC m or degC kg m-2] for temperature) or a
                         ! volume or mass times a concentration ([C H L2 ~> degC m3 or degC kg] for temperature),
                         ! depending on the setting of CS%KhTh_use_vert_struct.
-  real, dimension(SZI_(G),SZJB_(G),CS%nsurf-1) :: vFlx        ! Meridional flux of tracer in units that vary between a
+  real(wp), dimension(SZI_(G),SZJB_(G),CS%nsurf-1) :: vFlx        ! Meridional flux of tracer in units that vary between a
                         ! thickness times a concentration ([C H ~> degC m or degC kg m-2] for temperature) or a
                         ! volume or mass times a concentration ([C H L2 ~> degC m3 or degC kg] for temperature),
                         ! depending on the setting of CS%KhTh_use_vert_struct.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV))    :: tendency    ! tendency array for diagnostics
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV))    :: tendency    ! tendency array for diagnostics
                                                               ! [H conc T-1 ~> m conc s-1 or kg m-2 conc s-1]
                                                               ! For temperature these units are
                                                               ! [C H T-1 ~> degC m s-1 or degC kg m-2 s-1].
-  real, dimension(SZI_(G),SZJ_(G))             :: tendency_2d ! Depth integrated content tendency for diagnostics
+  real(wp), dimension(SZI_(G),SZJ_(G))             :: tendency_2d ! Depth integrated content tendency for diagnostics
                                                               ! [H conc T-1 ~> m conc s-1 or kg m-2 conc s-1].
                                                               ! For temperature these units are
                                                               ! [C H T-1 ~> degC m s-1 or degC kg m-2 s-1].
-  real, dimension(SZIB_(G),SZJ_(G))            :: trans_x_2d  ! Depth integrated diffusive tracer x-transport
+  real(wp), dimension(SZIB_(G),SZJ_(G))            :: trans_x_2d  ! Depth integrated diffusive tracer x-transport
                                                               ! diagnostic.  For temperature this has units of
                                                               ! [C H L2 ~> degC m3 or degC kg].
-  real, dimension(SZI_(G),SZJB_(G))            :: trans_y_2d  ! depth integrated diffusive tracer y-transport
+  real(wp), dimension(SZI_(G),SZJB_(G))            :: trans_y_2d  ! depth integrated diffusive tracer y-transport
                                                               ! diagnostic.  For temperature this has units of
                                                               ! [C H L2 ~> degC m3 or degC kg].
-  real, dimension(SZK_(GV))                    :: dTracer     ! Change in tracer concentration due to neutral diffusion
+  real(wp), dimension(SZK_(GV))                    :: dTracer     ! Change in tracer concentration due to neutral diffusion
                                                               ! [H L2 conc ~> m3 conc or kg conc].  For temperature
                                                               ! these units are [C H L2 ~> degC m3 or degC kg].
-  real, dimension(SZK_(GV))                    :: dTracer_N   ! Change in tracer concentration due to neutral diffusion
+  real(wp), dimension(SZK_(GV))                    :: dTracer_N   ! Change in tracer concentration due to neutral diffusion
                                                               ! into a cell via its logically northern face, in
                                                               ! [H L2 conc ~> m3 conc or kg conc].
-  real, dimension(SZK_(GV))                    :: dTracer_S   ! Change in tracer concentration due to neutral diffusion
+  real(wp), dimension(SZK_(GV))                    :: dTracer_S   ! Change in tracer concentration due to neutral diffusion
                                                               ! into a cell via its logically southern face, in
                                                               ! [H L2 conc ~> m3 conc or kg conc].
-  real, dimension(SZK_(GV))                    :: dTracer_E   ! Change in tracer concentration due to neutral diffusion
+  real(wp), dimension(SZK_(GV))                    :: dTracer_E   ! Change in tracer concentration due to neutral diffusion
                                                               ! into a cell via its logically eastern face, in
                                                               ! [H L2 conc ~> m3 conc or kg conc].
-  real, dimension(SZK_(GV))                    :: dTracer_W   ! Change in tracer concentration due to neutral diffusion
+  real(wp), dimension(SZK_(GV))                    :: dTracer_W   ! Change in tracer concentration due to neutral diffusion
                                                               ! into a cell via its logically western face, in
                                                               ! [H L2 conc ~> m3 conc or kg conc].
-  real :: normalize  ! normalization used for averaging Coef_x and Coef_y to t-points [nondim].
+  real(wp) :: normalize  ! normalization used for averaging Coef_x and Coef_y to t-points [nondim].
 
   type(tracer_type), pointer                   :: Tracer => NULL() ! Pointer to the current tracer
 
   integer :: i, j, k, m, ks, nk
-  real :: Idt  ! The inverse of the time step [T-1 ~> s-1]
-  real :: h_neglect, h_neglect_edge ! Negligible thicknesses [H ~> m or kg m-2]
+  real(wp) :: Idt  ! The inverse of the time step [T-1 ~> s-1]
+  real(wp) :: h_neglect, h_neglect_edge ! Negligible thicknesses [H ~> m or kg m-2]
   h_neglect = GV%H_subroundoff ; h_neglect_edge = GV%H_subroundoff
 
   if (.not. CS%continuous_reconstruction) then
     if (CS%remap_answer_date < 20190101) then
-      h_neglect = GV%m_to_H*1.0e-30 ; h_neglect_edge = GV%m_to_H*1.0e-10
+      h_neglect = GV%m_to_H*1.0e-30_wp ; h_neglect_edge = GV%m_to_H*1.0e-10_wp
     endif
   endif
 
   if (CS%KhTh_use_vert_struct) then
     ! Compute Coef at h points
-    CS%Coef_h(:,:,:) = 0.
+    CS%Coef_h(:,:,:) = 0._wp
     do j = G%jsc,G%jec ; do i = G%isc,G%iec
-      if (G%mask2dT(i,j)>0.) then
-        normalize = 1.0 / ((G%mask2dCu(I-1,j)+G%mask2dCu(I,j)) + &
-                         (G%mask2dCv(i,J-1)+G%mask2dCv(i,J)) + 1.0e-37)
+      if (G%mask2dT(i,j)>0._wp) then
+        normalize = 1.0_wp / ((G%mask2dCu(I-1,j)+G%mask2dCu(I,j)) + &
+                         (G%mask2dCv(i,J-1)+G%mask2dCv(i,J)) + 1.0e-37_wp)
         do k = 1, GV%ke+1
           CS%Coef_h(i,j,k) = normalize*G%mask2dT(i,j)*((Coef_x(I-1,j,k)+Coef_x(I,j,k)) + &
                                             (Coef_y(i,J-1,k)+Coef_y(i,J,k)))
@@ -706,18 +708,18 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     ! for diagnostics
     if (tracer%id_dfxy_conc > 0 .or. tracer%id_dfxy_cont > 0 .or. tracer%id_dfxy_cont_2d > 0 .or. &
         tracer%id_dfx_2d > 0 .or. tracer%id_dfy_2d > 0) then
-      Idt = 1.0 / dt
-      tendency(:,:,:)  = 0.0
+      Idt = 1.0_wp / dt
+      tendency(:,:,:)  = 0.0_wp
     endif
 
-    uFlx(:,:,:) = 0.
-    vFlx(:,:,:) = 0.
+    uFlx(:,:,:) = 0._wp
+    vFlx(:,:,:) = 0._wp
 
     ! x-flux
     if (CS%KhTh_use_vert_struct) then
       if (CS%tapering) then
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          if (G%mask2dCu(I,j)>0.) then
+          if (G%mask2dCu(I,j)>0._wp) then
             ! compute coeff_l and coeff_r and pass them to neutral_surface_flux
             call compute_tapering_coeffs(G%ke+1, CS%hbl(I,j), CS%hbl(I+1,j), CS%coeff_l(:), CS%coeff_r(:), &
                                          h(I,j,:), h(I+1,j,:))
@@ -733,7 +735,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          if (G%mask2dCu(I,j)>0.) then
+          if (G%mask2dCu(I,j)>0._wp) then
             call neutral_surface_flux(nk, CS%nsurf, CS%deg, h(i,j,:), h(i+1,j,:),       &
                                       tracer%t(i,j,:), tracer%t(i+1,j,:), &
                                       CS%uPoL(I,j,:), CS%uPoR(I,j,:), &
@@ -748,7 +750,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     else
       if (CS%tapering) then
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          if (G%mask2dCu(I,j)>0.) then
+          if (G%mask2dCu(I,j)>0._wp) then
             ! compute coeff_l and coeff_r and pass them to neutral_surface_flux
             call compute_tapering_coeffs(G%ke+1, CS%hbl(I,j), CS%hbl(I+1,j), CS%coeff_l(:), CS%coeff_r(:), &
                                          h(I,j,:), h(I+1,j,:))
@@ -764,7 +766,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          if (G%mask2dCu(I,j)>0.) then
+          if (G%mask2dCu(I,j)>0._wp) then
             call neutral_surface_flux(nk, CS%nsurf, CS%deg, h(i,j,:), h(i+1,j,:),       &
                                       tracer%t(i,j,:), tracer%t(i+1,j,:), &
                                       CS%uPoL(I,j,:), CS%uPoR(I,j,:), &
@@ -781,7 +783,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     if (CS%KhTh_use_vert_struct) then
       if (CS%tapering) then
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          if (G%mask2dCv(i,J)>0.) then
+          if (G%mask2dCv(i,J)>0._wp) then
             ! compute coeff_l and coeff_r and pass them to neutral_surface_flux
             call compute_tapering_coeffs(G%ke+1, CS%hbl(i,J), CS%hbl(i,J+1), CS%coeff_l(:), CS%coeff_r(:), &
                                          h(i,J,:), h(i,J+1,:))
@@ -798,7 +800,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          if (G%mask2dCv(i,J)>0.) then
+          if (G%mask2dCv(i,J)>0._wp) then
             call neutral_surface_flux(nk, CS%nsurf, CS%deg, h(i,j,:), h(i,j+1,:),       &
                                       tracer%t(i,j,:), tracer%t(i,j+1,:), &
                                       CS%vPoL(i,J,:), CS%vPoR(i,J,:), &
@@ -813,7 +815,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     else
       if (CS%tapering) then
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          if (G%mask2dCv(i,J)>0.) then
+          if (G%mask2dCv(i,J)>0._wp) then
             ! compute coeff_l and coeff_r and pass them to neutral_surface_flux
             call compute_tapering_coeffs(G%ke+1, CS%hbl(i,J), CS%hbl(i,J+1), CS%coeff_l(:), CS%coeff_r(:), &
                                          h(i,J,:), h(i,J+1,:))
@@ -830,7 +832,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          if (G%mask2dCv(i,J)>0.) then
+          if (G%mask2dCv(i,J)>0._wp) then
             call neutral_surface_flux(nk, CS%nsurf, CS%deg, h(i,j,:), h(i,j+1,:),       &
                                       tracer%t(i,j,:), tracer%t(i,j+1,:), &
                                       CS%vPoL(i,J,:), CS%vPoR(i,J,:), &
@@ -847,9 +849,9 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     ! that uFlx and vFlx use an unexpected sign convention.
     if (CS%KhTh_use_vert_struct) then
       do j = G%jsc,G%jec ; do i = G%isc,G%iec
-        if (G%mask2dT(i,j)>0.) then
+        if (G%mask2dT(i,j)>0._wp) then
           if (CS%ndiff_answer_date <= 20240330) then
-            dTracer(:) = 0.
+            dTracer(:) = 0._wp
             do ks = 1,CS%nsurf-1
               k = CS%uKoL(I,j,ks)
               dTracer(k) = dTracer(k) + uFlx(I,j,ks)
@@ -861,7 +863,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
               dTracer(k) = dTracer(k) - vFlx(i,J-1,ks)
             enddo
           else  ! This form recovers rotational symmetry.
-            dTracer_N(:) = 0.0 ; dTracer_S(:) = 0.0 ; dTracer_E(:) = 0.0 ; dTracer_W(:) = 0.0
+            dTracer_N(:) = 0.0_wp ; dTracer_S(:) = 0.0_wp ; dTracer_E(:) = 0.0_wp ; dTracer_W(:) = 0.0_wp
             do ks = 1,CS%nsurf-1
               k = CS%uKoL(I,j,ks)
               dTracer_E(k) = dTracer_E(k) + uFlx(I,j,ks)
@@ -879,7 +881,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
           do k = 1, GV%ke
             tracer%t(i,j,k) = tracer%t(i,j,k) + dTracer(k) * &
                             ( G%IareaT(i,j) / ( h(i,j,k) + GV%H_subroundoff ) )
-            if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0
+            if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0_wp
           enddo
 
           if (tracer%id_dfxy_conc > 0  .or. tracer%id_dfxy_cont > 0 .or. tracer%id_dfxy_cont_2d > 0 ) then
@@ -892,9 +894,9 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
       enddo ; enddo
     else
       do j = G%jsc,G%jec ; do i = G%isc,G%iec
-        if (G%mask2dT(i,j)>0.) then
+        if (G%mask2dT(i,j)>0._wp) then
           if (CS%ndiff_answer_date <= 20240330) then
-            dTracer(:) = 0.
+            dTracer(:) = 0._wp
             do ks = 1,CS%nsurf-1
               k = CS%uKoL(I,j,ks)
               dTracer(k) = dTracer(k) + Coef_x(I,j,1)   * uFlx(I,j,ks)
@@ -906,7 +908,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
               dTracer(k) = dTracer(k) - Coef_y(i,J-1,1) * vFlx(i,J-1,ks)
             enddo
           else  ! This form recovers rotational symmetry.
-            dTracer_N(:) = 0.0 ; dTracer_S(:) = 0.0 ; dTracer_E(:) = 0.0 ; dTracer_W(:) = 0.0
+            dTracer_N(:) = 0.0_wp ; dTracer_S(:) = 0.0_wp ; dTracer_E(:) = 0.0_wp ; dTracer_W(:) = 0.0_wp
             do ks = 1,CS%nsurf-1
               k = CS%uKoL(I,j,ks)
               dTracer_E(k) = dTracer_E(k) + Coef_x(I,j,1)   * uFlx(I,j,ks)
@@ -924,7 +926,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
           do k = 1, GV%ke
             tracer%t(i,j,k) = tracer%t(i,j,k) + dTracer(k) * &
                             ( G%IareaT(i,j) / ( h(i,j,k) + GV%H_subroundoff ) )
-            if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0
+            if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0_wp
           enddo
 
           if (tracer%id_dfxy_conc > 0  .or. tracer%id_dfxy_cont > 0 .or. tracer%id_dfxy_cont_2d > 0 ) then
@@ -938,9 +940,9 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
     endif
 
     ! Do user controlled underflow of the tracer concentrations.
-    if (tracer%conc_underflow > 0.0) then
+    if (tracer%conc_underflow > 0.0_wp) then
       do k=1,GV%ke ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-        if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0
+        if (abs(tracer%t(i,j,k)) < tracer%conc_underflow) tracer%t(i,j,k) = 0.0_wp
       enddo ; enddo ; enddo
     endif
 
@@ -950,8 +952,8 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
 
       if (CS%KhTh_use_vert_struct) then
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          trans_x_2d(I,j) = 0.
-          if (G%mask2dCu(I,j)>0.) then
+          trans_x_2d(I,j) = 0._wp
+          if (G%mask2dCu(I,j)>0._wp) then
             do ks = 1,CS%nsurf-1
               trans_x_2d(I,j) =  trans_x_2d(I,j) - uFlx(I,j,ks)
             enddo
@@ -960,8 +962,8 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do j = G%jsc,G%jec ; do I = G%isc-1,G%iec
-          trans_x_2d(I,j) = 0.
-          if (G%mask2dCu(I,j)>0.) then
+          trans_x_2d(I,j) = 0._wp
+          if (G%mask2dCu(I,j)>0._wp) then
             do ks = 1,CS%nsurf-1
               trans_x_2d(I,j) = trans_x_2d(I,j) - Coef_x(I,j,1) * uFlx(I,j,ks)
             enddo
@@ -979,8 +981,8 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
 
       if (CS%KhTh_use_vert_struct) then
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          trans_y_2d(i,J) = 0.
-          if (G%mask2dCv(i,J)>0.) then
+          trans_y_2d(i,J) = 0._wp
+          if (G%mask2dCv(i,J)>0._wp) then
             do ks = 1,CS%nsurf-1
               trans_y_2d(i,J) = trans_y_2d(i,J) - vFlx(i,J,ks)
             enddo
@@ -989,8 +991,8 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
         enddo ; enddo
       else
         do J = G%jsc-1,G%jec ; do i = G%isc,G%iec
-          trans_y_2d(i,J) = 0.
-          if (G%mask2dCv(i,J)>0.) then
+          trans_y_2d(i,J) = 0._wp
+          if (G%mask2dCv(i,J)>0._wp) then
             do ks = 1,CS%nsurf-1
               trans_y_2d(i,J) = trans_y_2d(i,J) - Coef_y(i,J,1) * vFlx(i,J,ks)
             enddo
@@ -1009,7 +1011,7 @@ subroutine neutral_diffusion(G, GV, h, Coef_x, Coef_y, dt, Reg, US, CS)
 
     ! post depth summed tendency for tracer content
     if (tracer%id_dfxy_cont_2d > 0) then
-      tendency_2d(:,:) = 0.
+      tendency_2d(:,:) = 0._wp
       do j = G%jsc,G%jec ; do i = G%isc,G%iec
         do k = 1, GV%ke
           tendency_2d(i,j) = tendency_2d(i,j) + tendency(i,j,k)
@@ -1035,25 +1037,25 @@ end subroutine neutral_diffusion
 !! within a region defined by the boundary layer depths in the two columns.
 subroutine compute_tapering_coeffs(ne, bld_l, bld_r, coeff_l, coeff_r, h_l, h_r)
   integer,               intent(in)    :: ne       !< Number of interfaces
-  real,                  intent(in)    :: bld_l    !< Boundary layer depth, left column  [H ~> m or kg m-2]
-  real,                  intent(in)    :: bld_r    !< Boundary layer depth, right column [H ~> m or kg m-2]
-  real, dimension(ne-1), intent(in)    :: h_l      !< Layer thickness, left column       [H ~> m or kg m-2]
-  real, dimension(ne-1), intent(in)    :: h_r      !< Layer thickness, right column      [H ~> m or kg m-2]
-  real, dimension(ne),   intent(inout) :: coeff_l  !< Tapering coefficient, left column            [nondim]
-  real, dimension(ne),   intent(inout) :: coeff_r  !< Tapering coefficient, right column           [nondim]
+  real(wp),                  intent(in)    :: bld_l    !< Boundary layer depth, left column  [H ~> m or kg m-2]
+  real(wp),                  intent(in)    :: bld_r    !< Boundary layer depth, right column [H ~> m or kg m-2]
+  real(wp), dimension(ne-1), intent(in)    :: h_l      !< Layer thickness, left column       [H ~> m or kg m-2]
+  real(wp), dimension(ne-1), intent(in)    :: h_r      !< Layer thickness, right column      [H ~> m or kg m-2]
+  real(wp), dimension(ne),   intent(inout) :: coeff_l  !< Tapering coefficient, left column            [nondim]
+  real(wp), dimension(ne),   intent(inout) :: coeff_r  !< Tapering coefficient, right column           [nondim]
 
   ! Local variables
-  real :: min_bld         ! Minimum of the boundary layer depth in two adjacent columns [H ~> m or kg m-2]
-  real :: max_bld         ! Maximum of the boundary layer depth in two adjacent columns [H ~> m or kg m-2]
+  real(wp) :: min_bld         ! Minimum of the boundary layer depth in two adjacent columns [H ~> m or kg m-2]
+  real(wp) :: max_bld         ! Maximum of the boundary layer depth in two adjacent columns [H ~> m or kg m-2]
   integer :: dummy1                              ! dummy integer
-  real    :: dummy2                              ! dummy real [nondim]
+  real(wp)    :: dummy2                              ! dummy real [nondim]
   integer :: k_min_l, k_min_r, k_max_l, k_max_r  ! Min/max vertical indices in two adjacent columns
-  real    :: zeta_l, zeta_r                      ! dummy variables [nondim]
+  real(wp)    :: zeta_l, zeta_r                      ! dummy variables [nondim]
   integer :: k                                   ! vertical index
 
   ! Initialize coefficients
-  coeff_l(:) = 1.0
-  coeff_r(:) = 1.0
+  coeff_l(:) = 1.0_wp
+  coeff_r(:) = 1.0_wp
 
   ! Calculate vertical indices containing the boundary layer depths
   max_bld = MAX(bld_l, bld_r)
@@ -1072,18 +1074,18 @@ subroutine compute_tapering_coeffs(ne, bld_l, bld_r, coeff_l, coeff_r, h_l, h_r)
                       zeta_r)
   ! left
   do k=1,k_min_l
-    coeff_l(k) = 0.0
+    coeff_l(k) = 0.0_wp
   enddo
   do k=k_min_l+1,k_max_l+1
-    coeff_l(k) = (real(k - k_min_l) + 1.0)/(real(k_max_l - k_min_l) + 2.0)
+    coeff_l(k) = (real(k - k_min_l, wp) + 1.0_wp)/(real(k_max_l - k_min_l, wp) + 2.0_wp)
   enddo
 
   ! right
   do k=1,k_min_r
-    coeff_r(k) = 0.0
+    coeff_r(k) = 0.0_wp
   enddo
   do k=k_min_r+1,k_max_r+1
-    coeff_r(k) = (real(k - k_min_r) + 1.0)/(real(k_max_r - k_min_r) + 2.0)
+    coeff_r(k) = (real(k - k_min_r, wp) + 1.0_wp)/(real(k_max_r - k_min_r, wp) + 2.0_wp)
   enddo
 
 end subroutine compute_tapering_coeffs
@@ -1091,30 +1093,30 @@ end subroutine compute_tapering_coeffs
 !> Returns interface scalar, Si, for a column of layer values, S.
 subroutine interface_scalar(nk, h, S, Si, i_method, h_neglect)
   integer,               intent(in)    :: nk       !< Number of levels
-  real, dimension(nk),   intent(in)    :: h        !< Layer thickness [H ~> m or kg m-2]
-  real, dimension(nk),   intent(in)    :: S        !< Layer scalar (or concentrations) in arbitrary
+  real(wp), dimension(nk),   intent(in)    :: h        !< Layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(nk),   intent(in)    :: S        !< Layer scalar (or concentrations) in arbitrary
                                                    !! concentration units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk+1), intent(inout) :: Si       !< Interface scalar (or concentrations) in arbitrary
+  real(wp), dimension(nk+1), intent(inout) :: Si       !< Interface scalar (or concentrations) in arbitrary
                                                    !! concentration units (e.g. [C ~> degC] for temperature)
   integer,               intent(in)    :: i_method !< =1 use average of PLM edges
                                                    !! =2 use continuous PPM edge interpolation
-  real,                  intent(in)    :: h_neglect !< A negligibly small thickness [H ~> m or kg m-2]
+  real(wp),                  intent(in)    :: h_neglect !< A negligibly small thickness [H ~> m or kg m-2]
   ! Local variables
   integer :: k, km2, kp1
-  real, dimension(nk) :: diff ! Difference in scalar concentrations between layer centers in arbitrary
+  real(wp), dimension(nk) :: diff ! Difference in scalar concentrations between layer centers in arbitrary
                               ! concentration units (e.g. [C ~> degC] for temperature)
-  real :: Sb, Sa ! Values of scalar concentrations at the upper and lower edges of a layer in arbitrary
+  real(wp) :: Sb, Sa ! Values of scalar concentrations at the upper and lower edges of a layer in arbitrary
                  ! concentration units (e.g. [C ~> degC] for temperature)
 
   call PLM_diff(nk, h, S, 2, 1, diff)
-  Si(1) = S(1) - 0.5 * diff(1)
+  Si(1) = S(1) - 0.5_wp * diff(1)
   if (i_method==1) then
     do k = 2, nk
       ! Average of the two edge values (will be bounded and,
       ! when slopes are unlimited, notionally second-order accurate)
-      Sa = S(k-1) + 0.5 * diff(k-1) ! Lower edge value of a PLM reconstruction for layer above
-      Sb = S(k) - 0.5 * diff(k) ! Upper edge value of a PLM reconstruction for layer below
-      Si(k) = 0.5 * ( Sa + Sb )
+      Sa = S(k-1) + 0.5_wp * diff(k-1) ! Lower edge value of a PLM reconstruction for layer above
+      Sb = S(k) - 0.5_wp * diff(k) ! Upper edge value of a PLM reconstruction for layer below
+      Si(k) = 0.5_wp * ( Sa + Sb )
     enddo
   elseif (i_method==2) then
     do k = 2, nk
@@ -1125,49 +1127,49 @@ subroutine interface_scalar(nk, h, S, Si, i_method, h_neglect)
       Si(k) = ppm_edge(h(km2), h(k-1), h(k), h(kp1),  S(k-1), S(k), diff(k-1), diff(k), h_neglect)
     enddo
   endif
-  Si(nk+1) = S(nk) + 0.5 * diff(nk)
+  Si(nk+1) = S(nk) + 0.5_wp * diff(nk)
 
 end subroutine interface_scalar
 
 !> Returns the PPM quasi-fourth order edge value at k+1/2 following
 !! equation 1.6 in Colella & Woodward, 1984: JCP 54, 174-201.
 !! The returned units are the same as those of Ak (e.g. [C ~> degC] for temperature).
-real function ppm_edge(hkm1, hk, hkp1, hkp2,  Ak, Akp1, Pk, Pkp1, h_neglect)
-  real, intent(in) :: hkm1 !< Width of cell k-1 in [H ~> m or kg m-2] or other units
-  real, intent(in) :: hk   !< Width of cell k in [H ~> m or kg m-2] or other units
-  real, intent(in) :: hkp1 !< Width of cell k+1 in [H ~> m or kg m-2] or other units
-  real, intent(in) :: hkp2 !< Width of cell k+2 in [H ~> m or kg m-2] or other units
-  real, intent(in) :: Ak   !< Average scalar value of cell k in arbitrary concentration
+real(wp) function ppm_edge(hkm1, hk, hkp1, hkp2,  Ak, Akp1, Pk, Pkp1, h_neglect)
+  real(wp), intent(in) :: hkm1 !< Width of cell k-1 in [H ~> m or kg m-2] or other units
+  real(wp), intent(in) :: hk   !< Width of cell k in [H ~> m or kg m-2] or other units
+  real(wp), intent(in) :: hkp1 !< Width of cell k+1 in [H ~> m or kg m-2] or other units
+  real(wp), intent(in) :: hkp2 !< Width of cell k+2 in [H ~> m or kg m-2] or other units
+  real(wp), intent(in) :: Ak   !< Average scalar value of cell k in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Akp1 !< Average scalar value of cell k+1 in arbitrary concentration
+  real(wp), intent(in) :: Akp1 !< Average scalar value of cell k+1 in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Pk   !< PLM slope for cell k in arbitrary concentration
+  real(wp), intent(in) :: Pk   !< PLM slope for cell k in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Pkp1 !< PLM slope for cell k+1 in arbitrary concentration
+  real(wp), intent(in) :: Pkp1 !< PLM slope for cell k+1 in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: h_neglect !< A negligibly small thickness [H ~> m or kg m-2]
+  real(wp), intent(in) :: h_neglect !< A negligibly small thickness [H ~> m or kg m-2]
 
   ! Local variables
-  real :: R_hk_hkp1, R_2hk_hkp1, R_hk_2hkp1 ! Reciprocals of combinations of thicknesses [H-1 ~> m-1 or m2 kg-1]
-  real :: f1 ! A work variable with units of an inverse cell width [H-1 ~> m-1 or m2 kg-1]
-  real :: f2, f3, f4 ! Work variables with units of the cell width [H ~> m or kg m-2]
+  real(wp) :: R_hk_hkp1, R_2hk_hkp1, R_hk_2hkp1 ! Reciprocals of combinations of thicknesses [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: f1 ! A work variable with units of an inverse cell width [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: f2, f3, f4 ! Work variables with units of the cell width [H ~> m or kg m-2]
 
   R_hk_hkp1 = hk + hkp1
-  if (R_hk_hkp1 <= 0.) then
-    ppm_edge = 0.5 * ( Ak + Akp1 )
+  if (R_hk_hkp1 <= 0._wp) then
+    ppm_edge = 0.5_wp * ( Ak + Akp1 )
     return
   endif
-  R_hk_hkp1 = 1. / R_hk_hkp1
+  R_hk_hkp1 = 1._wp / R_hk_hkp1
   if (hk<hkp1) then
     ppm_edge = Ak + ( hk * R_hk_hkp1 ) * ( Akp1 - Ak )
   else
     ppm_edge = Akp1 + ( hkp1 * R_hk_hkp1 ) * ( Ak - Akp1 )
   endif
 
-  R_2hk_hkp1 = 1. / ( ( 2. * hk + hkp1 ) + h_neglect )
-  R_hk_2hkp1 = 1. / ( ( hk + 2. * hkp1 ) + h_neglect )
-  f1 = 1./ ( ( hk + hkp1) + ( hkm1 + hkp2 ) )
-  f2 = 2. * ( hkp1 * hk ) * R_hk_hkp1 * &
+  R_2hk_hkp1 = 1._wp / ( ( 2._wp * hk + hkp1 ) + h_neglect )
+  R_hk_2hkp1 = 1._wp / ( ( hk + 2._wp * hkp1 ) + h_neglect )
+  f1 = 1._wp/ ( ( hk + hkp1) + ( hkm1 + hkp2 ) )
+  f2 = 2._wp * ( hkp1 * hk ) * R_hk_hkp1 * &
             ( ( hkm1 + hk ) * R_2hk_hkp1  - ( hkp2 + hkp1 ) * R_hk_2hkp1 )
   f3 = hk * ( hkm1 + hk ) * R_2hk_hkp1
   f4 = hkp1 * ( hkp1 + hkp2 ) * R_hk_2hkp1
@@ -1178,33 +1180,33 @@ end function ppm_edge
 
 !> Returns the average of a PPM reconstruction between two fractional positions in the same
 !! arbitrary concentration units as aMean (e.g. usually [C ~> degC] for temperature)
-real function ppm_ave(xL, xR, aL, aR, aMean)
-  real, intent(in) :: xL    !< Fraction position of left bound (0,1) [nondim]
-  real, intent(in) :: xR    !< Fraction position of right bound (0,1) [nondim]
-  real, intent(in) :: aL    !< Left edge scalar value, at x=0, in arbitrary concentration
+real(wp) function ppm_ave(xL, xR, aL, aR, aMean)
+  real(wp), intent(in) :: xL    !< Fraction position of left bound (0,1) [nondim]
+  real(wp), intent(in) :: xR    !< Fraction position of right bound (0,1) [nondim]
+  real(wp), intent(in) :: aL    !< Left edge scalar value, at x=0, in arbitrary concentration
                             !! units (e.g. usually [C ~> degC] for temperature)
-  real, intent(in) :: aR    !< Right edge scalar value, at x=1 in arbitrary concentration
+  real(wp), intent(in) :: aR    !< Right edge scalar value, at x=1 in arbitrary concentration
                             !! units (e.g. usually [C ~> degC] for temperature)
-  real, intent(in) :: aMean !< Average scalar value of cell in arbitrary concentration
+  real(wp), intent(in) :: aMean !< Average scalar value of cell in arbitrary concentration
                             !! units (e.g. usually [C ~> degC] for temperature)
 
   ! Local variables
-  real :: dx   ! Distance between the bounds [nondim]
-  real :: xave ! Average fractional position [nondim]
-  real :: a6, a6o3 ! Terms proportional to the normalized scalar curvature in the same arbitrary
+  real(wp) :: dx   ! Distance between the bounds [nondim]
+  real(wp) :: xave ! Average fractional position [nondim]
+  real(wp) :: a6, a6o3 ! Terms proportional to the normalized scalar curvature in the same arbitrary
                    ! concentration units as aMean (e.g. usually [C ~> degC] for temperature)
 
   dx = xR - xL
-  xave = 0.5 * ( xR + xL )
-  a6o3 = 2. * aMean - ( aL + aR ) ! a6 / 3.
-  a6 = 3. * a6o3
+  xave = 0.5_wp * ( xR + xL )
+  a6o3 = 2._wp * aMean - ( aL + aR ) ! a6 / 3.
+  a6 = 3._wp * a6o3
 
-  if (dx<0.) then
+  if (dx<0._wp) then
     stop 'ppm_ave: dx<0 should not happened!'
-  elseif (dx>1.) then
+  elseif (dx>1._wp) then
     stop 'ppm_ave: dx>1 should not happened!'
-  elseif (dx==0.) then
-    ppm_ave = aL + ( aR - aL ) * xR + a6 * xR * ( 1. - xR )
+  elseif (dx==0._wp) then
+    ppm_ave = aL + ( aR - aL ) * xR + a6 * xR * ( 1._wp - xR )
   else
     ppm_ave = ( aL + xave * ( ( aR - aL ) + a6 ) )  - a6o3 * ( xR**2 + xR * xL + xL**2 )
   endif
@@ -1212,12 +1214,12 @@ end function ppm_ave
 
 !> A true signum function that returns either -abs(a), when x<0; or abs(a) when x>0; or 0 when x=0.
 !! The returned units are the same as those of a [arbitrary].
-real function signum(a,x)
-  real, intent(in) :: a !< The magnitude argument in arbitrary units [arbitrary]
-  real, intent(in) :: x !< The sign (or zero) argument [arbitrary]
+real(wp) function signum(a,x)
+  real(wp), intent(in) :: a !< The magnitude argument in arbitrary units [arbitrary]
+  real(wp), intent(in) :: x !< The sign (or zero) argument [arbitrary]
 
   signum = sign(a,x)
-  if (x==0.) signum = 0.
+  if (x==0._wp) signum = 0._wp
 
 end function signum
 
@@ -1225,12 +1227,12 @@ end function signum
 !! The limiting follows equation 1.8 in Colella & Woodward, 1984: JCP 54, 174-201.
 subroutine PLM_diff(nk, h, S, c_method, b_method, diff)
   integer,             intent(in)    :: nk       !< Number of levels
-  real, dimension(nk), intent(in)    :: h        !< Layer thickness [H ~> m or kg m-2] or other units
-  real, dimension(nk), intent(in)    :: S        !< Layer salinity (conc, e.g. ppt) or other tracer
+  real(wp), dimension(nk), intent(in)    :: h        !< Layer thickness [H ~> m or kg m-2] or other units
+  real(wp), dimension(nk), intent(in)    :: S        !< Layer salinity (conc, e.g. ppt) or other tracer
                                                  !! concentration in arbitrary units [A ~> a]
   integer,             intent(in)    :: c_method !< Method to use for the centered difference
   integer,             intent(in)    :: b_method !< =1, use PCM in first/last cell, =2 uses linear extrapolation
-  real, dimension(nk), intent(inout) :: diff     !< Scalar difference across layer (conc, e.g. ppt)
+  real(wp), dimension(nk), intent(inout) :: diff     !< Scalar difference across layer (conc, e.g. ppt)
                                                  !! in the same arbitrary units as S [A ~> a],
                                                  !! determined by the following values for c_method:
                                                  !!   1. Second order finite difference (not recommended)
@@ -1241,25 +1243,25 @@ subroutine PLM_diff(nk, h, S, c_method, b_method, diff)
 
   ! Local variables
   integer :: k
-  real :: hkm1, hk, hkp1  ! Successive layer thicknesses [H ~> m or kg m-2] or other units
-  real :: Skm1, Sk, Skp1  ! Successive layer tracer concentrations in the same arbitrary units as S [A ~> a]
-  real :: diff_l, diff_r, diff_c ! Differences in tracer concentrations in arbitrary units [A ~> a]
+  real(wp) :: hkm1, hk, hkp1  ! Successive layer thicknesses [H ~> m or kg m-2] or other units
+  real(wp) :: Skm1, Sk, Skp1  ! Successive layer tracer concentrations in the same arbitrary units as S [A ~> a]
+  real(wp) :: diff_l, diff_r, diff_c ! Differences in tracer concentrations in arbitrary units [A ~> a]
 
   do k = 2, nk-1
     hkm1 = h(k-1)
     hk = h(k)
     hkp1 = h(k+1)
 
-    if ( ( hkp1 + hk ) * ( hkm1 + hk ) > 0.) then
+    if ( ( hkp1 + hk ) * ( hkm1 + hk ) > 0._wp) then
       Skm1 = S(k-1)
       Sk = S(k)
       Skp1 = S(k+1)
       if (c_method==1) then
         ! Simple centered diff (from White)
-        if ( hk + 0.5 * (hkm1 + hkp1) /= 0. ) then
-          diff_c = ( Skp1 - Skm1 ) * ( hk / ( hk + 0.5 * (hkm1 + hkp1) ) )
+        if ( hk + 0.5_wp * (hkm1 + hkp1) /= 0._wp ) then
+          diff_c = ( Skp1 - Skm1 ) * ( hk / ( hk + 0.5_wp * (hkm1 + hkp1) ) )
         else
-          diff_c = 0.
+          diff_c = 0._wp
         endif
       elseif (c_method==2) then
         ! Second order accurate centered finite-volume slope (from Colella and Woodward, JCP 1984)
@@ -1269,23 +1271,23 @@ subroutine PLM_diff(nk, h, S, c_method, b_method, diff)
         diff_c = hk * fvlsq_slope(hkm1, hk, hkp1, Skm1, Sk, Skp1)
       endif
       ! Limit centered slope by twice the side differenced slopes
-      diff_l = 2. * ( Sk - Skm1 )
-      diff_r = 2. * ( Skp1 - Sk )
-      if ( signum(1., diff_l) * signum(1., diff_r) <= 0. ) then
-        diff(k) = 0. ! PCM for local extrema
+      diff_l = 2._wp * ( Sk - Skm1 )
+      diff_r = 2._wp * ( Skp1 - Sk )
+      if ( signum(1._wp, diff_l) * signum(1._wp, diff_r) <= 0._wp ) then
+        diff(k) = 0._wp ! PCM for local extrema
       else
         diff(k) = sign( min( abs(diff_l), abs(diff_c), abs(diff_r) ), diff_c )
       endif
     else
-      diff(k) = 0. ! PCM next to vanished layers
+      diff(k) = 0._wp ! PCM next to vanished layers
     endif
   enddo
   if (b_method==1) then ! PCM for top and bottom layer
-    diff(1) = 0.
-    diff(nk) = 0.
+    diff(1) = 0._wp
+    diff(nk) = 0._wp
   elseif (b_method==2) then ! Linear extrapolation for top and bottom interfaces
-    diff(1) = ( S(2) - S(1) ) * 2. * ( h(1) / ( h(1) + h(2) ) )
-    diff(nk) = S(nk) - S(nk-1) * 2. * ( h(nk) / ( h(nk-1) + h(nk) ) )
+    diff(1) = ( S(2) - S(1) ) * 2._wp * ( h(1) / ( h(1) + h(2) ) )
+    diff(nk) = S(nk) - S(nk-1) * 2._wp * ( h(nk) / ( h(nk-1) + h(nk) ) )
   endif
 
 end subroutine PLM_diff
@@ -1294,30 +1296,30 @@ end subroutine PLM_diff
 !! consecutive cell widths and average values. Slope is returned as a difference across
 !! the central cell (i.e. units of scalar S, e.g. [C ~> degC] for temperature).
 !! Discretization follows equation 1.7 in Colella & Woodward, 1984: JCP 54, 174-201.
-real function fv_diff(hkm1, hk, hkp1, Skm1, Sk, Skp1)
-  real, intent(in) :: hkm1 !< Left cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: hk   !< Center cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: hkp1 !< Right cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: Skm1 !< Left cell average value in arbitrary concentration
+real(wp) function fv_diff(hkm1, hk, hkp1, Skm1, Sk, Skp1)
+  real(wp), intent(in) :: hkm1 !< Left cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: hk   !< Center cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: hkp1 !< Right cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: Skm1 !< Left cell average value in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Sk   !< Center cell average value in arbitrary concentration
+  real(wp), intent(in) :: Sk   !< Center cell average value in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Skp1 !< Right cell average value in arbitrary concentration
+  real(wp), intent(in) :: Skp1 !< Right cell average value in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
 
   ! Local variables
-  real :: h_sum, hp, hm ! At first sums of thicknesses [H ~> m or kg m-2], then changed into
+  real(wp) :: h_sum, hp, hm ! At first sums of thicknesses [H ~> m or kg m-2], then changed into
                         ! their reciprocals [H-1 ~> m-1 or m2 kg-1]
 
   h_sum = ( hkm1 + hkp1 ) + hk
-  if (h_sum /= 0.) h_sum = 1./ h_sum
+  if (h_sum /= 0._wp) h_sum = 1._wp/ h_sum
   hm =  hkm1 + hk
-  if (hm /= 0.) hm = 1./ hm
+  if (hm /= 0._wp) hm = 1._wp/ hm
   hp =  hkp1 + hk
-  if (hp /= 0.) hp = 1./ hp
+  if (hp /= 0._wp) hp = 1._wp/ hp
   fv_diff = ( hk * h_sum ) * &
-            (   ( 2. * hkm1 + hk ) * hp * ( Skp1 - Sk ) &
-              + ( 2. * hkp1 + hk ) * hm * ( Sk - Skm1 ) )
+            (   ( 2._wp * hkm1 + hk ) * hp * ( Skp1 - Sk ) &
+              + ( 2._wp * hkp1 + hk ) * hm * ( Sk - Skm1 ) )
 end function fv_diff
 
 
@@ -1325,41 +1327,41 @@ end function fv_diff
 !! using three consecutive cell widths and average values.  Slope is returned
 !! as a gradient (i.e. units of scalar S over width units).  For example, for temperature
 !! fvlsq_slope would usually be returned in units of [C H-1 ~> degC m-1 or degC m2 kg-1].
-real function fvlsq_slope(hkm1, hk, hkp1, Skm1, Sk, Skp1)
-  real, intent(in) :: hkm1 !< Left cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: hk   !< Center cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: hkp1 !< Right cell width [H ~> m or kg m-2] or other arbitrary units
-  real, intent(in) :: Skm1 !< Left cell average value in arbitrary concentration
+real(wp) function fvlsq_slope(hkm1, hk, hkp1, Skm1, Sk, Skp1)
+  real(wp), intent(in) :: hkm1 !< Left cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: hk   !< Center cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: hkp1 !< Right cell width [H ~> m or kg m-2] or other arbitrary units
+  real(wp), intent(in) :: Skm1 !< Left cell average value in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Sk   !< Center cell average value often in arbitrary concentration
+  real(wp), intent(in) :: Sk   !< Center cell average value often in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
-  real, intent(in) :: Skp1 !< Right cell average value often in arbitrary concentration
+  real(wp), intent(in) :: Skp1 !< Right cell average value often in arbitrary concentration
                            !! units (e.g. [C ~> degC] for temperature)
 
   ! Local variables
-  real :: xkm1, xkp1  ! Distances between layer centers [H ~> m or kg m-2] or other arbitrary units
-  real :: h_sum       ! Sum of the successive cell widths [H ~> m or kg m-2] or other arbitrary units
-  real :: hx_sum      ! Thicknesses times distances [H2 ~> m2 or kg2 m-4]
-  real :: hxsq_sum    ! Thicknesses times squared distances [H3 ~> m3 or kg3 m-6]
-  real :: det         ! The denominator in the weighted slope calculation [H4 ~> m4 or kg4 m-8]
-  real :: hxy_sum     ! Sum of layer concentrations times thicknesses and distances in units that
+  real(wp) :: xkm1, xkp1  ! Distances between layer centers [H ~> m or kg m-2] or other arbitrary units
+  real(wp) :: h_sum       ! Sum of the successive cell widths [H ~> m or kg m-2] or other arbitrary units
+  real(wp) :: hx_sum      ! Thicknesses times distances [H2 ~> m2 or kg2 m-4]
+  real(wp) :: hxsq_sum    ! Thicknesses times squared distances [H3 ~> m3 or kg3 m-6]
+  real(wp) :: det         ! The denominator in the weighted slope calculation [H4 ~> m4 or kg4 m-8]
+  real(wp) :: hxy_sum     ! Sum of layer concentrations times thicknesses and distances in units that
                       ! depend on those of Sk (e.g. [C H2 ~> degC m2 or degC kg2 m-4] for temperature)
-  real :: hy_sum      ! Sum of layer concentrations times thicknesses in units that depend on
+  real(wp) :: hy_sum      ! Sum of layer concentrations times thicknesses in units that depend on
                       ! those of Sk (e.g. [C H ~> degC m or degC kg m-2] for temperature)
 
-  xkm1 = -0.5 * ( hk + hkm1 )
-  xkp1 = 0.5 * ( hk + hkp1 )
+  xkm1 = -0.5_wp * ( hk + hkm1 )
+  xkp1 = 0.5_wp * ( hk + hkp1 )
   h_sum = ( hkm1 + hkp1 ) + hk
   hx_sum = hkm1*xkm1 + hkp1*xkp1
   hxsq_sum = hkm1*(xkm1**2) + hkp1*(xkp1**2)
   hxy_sum = hkm1*xkm1*Skm1 + hkp1*xkp1*Skp1
   hy_sum = ( hkm1*Skm1 + hkp1*Skp1 ) + hk*Sk
   det = h_sum * hxsq_sum - hx_sum**2
-  if (det /= 0.) then
+  if (det /= 0._wp) then
     !a = ( hxsq_sum * hy_sum - hx_sum*hxy_sum ) / det ! a would be mean of straight line fit
     fvlsq_slope = ( h_sum * hxy_sum - hx_sum*hy_sum ) / det ! Gradient of straight line fit
   else
-    fvlsq_slope = 0. ! Adcroft's reciprocal rule
+    fvlsq_slope = 0._wp ! Adcroft's reciprocal rule
   endif
 end function fvlsq_slope
 
@@ -1368,28 +1370,28 @@ end function fvlsq_slope
 subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdSl, Pr, Tr, Sr, &
                                                      dRdTr, dRdSr, PoL, PoR, KoL, KoR, hEff, bl_kl, bl_kr, bl_zl, bl_zr)
   integer,                    intent(in)    :: nk    !< Number of levels
-  real, dimension(nk+1),      intent(in)    :: Pl    !< Left-column interface pressure [R L2 T-2 ~> Pa] or other units
-  real, dimension(nk+1),      intent(in)    :: Tl    !< Left-column interface potential temperature [C ~> degC]
-  real, dimension(nk+1),      intent(in)    :: Sl    !< Left-column interface salinity [S ~> ppt]
-  real, dimension(nk+1),      intent(in)    :: dRdTl !< Left-column dRho/dT [R C-1 ~> kg m-3 degC-1]
-  real, dimension(nk+1),      intent(in)    :: dRdSl !< Left-column dRho/dS [R S-1 ~> kg m-3 ppt-1]
-  real, dimension(nk+1),      intent(in)    :: Pr    !< Right-column interface pressure [R L2 T-2 ~> Pa] or other units
-  real, dimension(nk+1),      intent(in)    :: Tr    !< Right-column interface potential temperature [C ~> degC]
-  real, dimension(nk+1),      intent(in)    :: Sr    !< Right-column interface salinity [S ~> ppt]
-  real, dimension(nk+1),      intent(in)    :: dRdTr !< Left-column dRho/dT [R C-1 ~> kg m-3 degC-1]
-  real, dimension(nk+1),      intent(in)    :: dRdSr !< Left-column dRho/dS [R S-1 ~> kg m-3 ppt-1]
-  real, dimension(2*nk+2),    intent(inout) :: PoL   !< Fractional position of neutral surface within
+  real(wp), dimension(nk+1),      intent(in)    :: Pl    !< Left-column interface pressure [R L2 T-2 ~> Pa] or other units
+  real(wp), dimension(nk+1),      intent(in)    :: Tl    !< Left-column interface potential temperature [C ~> degC]
+  real(wp), dimension(nk+1),      intent(in)    :: Sl    !< Left-column interface salinity [S ~> ppt]
+  real(wp), dimension(nk+1),      intent(in)    :: dRdTl !< Left-column dRho/dT [R C-1 ~> kg m-3 degC-1]
+  real(wp), dimension(nk+1),      intent(in)    :: dRdSl !< Left-column dRho/dS [R S-1 ~> kg m-3 ppt-1]
+  real(wp), dimension(nk+1),      intent(in)    :: Pr    !< Right-column interface pressure [R L2 T-2 ~> Pa] or other units
+  real(wp), dimension(nk+1),      intent(in)    :: Tr    !< Right-column interface potential temperature [C ~> degC]
+  real(wp), dimension(nk+1),      intent(in)    :: Sr    !< Right-column interface salinity [S ~> ppt]
+  real(wp), dimension(nk+1),      intent(in)    :: dRdTr !< Left-column dRho/dT [R C-1 ~> kg m-3 degC-1]
+  real(wp), dimension(nk+1),      intent(in)    :: dRdSr !< Left-column dRho/dS [R S-1 ~> kg m-3 ppt-1]
+  real(wp), dimension(2*nk+2),    intent(inout) :: PoL   !< Fractional position of neutral surface within
                                                      !! layer KoL of left column [nondim]
-  real, dimension(2*nk+2),    intent(inout) :: PoR   !< Fractional position of neutral surface within
+  real(wp), dimension(2*nk+2),    intent(inout) :: PoR   !< Fractional position of neutral surface within
                                                      !! layer KoR of right column [nondim]
   integer, dimension(2*nk+2), intent(inout) :: KoL   !< Index of first left interface above neutral surface
   integer, dimension(2*nk+2), intent(inout) :: KoR   !< Index of first right interface above neutral surface
-  real, dimension(2*nk+1),    intent(inout) :: hEff  !< Effective thickness between two neutral surfaces
+  real(wp), dimension(2*nk+1),    intent(inout) :: hEff  !< Effective thickness between two neutral surfaces
                                                      !! [R L2 T-2 ~> Pa] or other units following Pl and Pr.
   integer, optional,          intent(in)    :: bl_kl !< Layer index of the boundary layer (left)
   integer, optional,          intent(in)    :: bl_kr !< Layer index of the boundary layer (right)
-  real, optional,             intent(in)    :: bl_zl !< Fractional position of the boundary layer (left) [nondim]
-  real, optional,             intent(in)    :: bl_zr !< Fractional position of the boundary layer (right) [nondim]
+  real(wp), optional,             intent(in)    :: bl_zl !< Fractional position of the boundary layer (left) [nondim]
+  real(wp), optional,             intent(in)    :: bl_zr !< Fractional position of the boundary layer (right) [nondim]
 
   ! Local variables
   integer :: ns                     ! Number of neutral surfaces
@@ -1400,10 +1402,10 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
   logical :: searching_right_column ! True if searching for the position of a left interface in the right column
   logical :: reached_bottom         ! True if one of the bottom-most interfaces has been used as the target
   integer :: krm1, klm1
-  real    :: dRho, dRhoTop, dRhoBot ! Potential density differences at various points [R ~> kg m-3]
-  real    :: hL, hR                 ! Pressure thicknesses [R L2 T-2 ~> Pa]
+  real(wp)    :: dRho, dRhoTop, dRhoBot ! Potential density differences at various points [R ~> kg m-3]
+  real(wp)    :: hL, hR                 ! Pressure thicknesses [R L2 T-2 ~> Pa]
   integer :: lastK_left, lastK_right ! Layers used during the last iteration
-  real    :: lastP_left, lastP_right ! Fractional positions during the last iteration [nondim]
+  real(wp)    :: lastP_left, lastP_right ! Fractional positions during the last iteration [nondim]
   logical :: interior_limit
 
   ns = 2*nk+2
@@ -1411,8 +1413,8 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
   ! Initialize variables for the search
   kr = 1 ;
   kl = 1 ;
-  lastP_right = 0.
-  lastP_left = 0.
+  lastP_right = 0._wp
+  lastP_left = 0._wp
   lastK_right = 1
   lastK_left  = 1
   reached_bottom = .false.
@@ -1428,14 +1430,14 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
     if (krm1>nk) stop 'find_neutral_surface_positions(): krm1 went out of bounds!'
 
     ! Potential density difference, rho(kr) - rho(kl)
-    dRho = 0.5 * ( ( dRdTr(kr) + dRdTl(kl) ) * ( Tr(kr) - Tl(kl) ) &
+    dRho = 0.5_wp * ( ( dRdTr(kr) + dRdTl(kl) ) * ( Tr(kr) - Tl(kl) ) &
                  + ( dRdSr(kr) + dRdSl(kl) ) * ( Sr(kr) - Sl(kl) ) )
     ! Which column has the lighter surface for the current indexes, kr and kl
     if (.not. reached_bottom) then
-      if (dRho < 0.) then
+      if (dRho < 0._wp) then
         searching_left_column = .true.
         searching_right_column = .false.
-      elseif (dRho > 0.) then
+      elseif (dRho > 0._wp) then
         searching_right_column = .true.
         searching_left_column = .false.
       else ! dRho == 0.
@@ -1452,37 +1454,37 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
     if (searching_left_column) then
       ! Interpolate for the neutral surface position within the left column, layer klm1
       ! Potential density difference, rho(kl-1) - rho(kr) (should be negative)
-      dRhoTop = 0.5 * ( ( dRdTl(klm1) + dRdTr(kr) ) * ( Tl(klm1) - Tr(kr) ) &
+      dRhoTop = 0.5_wp * ( ( dRdTl(klm1) + dRdTr(kr) ) * ( Tl(klm1) - Tr(kr) ) &
                      + ( dRdSl(klm1) + dRdSr(kr) ) * ( Sl(klm1) - Sr(kr) ) )
       ! Potential density difference, rho(kl) - rho(kr) (will be positive)
-      dRhoBot = 0.5 * ( ( dRdTl(klm1+1) + dRdTr(kr) ) * ( Tl(klm1+1) - Tr(kr) ) &
+      dRhoBot = 0.5_wp * ( ( dRdTl(klm1+1) + dRdTr(kr) ) * ( Tl(klm1+1) - Tr(kr) ) &
                       + ( dRdSl(klm1+1) + dRdSr(kr) ) * ( Sl(klm1+1) - Sr(kr) ) )
 
       ! Because we are looking left, the right surface, kr, is lighter than klm1+1 and should be denser than klm1
       ! unless we are still at the top of the left column (kl=1)
-      if (dRhoTop > 0. .or. kr+kl==2) then
-        PoL(k_surface) = 0. ! The right surface is lighter than anything in layer klm1
+      if (dRhoTop > 0._wp .or. kr+kl==2) then
+        PoL(k_surface) = 0._wp ! The right surface is lighter than anything in layer klm1
       elseif (dRhoTop >= dRhoBot) then ! Left layer is unstratified
-        PoL(k_surface) = 1.
+        PoL(k_surface) = 1._wp
       else
         ! Linearly interpolate for the position between Pl(kl-1) and Pl(kl) where the density difference
         ! between right and left is zero. The Pl here are only used to handle massless layers.
         PoL(k_surface) = interpolate_for_nondim_position( dRhoTop, Pl(klm1), dRhoBot, Pl(klm1+1) )
       endif
-      if (PoL(k_surface)>=1. .and. klm1<nk) then ! >= is really ==, when PoL==1 we point to the bottom of the cell
+      if (PoL(k_surface)>=1._wp .and. klm1<nk) then ! >= is really ==, when PoL==1 we point to the bottom of the cell
         klm1 = klm1 + 1
-        PoL(k_surface) = PoL(k_surface) - 1.
+        PoL(k_surface) = PoL(k_surface) - 1._wp
       endif
-      if (real(klm1-lastK_left)+(PoL(k_surface)-lastP_left)<0.) then
+      if (real(klm1-lastK_left, wp)+(PoL(k_surface)-lastP_left)<0._wp) then
         PoL(k_surface) = lastP_left
         klm1 = lastK_left
       endif
       KoL(k_surface) = klm1
       if (kr <= nk) then
-        PoR(k_surface) = 0.
+        PoR(k_surface) = 0._wp
         KoR(k_surface) = kr
       else
-        PoR(k_surface) = 1.
+        PoR(k_surface) = 1._wp
         KoR(k_surface) = nk
       endif
       if (kr <= nk) then
@@ -1495,37 +1497,37 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
     elseif (searching_right_column) then
       ! Interpolate for the neutral surface position within the right column, layer krm1
       ! Potential density difference, rho(kr-1) - rho(kl) (should be negative)
-      dRhoTop = 0.5 * ( ( dRdTr(krm1) + dRdTl(kl) ) * ( Tr(krm1) - Tl(kl) ) + &
+      dRhoTop = 0.5_wp * ( ( dRdTr(krm1) + dRdTl(kl) ) * ( Tr(krm1) - Tl(kl) ) + &
                         ( dRdSr(krm1) + dRdSl(kl) ) * ( Sr(krm1) - Sl(kl) ) )
       ! Potential density difference, rho(kr) - rho(kl) (will be positive)
-      dRhoBot = 0.5 * ( ( dRdTr(krm1+1) + dRdTl(kl) ) * ( Tr(krm1+1) - Tl(kl) ) + &
+      dRhoBot = 0.5_wp * ( ( dRdTr(krm1+1) + dRdTl(kl) ) * ( Tr(krm1+1) - Tl(kl) ) + &
                         ( dRdSr(krm1+1) + dRdSl(kl) ) * ( Sr(krm1+1) - Sl(kl) ) )
 
       ! Because we are looking right, the left surface, kl, is lighter than krm1+1 and should be denser than krm1
       ! unless we are still at the top of the right column (kr=1)
-      if (dRhoTop >= 0. .or. kr+kl==2) then
-        PoR(k_surface) = 0. ! The left surface is lighter than anything in layer krm1
+      if (dRhoTop >= 0._wp .or. kr+kl==2) then
+        PoR(k_surface) = 0._wp ! The left surface is lighter than anything in layer krm1
       elseif (dRhoTop >= dRhoBot) then ! Right layer is unstratified
-        PoR(k_surface) = 1.
+        PoR(k_surface) = 1._wp
       else
         ! Linearly interpolate for the position between Pr(kr-1) and Pr(kr) where the density difference
         ! between right and left is zero. The Pr here are only used to handle massless layers.
         PoR(k_surface) = interpolate_for_nondim_position( dRhoTop, Pr(krm1), dRhoBot, Pr(krm1+1) )
       endif
-      if (PoR(k_surface)>=1. .and. krm1<nk) then ! >= is really ==, when PoR==1 we point to the bottom of the cell
+      if (PoR(k_surface)>=1._wp .and. krm1<nk) then ! >= is really ==, when PoR==1 we point to the bottom of the cell
         krm1 = krm1 + 1
-        PoR(k_surface) = PoR(k_surface) - 1.
+        PoR(k_surface) = PoR(k_surface) - 1._wp
       endif
-      if (real(krm1-lastK_right)+(PoR(k_surface)-lastP_right)<0.) then
+      if (real(krm1-lastK_right, wp)+(PoR(k_surface)-lastP_right)<0._wp) then
         PoR(k_surface) = lastP_right
         krm1 = lastK_right
       endif
       KoR(k_surface) = krm1
       if (kl <= nk) then
-        PoL(k_surface) = 0.
+        PoL(k_surface) = 0._wp
         KoL(k_surface) = kl
       else
-        PoL(k_surface) = 1.
+        PoL(k_surface) = 1._wp
         KoL(k_surface) = nk
       endif
       if (kl <= nk) then
@@ -1561,10 +1563,10 @@ subroutine find_neutral_surface_positions_continuous(nk, Pl, Tl, Sl, dRdTl, dRdS
     if (k_surface>1) then
       hL = absolute_position(nk,ns,Pl,KoL,PoL,k_surface) - absolute_position(nk,ns,Pl,KoL,PoL,k_surface-1)
       hR = absolute_position(nk,ns,Pr,KoR,PoR,k_surface) - absolute_position(nk,ns,Pr,KoR,PoR,k_surface-1)
-      if ( hL + hR > 0.) then
-        hEff(k_surface-1) = 2. * hL * hR / ( hL + hR ) ! Harmonic mean of layer thicknesses
+      if ( hL + hR > 0._wp) then
+        hEff(k_surface-1) = 2._wp * hL * hR / ( hL + hR ) ! Harmonic mean of layer thicknesses
       else
-        hEff(k_surface-1) = 0.
+        hEff(k_surface-1) = 0._wp
       endif
     endif
 
@@ -1575,30 +1577,30 @@ end subroutine find_neutral_surface_positions_continuous
 !> Returns the non-dimensional position between Pneg and Ppos where the
 !! interpolated density difference equals zero [nondim].
 !! The result is always bounded to be between 0 and 1.
-real function interpolate_for_nondim_position(dRhoNeg, Pneg, dRhoPos, Ppos)
-  real, intent(in) :: dRhoNeg !< Negative density difference [R ~> kg m-3]
-  real, intent(in) :: Pneg    !< Position of negative density difference [R L2 T-2 ~> Pa] or [nondim]
-  real, intent(in) :: dRhoPos !< Positive density difference [R ~> kg m-3]
-  real, intent(in) :: Ppos    !< Position of positive density difference [R L2 T-2 ~> Pa] or [nondim]
+real(wp) function interpolate_for_nondim_position(dRhoNeg, Pneg, dRhoPos, Ppos)
+  real(wp), intent(in) :: dRhoNeg !< Negative density difference [R ~> kg m-3]
+  real(wp), intent(in) :: Pneg    !< Position of negative density difference [R L2 T-2 ~> Pa] or [nondim]
+  real(wp), intent(in) :: dRhoPos !< Positive density difference [R ~> kg m-3]
+  real(wp), intent(in) :: Ppos    !< Position of positive density difference [R L2 T-2 ~> Pa] or [nondim]
 
   character(len=120) :: mesg
 
-  if ((Ppos > Pneg) .and. (dRhoPos - dRhoNeg >= 0. )) then
-    if ( dRhoPos - dRhoNeg > 0. ) then
-      interpolate_for_nondim_position = min( 1., max( 0., -dRhoNeg / ( dRhoPos - dRhoNeg ) ) )
+  if ((Ppos > Pneg) .and. (dRhoPos - dRhoNeg >= 0._wp )) then
+    if ( dRhoPos - dRhoNeg > 0._wp ) then
+      interpolate_for_nondim_position = min( 1._wp, max( 0._wp, -dRhoNeg / ( dRhoPos - dRhoNeg ) ) )
     elseif (dRhoPos - dRhoNeg == 0) then
-      if (dRhoNeg > 0.) then
-        interpolate_for_nondim_position = 0.
-      elseif (dRhoNeg < 0.) then
-        interpolate_for_nondim_position = 1.
+      if (dRhoNeg > 0._wp) then
+        interpolate_for_nondim_position = 0._wp
+      elseif (dRhoNeg < 0._wp) then
+        interpolate_for_nondim_position = 1._wp
       else ! dRhoPos = dRhoNeg = 0
-        interpolate_for_nondim_position = 0.5
+        interpolate_for_nondim_position = 0.5_wp
       endif
     else ! dRhoPos - dRhoNeg < 0
-      interpolate_for_nondim_position = 0.5
+      interpolate_for_nondim_position = 0.5_wp
     endif
   elseif (Ppos == Pneg) then ! Handle vanished or inverted layers
-    interpolate_for_nondim_position = 0.5
+    interpolate_for_nondim_position = 0.5_wp
   else ! ((Ppos < Pneg) .or. (dRhoNeg > dRhoPos) )
     ! Error handling for problematic cases.  It is expected that this should never occur.
     write(mesg,*) 'dRhoNeg, Pneg, dRhoPos, Ppos', dRhoNeg, Pneg, dRhoPos, Ppos
@@ -1628,36 +1630,36 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
 
   type(neutral_diffusion_CS),     intent(inout) :: CS        !< Neutral diffusion control structure
   integer,                        intent(in)    :: nk        !< Number of levels
-  real, dimension(nk,2),          intent(in)    :: Pres_l    !< Left-column interface pressure [R L2 T-2 ~> Pa]
-  real, dimension(nk),            intent(in)    :: hcol_l    !< Left-column layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(nk,2),          intent(in)    :: Pres_l    !< Left-column interface pressure [R L2 T-2 ~> Pa]
+  real(wp), dimension(nk),            intent(in)    :: hcol_l    !< Left-column layer thicknesses [H ~> m or kg m-2]
                                                              !! or other units
-  real, dimension(nk,2),          intent(in)    :: Tl        !< Left-column top interface potential
+  real(wp), dimension(nk,2),          intent(in)    :: Tl        !< Left-column top interface potential
                                                              !! temperature [C ~> degC]
-  real, dimension(nk,2),          intent(in)    :: Sl        !< Left-column top interface salinity [S ~> ppt]
-  real, dimension(:,:),           intent(in)    :: ppoly_T_l !< Left-column coefficients of T reconstruction [C ~> degC]
-  real, dimension(:,:),           intent(in)    :: ppoly_S_l !< Left-column coefficients of S reconstruction [S ~> ppt]
+  real(wp), dimension(nk,2),          intent(in)    :: Sl        !< Left-column top interface salinity [S ~> ppt]
+  real(wp), dimension(:,:),           intent(in)    :: ppoly_T_l !< Left-column coefficients of T reconstruction [C ~> degC]
+  real(wp), dimension(:,:),           intent(in)    :: ppoly_S_l !< Left-column coefficients of S reconstruction [S ~> ppt]
   logical, dimension(nk),         intent(in)    :: stable_l  !< True where the left-column is stable
-  real, dimension(nk,2),          intent(in)    :: Pres_r    !< Right-column interface pressure [R L2 T-2 ~> Pa]
-  real, dimension(nk),            intent(in)    :: hcol_r    !< Left-column layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(nk,2),          intent(in)    :: Pres_r    !< Right-column interface pressure [R L2 T-2 ~> Pa]
+  real(wp), dimension(nk),            intent(in)    :: hcol_r    !< Left-column layer thicknesses [H ~> m or kg m-2]
                                                              !! or other units
-  real, dimension(nk,2),          intent(in)    :: Tr        !< Right-column top interface potential
+  real(wp), dimension(nk,2),          intent(in)    :: Tr        !< Right-column top interface potential
                                                              !! temperature [C ~> degC]
-  real, dimension(nk,2),          intent(in)    :: Sr        !< Right-column top interface salinity [S ~> ppt]
-  real, dimension(:,:),           intent(in)    :: ppoly_T_r !< Right-column coefficients of T
+  real(wp), dimension(nk,2),          intent(in)    :: Sr        !< Right-column top interface salinity [S ~> ppt]
+  real(wp), dimension(:,:),           intent(in)    :: ppoly_T_r !< Right-column coefficients of T
                                                              !! reconstruction [C ~> degC]
-  real, dimension(:,:),           intent(in)    :: ppoly_S_r !< Right-column coefficients of S reconstruction [S ~> ppt]
+  real(wp), dimension(:,:),           intent(in)    :: ppoly_S_r !< Right-column coefficients of S reconstruction [S ~> ppt]
   logical, dimension(nk),         intent(in)    :: stable_r  !< True where the right-column is stable
-  real, dimension(4*nk),          intent(inout) :: PoL       !< Fractional position of neutral surface within
+  real(wp), dimension(4*nk),          intent(inout) :: PoL       !< Fractional position of neutral surface within
                                                              !! layer KoL of left column [nondim]
-  real, dimension(4*nk),          intent(inout) :: PoR       !< Fractional position of neutral surface within
+  real(wp), dimension(4*nk),          intent(inout) :: PoR       !< Fractional position of neutral surface within
                                                              !! layer KoR of right column [nondim]
   integer, dimension(4*nk),       intent(inout) :: KoL       !< Index of first left interface above neutral surface
   integer, dimension(4*nk),       intent(inout) :: KoR       !< Index of first right interface above neutral surface
-  real, dimension(4*nk-1),        intent(inout) :: hEff      !< Effective thickness between two neutral surfaces
+  real(wp), dimension(4*nk-1),        intent(inout) :: hEff      !< Effective thickness between two neutral surfaces
                                                              !! [H ~> m or kg m-2] or other units taken from hcol_l
-  real, optional,                 intent(in)    :: zeta_bot_L!< Non-dimensional distance to where the boundary layer
+  real(wp), optional,                 intent(in)    :: zeta_bot_L!< Non-dimensional distance to where the boundary layer
                                                              !! intersects the cell (left) [nondim]
-  real, optional,                 intent(in)    :: zeta_bot_R!< Non-dimensional distance to where the boundary layer
+  real(wp), optional,                 intent(in)    :: zeta_bot_R!< Non-dimensional distance to where the boundary layer
                                                              !! intersects the cell (right) [nondim]
 
   integer, optional,              intent(in)    :: k_bot_L   !< k-index for the boundary layer (left) [nondim]
@@ -1674,19 +1676,19 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
   logical :: reached_bottom         ! True if one of the bottom-most interfaces has been used as the target
   logical :: fail_heff              ! Fail if negative thickness are encountered.  By default this
                                     ! is true, but it can take its value from hard_fail_heff.
-  real    :: dRho                   ! A density difference between columns [R ~> kg m-3]
-  real    :: hL, hR                 ! Left and right layer thicknesses [H ~> m or kg m-2] or units from hcol_l
-  real    :: lastP_left, lastP_right ! Previous positions for left and right [nondim]
+  real(wp)    :: dRho                   ! A density difference between columns [R ~> kg m-3]
+  real(wp)    :: hL, hR                 ! Left and right layer thicknesses [H ~> m or kg m-2] or units from hcol_l
+  real(wp)    :: lastP_left, lastP_right ! Previous positions for left and right [nondim]
   integer :: k_init_L, k_init_R      ! Starting indices layers for left and right
-  real    :: p_init_L, p_init_R      ! Starting positions for left and right [nondim]
+  real(wp)    :: p_init_L, p_init_R      ! Starting positions for left and right [nondim]
   ! Initialize variables for the search
   ns = 4*nk
   ki_right = 1
   ki_left = 1
   kl_left = 1
   kl_right = 1
-  lastP_left = 0.
-  lastP_right = 0.
+  lastP_left = 0._wp
+  lastP_right = 0._wp
   reached_bottom = .false.
   searching_left_column = .false.
   searching_right_column = .false.
@@ -1701,14 +1703,14 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
     kl_left = k_bot_L; kl_right = k_bot_R
   else
     k_init_L = 1  ; k_init_R = 1
-    p_init_L = 0. ; p_init_R = 0.
+    p_init_L = 0._wp ; p_init_R = 0._wp
   endif
   ! Loop over each neutral surface, working from top to bottom
   neutral_surfaces: do k_surface = 1, ns
 
     if (k_surface == ns) then
-        PoL(k_surface) = 1.
-        PoR(k_surface) = 1.
+        PoL(k_surface) = 1._wp
+        PoR(k_surface) = 1._wp
         KoL(k_surface) = nk
         KoR(k_surface) = nk
     ! If the layers are unstable, then simply point the surface to the previous location
@@ -1734,9 +1736,9 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
         PoL(k_surface) = PoL(k_surface-1)
         KoL(k_surface) = KoL(k_surface-1)
       else
-        PoR(k_surface) = 0.
+        PoR(k_surface) = 0._wp
         KoR(k_surface) = 1
-        PoL(k_surface) = 0.
+        PoL(k_surface) = 0._wp
         KoL(k_surface) = 1
       endif
       call increment_interface(nk, kl_right, ki_right, reached_bottom, searching_right_column, searching_left_column)
@@ -1755,10 +1757,10 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
           "kl_left=",kl_left, "  ki_left=",ki_left, "  kl_right=",kl_right, "  ki_right=",ki_right
       ! Which column has the lighter surface for the current indexes, kr and kl
       if (.not. reached_bottom) then
-        if (dRho < 0.) then
+        if (dRho < 0._wp) then
           searching_left_column  = .true.
           searching_right_column = .false.
-        elseif (dRho > 0.) then
+        elseif (dRho > 0._wp) then
           searching_left_column  = .false.
           searching_right_column = .true.
         else ! dRho == 0.
@@ -1773,7 +1775,7 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
       endif
       if (searching_left_column) then
         ! Position of the right interface is known and all quantities are fixed
-        PoR(k_surface) = ki_right - 1.
+        PoR(k_surface) = ki_right - 1._wp
         KoR(k_surface) = kl_right
         PoL(k_surface) = search_other_column(CS, k_surface, lastP_left,                                &
                            Tr(kl_right, ki_right), Sr(kl_right, ki_right), Pres_r(kl_right, ki_right), &
@@ -1792,11 +1794,11 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
         call increment_interface(nk, kl_right, ki_right, reached_bottom, searching_right_column, searching_left_column)
         lastP_left = PoL(k_surface)
         ! If the right layer increments, then we need to reset the last position on the right
-        if ( kl_right == (KoR(k_surface) + 1) ) lastP_right = 0.
+        if ( kl_right == (KoR(k_surface) + 1) ) lastP_right = 0._wp
 
       elseif (searching_right_column) then
         ! Position of the right interface is known and all quantities are fixed
-        PoL(k_surface) = ki_left - 1.
+        PoL(k_surface) = ki_left - 1._wp
         KoL(k_surface) = kl_left
         PoR(k_surface) = search_other_column(CS, k_surface, lastP_right,                         &
                            Tl(kl_left, ki_left), Sl(kl_left, ki_left), Pres_l(kl_left, ki_left), &
@@ -1815,7 +1817,7 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
         call increment_interface(nk, kl_left, ki_left, reached_bottom, searching_left_column, searching_right_column)
         lastP_right = PoR(k_surface)
         ! If the right layer increments, then we need to reset the last position on the right
-        if ( kl_left == (KoL(k_surface) + 1) ) lastP_left = 0.
+        if ( kl_left == (KoL(k_surface) + 1) ) lastP_left = 0._wp
       else
         stop 'Else what?'
       endif
@@ -1827,7 +1829,7 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
       if ( KoL(k_surface) == KoL(k_surface-1) .and. KoR(k_surface) == KoR(k_surface-1) ) then
         hL = (PoL(k_surface) - PoL(k_surface-1))*hcol_l(KoL(k_surface))
         hR = (PoR(k_surface) - PoR(k_surface-1))*hcol_r(KoR(k_surface))
-        if (hL < 0. .or. hR < 0.) then
+        if (hL < 0._wp .or. hR < 0._wp) then
           if (fail_heff) then
             call MOM_error(FATAL,"Negative thicknesses in neutral diffusion")
           else
@@ -1839,10 +1841,10 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
               KoR(k_surface) = KoR(k_surface-1)
             endif
           endif
-        elseif ( hL + hR == 0. ) then
-          hEff(k_surface-1) = 0.
+        elseif ( hL + hR == 0._wp ) then
+          hEff(k_surface-1) = 0._wp
         else
-          hEff(k_surface-1) = 2. * ( (hL * hR) / ( hL + hR ) )! Harmonic mean
+          hEff(k_surface-1) = 2._wp * ( (hL * hR) / ( hL + hR ) )! Harmonic mean
           if ( KoL(k_surface) /= KoL(k_surface-1) ) then
             call MOM_error(FATAL,"Neutral sublayer spans multiple layers")
           endif
@@ -1851,7 +1853,7 @@ subroutine find_neutral_surface_positions_discontinuous(CS, nk, &
           endif
         endif
       else
-        hEff(k_surface-1) = 0.
+        hEff(k_surface-1) = 0._wp
       endif
     endif
   enddo neutral_surfaces
@@ -1861,48 +1863,48 @@ end subroutine find_neutral_surface_positions_discontinuous
 subroutine mark_unstable_cells(CS, nk, T, S, P, stable_cell)
   type(neutral_diffusion_CS), intent(inout) :: CS      !< Neutral diffusion control structure
   integer,                intent(in)    :: nk          !< Number of levels in a column
-  real, dimension(nk,2),  intent(in)    :: T           !< Temperature at interfaces [C ~> degC]
-  real, dimension(nk,2),  intent(in)    :: S           !< Salinity at interfaces [S ~> ppt]
-  real, dimension(nk,2),  intent(in)    :: P           !< Pressure at interfaces [R L2 T-2 ~> Pa]
+  real(wp), dimension(nk,2),  intent(in)    :: T           !< Temperature at interfaces [C ~> degC]
+  real(wp), dimension(nk,2),  intent(in)    :: S           !< Salinity at interfaces [S ~> ppt]
+  real(wp), dimension(nk,2),  intent(in)    :: P           !< Pressure at interfaces [R L2 T-2 ~> Pa]
   logical, dimension(nk), intent(  out) :: stable_cell !< True if this cell is unstably stratified
 
   integer :: k
-  real :: delta_rho ! A density difference [R ~> kg m-3]
+  real(wp) :: delta_rho ! A density difference [R ~> kg m-3]
 
   do k = 1,nk
     call calc_delta_rho_and_derivs( CS, T(k,2), S(k,2), max(P(k,2), CS%ref_pres), &
                                         T(k,1), S(k,1), max(P(k,1), CS%ref_pres), delta_rho )
-    stable_cell(k) = (delta_rho > 0.)
+    stable_cell(k) = (delta_rho > 0._wp)
   enddo
 end subroutine mark_unstable_cells
 
 !> Searches the "other" (searched) column for the position of the neutral surface, returning
 !! the fractional postion within the layer [nondim]
-real function search_other_column(CS, ksurf, pos_last, T_from, S_from, P_from, T_top, S_top, P_top, &
+real(wp) function search_other_column(CS, ksurf, pos_last, T_from, S_from, P_from, T_top, S_top, P_top, &
                                   T_bot, S_bot, P_bot, T_poly, S_poly ) result(pos)
   type(neutral_diffusion_CS), intent(in   ) :: CS       !< Neutral diffusion control structure
   integer,                    intent(in   ) :: ksurf    !< Current index of neutral surface
-  real,                       intent(in   ) :: pos_last !< Last position within the current layer, used as the lower
+  real(wp),                       intent(in   ) :: pos_last !< Last position within the current layer, used as the lower
                                                         !! bound in the root finding algorithm [nondim]
-  real,                       intent(in   ) :: T_from   !< Temperature at the searched from interface [C ~> degC]
-  real,                       intent(in   ) :: S_from   !< Salinity    at the searched from interface [S ~> ppt]
-  real,                       intent(in   ) :: P_from   !< Pressure at the searched from interface [R L2 T-2 ~> Pa]
-  real,                       intent(in   ) :: T_top    !< Temperature at the searched to top interface [C ~> degC]
-  real,                       intent(in   ) :: S_top    !< Salinity    at the searched to top interface [S ~> ppt]
-  real,                       intent(in   ) :: P_top    !< Pressure at the searched to top interface [R L2 T-2 ~> Pa]
+  real(wp),                       intent(in   ) :: T_from   !< Temperature at the searched from interface [C ~> degC]
+  real(wp),                       intent(in   ) :: S_from   !< Salinity    at the searched from interface [S ~> ppt]
+  real(wp),                       intent(in   ) :: P_from   !< Pressure at the searched from interface [R L2 T-2 ~> Pa]
+  real(wp),                       intent(in   ) :: T_top    !< Temperature at the searched to top interface [C ~> degC]
+  real(wp),                       intent(in   ) :: S_top    !< Salinity    at the searched to top interface [S ~> ppt]
+  real(wp),                       intent(in   ) :: P_top    !< Pressure at the searched to top interface [R L2 T-2 ~> Pa]
                                                         !! interface [R L2 T-2 ~> Pa]
-  real,                       intent(in   ) :: T_bot    !< Temperature at the searched to bottom interface [C ~> degC]
-  real,                       intent(in   ) :: S_bot    !< Salinity    at the searched to bottom interface [S ~> ppt]
-  real,                       intent(in   ) :: P_bot    !< Pressure at the searched to bottom
+  real(wp),                       intent(in   ) :: T_bot    !< Temperature at the searched to bottom interface [C ~> degC]
+  real(wp),                       intent(in   ) :: S_bot    !< Salinity    at the searched to bottom interface [S ~> ppt]
+  real(wp),                       intent(in   ) :: P_bot    !< Pressure at the searched to bottom
                                                         !! interface [R L2 T-2 ~> Pa]
-  real, dimension(:),         intent(in   ) :: T_poly   !< Temperature polynomial reconstruction
+  real(wp), dimension(:),         intent(in   ) :: T_poly   !< Temperature polynomial reconstruction
                                                         !! coefficients [C ~> degC]
-  real, dimension(:),         intent(in   ) :: S_poly   !< Salinity    polynomial reconstruction
+  real(wp), dimension(:),         intent(in   ) :: S_poly   !< Salinity    polynomial reconstruction
                                                         !! coefficients [S ~> ppt]
   ! Local variables
-  real :: dRhotop, dRhobot ! Density differences [R ~> kg m-3]
-  real :: dRdT_top, dRdT_bot, dRdT_from ! Partial derivatives of density with temperature [R C-1 ~> kg m-3 degC-1]
-  real :: dRdS_top, dRdS_bot, dRdS_from ! Partial derivatives of density with salinity [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: dRhotop, dRhobot ! Density differences [R ~> kg m-3]
+  real(wp) :: dRdT_top, dRdT_bot, dRdT_from ! Partial derivatives of density with temperature [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: dRdS_top, dRdS_bot, dRdS_from ! Partial derivatives of density with salinity [R S-1 ~> kg m-3 ppt-1]
 
   ! Calculate the difference in density at the tops or the bottom
   if (CS%neutral_pos_method == 1 .or. CS%neutral_pos_method == 3) then
@@ -1916,17 +1918,17 @@ real function search_other_column(CS, ksurf, pos_last, T_from, S_from, P_from, T
   endif
 
   ! Handle all the special cases EXCEPT if it connects within the layer
-  if ( (dRhoTop > 0.) .or. (ksurf == 1) ) then      ! First interface or lighter than anything in layer
+  if ( (dRhoTop > 0._wp) .or. (ksurf == 1) ) then      ! First interface or lighter than anything in layer
     pos = pos_last
   elseif ( dRhoTop > dRhoBot ) then                 ! Unstably stratified
-    pos = 1.
-  elseif ( dRhoTop < 0. .and. dRhoBot < 0.) then    ! Denser than anything in layer
-    pos = 1.
-  elseif ( dRhoTop == 0. .and. dRhoBot == 0. ) then ! Perfectly unstratified
-    pos = 1.
-  elseif ( dRhoBot == 0. ) then                     ! Matches perfectly at the Top
-    pos = 1.
-  elseif ( dRhoTop == 0. ) then                     ! Matches perfectly at the Bottom
+    pos = 1._wp
+  elseif ( dRhoTop < 0._wp .and. dRhoBot < 0._wp) then    ! Denser than anything in layer
+    pos = 1._wp
+  elseif ( dRhoTop == 0._wp .and. dRhoBot == 0._wp ) then ! Perfectly unstratified
+    pos = 1._wp
+  elseif ( dRhoBot == 0._wp ) then                     ! Matches perfectly at the Top
+    pos = 1._wp
+  elseif ( dRhoTop == 0._wp ) then                     ! Matches perfectly at the Bottom
     pos = pos_last
   else                                              ! Neutral surface within layer
     pos = -1
@@ -1985,40 +1987,40 @@ end subroutine increment_interface
 function find_neutral_pos_linear( CS, z0, T_ref, S_ref, dRdT_ref, dRdS_ref, &
                                   dRdT_top, dRdS_top, dRdT_bot, dRdS_bot, ppoly_T, ppoly_S ) result( z )
   type(neutral_diffusion_CS),intent(in) :: CS        !< Control structure with parameters for this module
-  real,                      intent(in) :: z0        !< Lower bound of position, also serves as the
+  real(wp),                      intent(in) :: z0        !< Lower bound of position, also serves as the
                                                      !! initial guess [nondim]
-  real,                      intent(in) :: T_ref     !< Temperature at the searched from interface [C ~> degC]
-  real,                      intent(in) :: S_ref     !< Salinity at the searched from interface [S ~> ppt]
-  real,                      intent(in) :: dRdT_ref  !< dRho/dT at the searched from interface
+  real(wp),                      intent(in) :: T_ref     !< Temperature at the searched from interface [C ~> degC]
+  real(wp),                      intent(in) :: S_ref     !< Salinity at the searched from interface [S ~> ppt]
+  real(wp),                      intent(in) :: dRdT_ref  !< dRho/dT at the searched from interface
                                                      !! [R C-1 ~> kg m-3 degC-1]
-  real,                      intent(in) :: dRdS_ref  !< dRho/dS at the searched from interface
+  real(wp),                      intent(in) :: dRdS_ref  !< dRho/dS at the searched from interface
                                                      !! [R S-1 ~> kg m-3 ppt-1]
-  real,                      intent(in) :: dRdT_top  !< dRho/dT at top of layer being searched
+  real(wp),                      intent(in) :: dRdT_top  !< dRho/dT at top of layer being searched
                                                      !! [R C-1 ~> kg m-3 degC-1]
-  real,                      intent(in) :: dRdS_top  !< dRho/dS at top of layer being searched
+  real(wp),                      intent(in) :: dRdS_top  !< dRho/dS at top of layer being searched
                                                      !! [R S-1 ~> kg m-3 ppt-1]
-  real,                      intent(in) :: dRdT_bot  !< dRho/dT at bottom of layer being searched
+  real(wp),                      intent(in) :: dRdT_bot  !< dRho/dT at bottom of layer being searched
                                                      !! [R C-1 ~> kg m-3 degC-1]
-  real,                      intent(in) :: dRdS_bot  !< dRho/dS at bottom of layer being searched
+  real(wp),                      intent(in) :: dRdS_bot  !< dRho/dS at bottom of layer being searched
                                                      !! [R S-1 ~> kg m-3 ppt-1]
-  real, dimension(:),        intent(in) :: ppoly_T   !< Coefficients of the polynomial reconstruction of T within
+  real(wp), dimension(:),        intent(in) :: ppoly_T   !< Coefficients of the polynomial reconstruction of T within
                                                      !! the layer to be searched [C ~> degC].
-  real, dimension(:),        intent(in) :: ppoly_S   !< Coefficients of the polynomial reconstruction of S within
+  real(wp), dimension(:),        intent(in) :: ppoly_S   !< Coefficients of the polynomial reconstruction of S within
                                                      !! the layer to be searched [S ~> ppt].
-  real                                  :: z         !< Position where drho = 0 [nondim]
+  real(wp)                                  :: z         !< Position where drho = 0 [nondim]
   ! Local variables
-  real :: dRdT_diff  ! Difference in the partial derivative of density with temperature across the
+  real(wp) :: dRdT_diff  ! Difference in the partial derivative of density with temperature across the
                      ! layer [R C-1 ~> kg m-3 degC-1]
-  real :: dRdS_diff  ! Difference in the partial derivative of density with salinity across the
+  real(wp) :: dRdS_diff  ! Difference in the partial derivative of density with salinity across the
                      ! layer [R S-1 ~> kg m-3 ppt-1]
-  real :: drho, drho_dz ! Density anomaly and its derivative with fractional position [R ~> kg m-3]
-  real :: dRdT_z     ! Partial derivative of density with temperature at a point [R C-1 ~> kg m-3 degC-1]
-  real :: dRdS_z     ! Partial derivative of density with salinity at a point [R S-1 ~> kg m-3 ppt-1]
-  real :: T_z, dT_dz ! Temperature at a point and its derivative with fractional position [C ~> degC]
-  real :: S_z, dS_dz ! Salinity at a point and its derivative with fractional position [S ~> ppt]
-  real :: drho_min, drho_max ! Bounds on density differences [R ~> kg m-3]
-  real :: ztest, zmin, zmax ! Fractional positions in the cell [nondim]
-  real :: a1, a2     ! Fractional weights of the top and bottom values [nondim]
+  real(wp) :: drho, drho_dz ! Density anomaly and its derivative with fractional position [R ~> kg m-3]
+  real(wp) :: dRdT_z     ! Partial derivative of density with temperature at a point [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: dRdS_z     ! Partial derivative of density with salinity at a point [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: T_z, dT_dz ! Temperature at a point and its derivative with fractional position [C ~> degC]
+  real(wp) :: S_z, dS_dz ! Salinity at a point and its derivative with fractional position [S ~> ppt]
+  real(wp) :: drho_min, drho_max ! Bounds on density differences [R ~> kg m-3]
+  real(wp) :: ztest, zmin, zmax ! Fractional positions in the cell [nondim]
+  real(wp) :: a1, a2     ! Fractional weights of the top and bottom values [nondim]
   integer :: iter
   integer :: nterm
 
@@ -2029,27 +2031,27 @@ function find_neutral_pos_linear( CS, z0, T_ref, S_ref, dRdT_ref, dRdS_ref, &
   dRdS_diff = dRdS_bot - dRdS_top
   ! Initial starting drho (used for bisection)
   zmin = z0        ! Lower bounding interval
-  zmax = 1.        ! Maximum bounding interval (bottom of layer)
-  a1 = 1. - zmin
+  zmax = 1._wp        ! Maximum bounding interval (bottom of layer)
+  a1 = 1._wp - zmin
   a2 = zmin
   T_z = evaluation_polynomial( ppoly_T, nterm, zmin )
   S_z = evaluation_polynomial( ppoly_S, nterm, zmin )
   dRdT_z = a1*dRdT_top + a2*dRdT_bot
   dRdS_z = a1*dRdS_top + a2*dRdS_bot
-  drho_min = 0.5*((dRdT_z+dRdT_ref)*(T_z-T_ref) + (dRdS_z+dRdS_ref)*(S_z-S_ref))
+  drho_min = 0.5_wp*((dRdT_z+dRdT_ref)*(T_z-T_ref) + (dRdS_z+dRdS_ref)*(S_z-S_ref))
 
-  T_z = evaluation_polynomial( ppoly_T, nterm, 1. )
-  S_z = evaluation_polynomial( ppoly_S, nterm, 1. )
-  drho_max = 0.5*((dRdT_bot+dRdT_ref)*(T_z-T_ref) + (dRdS_bot+dRdS_ref)*(S_z-S_ref))
+  T_z = evaluation_polynomial( ppoly_T, nterm, 1._wp )
+  S_z = evaluation_polynomial( ppoly_S, nterm, 1._wp )
+  drho_max = 0.5_wp*((dRdT_bot+dRdT_ref)*(T_z-T_ref) + (dRdS_bot+dRdS_ref)*(S_z-S_ref))
 
-  if (drho_min >= 0.) then
+  if (drho_min >= 0._wp) then
     z = z0
     return
-  elseif (drho_max == 0.) then
-    z = 1.
+  elseif (drho_max == 0._wp) then
+    z = 1._wp
     return
   endif
-  if ( SIGN(1.,drho_min) == SIGN(1.,drho_max) ) then
+  if ( SIGN(1._wp,drho_min) == SIGN(1._wp,drho_max) ) then
     call MOM_error(FATAL, "drho_min is the same sign as dhro_max")
   endif
 
@@ -2057,21 +2059,21 @@ function find_neutral_pos_linear( CS, z0, T_ref, S_ref, dRdT_ref, dRdS_ref, &
   ztest = z0
   do iter = 1, CS%max_iter
     ! Calculate quantities at the current nondimensional position
-    a1 = 1.-z
+    a1 = 1._wp-z
     a2 = z
     dRdT_z    = a1*dRdT_top + a2*dRdT_bot
     dRdS_z    = a1*dRdS_top + a2*dRdS_bot
     T_z       = evaluation_polynomial( ppoly_T, nterm, z )
     S_z       = evaluation_polynomial( ppoly_S, nterm, z )
-    drho = 0.5*((dRdT_z+dRdT_ref)*(T_z-T_ref) + (dRdS_z+dRdS_ref)*(S_z-S_ref))
+    drho = 0.5_wp*((dRdT_z+dRdT_ref)*(T_z-T_ref) + (dRdS_z+dRdS_ref)*(S_z-S_ref))
 
     ! Check for convergence
     if (ABS(drho) <= CS%drho_tol) exit
     ! Update bisection bracketing intervals
-    if (drho < 0. .and. drho > drho_min) then
+    if (drho < 0._wp .and. drho > drho_min) then
       drho_min = drho
       zmin = z
-    elseif (drho > 0. .and. drho < drho_max) then
+    elseif (drho > 0._wp .and. drho < drho_max) then
       drho_max = drho
       zmax = z
     endif
@@ -2079,16 +2081,16 @@ function find_neutral_pos_linear( CS, z0, T_ref, S_ref, dRdT_ref, dRdS_ref, &
     ! Calculate a Newton step
     dT_dz = first_derivative_polynomial( ppoly_T, nterm, z )
     dS_dz = first_derivative_polynomial( ppoly_S, nterm, z )
-    drho_dz = 0.5*( (dRdT_diff*(T_z - T_ref) + (dRdT_ref+dRdT_z)*dT_dz) + &
+    drho_dz = 0.5_wp*( (dRdT_diff*(T_z - T_ref) + (dRdT_ref+dRdT_z)*dT_dz) + &
                     (dRdS_diff*(S_z - S_ref) + (dRdS_ref+dRdS_z)*dS_dz) )
 
     ztest = z - drho/drho_dz
     ! Take a bisection if z falls out of [zmin,zmax]
     if (ztest < zmin .or. ztest > zmax) then
-      if ( drho < 0. ) then
-        ztest = 0.5*(z + zmax)
+      if ( drho < 0._wp ) then
+        ztest = 0.5_wp*(z + zmax)
       else
-        ztest = 0.5*(zmin + z)
+        ztest = 0.5_wp*(zmin + z)
       endif
     endif
 
@@ -2104,27 +2106,27 @@ end function find_neutral_pos_linear
 !! in this case are not trivial to calculate, so instead we use a regula falsi method
 function find_neutral_pos_full( CS, z0, T_ref, S_ref, P_ref, P_top, P_bot, ppoly_T, ppoly_S ) result( z )
   type(neutral_diffusion_CS),intent(in) :: CS        !< Control structure with parameters for this module
-  real,                      intent(in) :: z0        !< Lower bound of position, also serves as the
+  real(wp),                      intent(in) :: z0        !< Lower bound of position, also serves as the
                                                      !! initial guess [nondim]
-  real,                      intent(in) :: T_ref     !< Temperature at the searched from interface [C ~> degC]
-  real,                      intent(in) :: S_ref     !< Salinity at the searched from interface [S ~> ppt]
-  real,                      intent(in) :: P_ref     !< Pressure at the searched from interface [R L2 T-2 ~> Pa]
-  real,                      intent(in) :: P_top     !< Pressure at top of layer being searched [R L2 T-2 ~> Pa]
-  real,                      intent(in) :: P_bot     !< Pressure at bottom of layer being searched [R L2 T-2 ~> Pa]
-  real, dimension(:),        intent(in) :: ppoly_T   !< Coefficients of the polynomial reconstruction of T within
+  real(wp),                      intent(in) :: T_ref     !< Temperature at the searched from interface [C ~> degC]
+  real(wp),                      intent(in) :: S_ref     !< Salinity at the searched from interface [S ~> ppt]
+  real(wp),                      intent(in) :: P_ref     !< Pressure at the searched from interface [R L2 T-2 ~> Pa]
+  real(wp),                      intent(in) :: P_top     !< Pressure at top of layer being searched [R L2 T-2 ~> Pa]
+  real(wp),                      intent(in) :: P_bot     !< Pressure at bottom of layer being searched [R L2 T-2 ~> Pa]
+  real(wp), dimension(:),        intent(in) :: ppoly_T   !< Coefficients of the polynomial reconstruction of T within
                                                      !! the layer to be searched [C ~> degC]
-  real, dimension(:),        intent(in) :: ppoly_S   !< Coefficients of the polynomial reconstruction of T within
+  real(wp), dimension(:),        intent(in) :: ppoly_S   !< Coefficients of the polynomial reconstruction of T within
                                                      !! the layer to be searched [S ~> ppt]
-  real                                  :: z         !< Position where drho = 0 [nondim]
+  real(wp)                                  :: z         !< Position where drho = 0 [nondim]
   ! Local variables
   integer :: iter
   integer :: nterm
 
-  real :: drho_a, drho_b, drho_c ! Density differences [R ~> kg m-3]
-  real :: a, b, c     ! Fractional positions [nondim]
-  real :: Ta, Tb, Tc  ! Temperatures [C ~> degC]
-  real :: Sa, Sb, Sc  ! Salinities [S ~> ppt]
-  real :: Pa, Pb, Pc  ! Pressures [R L2 T-2 ~> Pa]
+  real(wp) :: drho_a, drho_b, drho_c ! Density differences [R ~> kg m-3]
+  real(wp) :: a, b, c     ! Fractional positions [nondim]
+  real(wp) :: Ta, Tb, Tc  ! Temperatures [C ~> degC]
+  real(wp) :: Sa, Sb, Sc  ! Salinities [S ~> ppt]
+  real(wp) :: Pa, Pb, Pc  ! Pressures [R L2 T-2 ~> Pa]
   integer :: side
 
   side = 0
@@ -2135,23 +2137,23 @@ function find_neutral_pos_full( CS, z0, T_ref, S_ref, P_ref, P_top, P_bot, ppoly
   ! Calculate drho at the minimum bound
   Tb = evaluation_polynomial( ppoly_T, nterm, b )
   Sb = evaluation_polynomial( ppoly_S, nterm, b )
-  Pb = P_top*(1.-b) + P_bot*b
+  Pb = P_top*(1._wp-b) + P_bot*b
   call calc_delta_rho_and_derivs(CS, Tb, Sb, Pb, T_ref, S_ref, P_ref, drho_b)
 
   ! Calculate drho at the maximum bound
-  Tc = evaluation_polynomial( ppoly_T, nterm, 1. )
-  Sc = evaluation_polynomial( ppoly_S, nterm, 1. )
+  Tc = evaluation_polynomial( ppoly_T, nterm, 1._wp )
+  Sc = evaluation_polynomial( ppoly_S, nterm, 1._wp )
   Pc = P_Bot
   call calc_delta_rho_and_derivs(CS, Tc, Sc, Pc, T_ref, S_ref, P_ref, drho_c)
 
-  if (drho_b >= 0.) then
+  if (drho_b >= 0._wp) then
     z = z0
     return
-  elseif (drho_c == 0.) then
-    z = 1.
+  elseif (drho_c == 0._wp) then
+    z = 1._wp
     return
   endif
-  if ( SIGN(1.,drho_b) == SIGN(1.,drho_c) ) then
+  if ( SIGN(1._wp,drho_b) == SIGN(1._wp,drho_c) ) then
     z = z0
     return
   endif
@@ -2161,20 +2163,20 @@ function find_neutral_pos_full( CS, z0, T_ref, S_ref, P_ref, P_top, P_bot, ppoly
     a = (drho_b*c - drho_c*b)/(drho_b-drho_c)
     Ta = evaluation_polynomial( ppoly_T, nterm, a )
     Sa = evaluation_polynomial( ppoly_S, nterm, a )
-    Pa = P_top*(1.-a) + P_bot*a
+    Pa = P_top*(1._wp-a) + P_bot*a
     call calc_delta_rho_and_derivs(CS, Ta, Sa, Pa, T_ref, S_ref, P_ref, drho_a)
     if (ABS(drho_a) < CS%drho_tol) then
       z = a
       return
     endif
 
-    if (drho_a*drho_c > 0.) then
+    if (drho_a*drho_c > 0._wp) then
       if ( ABS(a-c)<CS%x_tol) then
         z = a
         return
       endif
       c = a ; drho_c = drho_a;
-      if (side == -1) drho_b = 0.5*drho_b
+      if (side == -1) drho_b = 0.5_wp*drho_b
       side = -1
     elseif ( drho_b*drho_a > 0 ) then
       if ( ABS(a-b)<CS%x_tol) then
@@ -2182,7 +2184,7 @@ function find_neutral_pos_full( CS, z0, T_ref, S_ref, P_ref, P_top, P_bot, ppoly
         return
       endif
       b = a ; drho_b = drho_a
-      if (side == 1) drho_c = 0.5*drho_c
+      if (side == 1) drho_c = 0.5_wp*drho_c
       side = 1
     else
       z = a
@@ -2198,25 +2200,25 @@ end function find_neutral_pos_full
 subroutine calc_delta_rho_and_derivs(CS, T1, S1, p1_in, T2, S2, p2_in, drho, &
                                      drdt1_out, drds1_out, drdt2_out, drds2_out )
   type(neutral_diffusion_CS)    :: CS        !< Neutral diffusion control structure
-  real,           intent(in   ) :: T1        !< Temperature at point 1 [C ~> degC]
-  real,           intent(in   ) :: S1        !< Salinity at point 1 [S ~> ppt]
-  real,           intent(in   ) :: p1_in     !< Pressure at point 1 [R L2 T-2 ~> Pa]
-  real,           intent(in   ) :: T2        !< Temperature at point 2 [C ~> degC]
-  real,           intent(in   ) :: S2        !< Salinity at point 2 [S ~> ppt]
-  real,           intent(in   ) :: p2_in     !< Pressure at point 2 [R L2 T-2 ~> Pa]
-  real,           intent(  out) :: drho      !< Difference in density between the two points [R ~> kg m-3]
-  real, optional, intent(  out) :: dRdT1_out !< drho_dt at point 1 [R C-1 ~> kg m-3 degC-1]
-  real, optional, intent(  out) :: dRdS1_out !< drho_ds at point 1 [R S-1 ~> kg m-3 ppt-1]
-  real, optional, intent(  out) :: dRdT2_out !< drho_dt at point 2 [R C-1 ~> kg m-3 degC-1]
-  real, optional, intent(  out) :: dRdS2_out !< drho_ds at point 2 [R S-1 ~> kg m-3 ppt-1]
+  real(wp),           intent(in   ) :: T1        !< Temperature at point 1 [C ~> degC]
+  real(wp),           intent(in   ) :: S1        !< Salinity at point 1 [S ~> ppt]
+  real(wp),           intent(in   ) :: p1_in     !< Pressure at point 1 [R L2 T-2 ~> Pa]
+  real(wp),           intent(in   ) :: T2        !< Temperature at point 2 [C ~> degC]
+  real(wp),           intent(in   ) :: S2        !< Salinity at point 2 [S ~> ppt]
+  real(wp),           intent(in   ) :: p2_in     !< Pressure at point 2 [R L2 T-2 ~> Pa]
+  real(wp),           intent(  out) :: drho      !< Difference in density between the two points [R ~> kg m-3]
+  real(wp), optional, intent(  out) :: dRdT1_out !< drho_dt at point 1 [R C-1 ~> kg m-3 degC-1]
+  real(wp), optional, intent(  out) :: dRdS1_out !< drho_ds at point 1 [R S-1 ~> kg m-3 ppt-1]
+  real(wp), optional, intent(  out) :: dRdT2_out !< drho_dt at point 2 [R C-1 ~> kg m-3 degC-1]
+  real(wp), optional, intent(  out) :: dRdS2_out !< drho_ds at point 2 [R S-1 ~> kg m-3 ppt-1]
   ! Local variables
-  real :: rho1, rho2   ! Densities [R ~> kg m-3]
-  real :: p1, p2, pmid ! Pressures [R L2 T-2 ~> Pa]
-  real :: drdt1, drdt2 ! Partial derivatives of density with temperature [R C-1 ~> kg m-3 degC-1]
-  real :: drds1, drds2 ! Partial derivatives of density with salinity [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: rho1, rho2   ! Densities [R ~> kg m-3]
+  real(wp) :: p1, p2, pmid ! Pressures [R L2 T-2 ~> Pa]
+  real(wp) :: drdt1, drdt2 ! Partial derivatives of density with temperature [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: drds1, drds2 ! Partial derivatives of density with salinity [R S-1 ~> kg m-3 ppt-1]
 
   ! Use the same reference pressure or the in-situ pressure
-  if (CS%ref_pres > 0.) then
+  if (CS%ref_pres > 0._wp) then
     p1 = CS%ref_pres
     p2 = CS%ref_pres
   else
@@ -2226,13 +2228,13 @@ subroutine calc_delta_rho_and_derivs(CS, T1, S1, p1_in, T2, S2, p2_in, drho, &
 
   ! Use the full linear equation of state to calculate the difference in density (expensive!)
   if     (TRIM(CS%delta_rho_form) == 'full') then
-    pmid = 0.5 * (p1 + p2)
+    pmid = 0.5_wp * (p1 + p2)
     call calculate_density(T1, S1, pmid, rho1, CS%EOS)
     call calculate_density(T2, S2, pmid, rho2, CS%EOS)
     drho = rho1 - rho2
   ! Use the density derivatives at the average of pressures and the differences in temperature
   elseif (TRIM(CS%delta_rho_form) == 'mid_pressure') then
-    pmid = 0.5 * (p1 + p2)
+    pmid = 0.5_wp * (p1 + p2)
     if (CS%ref_pres>=0) pmid = CS%ref_pres
     call calculate_density_derivs(T1, S1, pmid, drdt1, drds1, CS%EOS)
     call calculate_density_derivs(T2, S2, pmid, drdt2, drds2, CS%EOS)
@@ -2258,20 +2260,20 @@ end subroutine calc_delta_rho_and_derivs
 !!                                   (\gamma^{-1}_1 + \gamma^{-1}_2)*(P_1-P_2) \right] \f$
 function delta_rho_from_derivs( T1, S1, P1, dRdT1, dRdS1, &
                                 T2, S2, P2, dRdT2, dRdS2  ) result (drho)
-  real :: T1    !< Temperature at point 1 [C ~> degC]
-  real :: S1    !< Salinity at point 1 [S ~> ppt]
-  real :: P1    !< Pressure at point 1 [R L2 T-2 ~> Pa]
-  real :: dRdT1 !< The partial derivative of density with temperature at point 1 [R C-1 ~> kg m-3 degC-1]
-  real :: dRdS1 !< The partial derivative of density with salinity at point 1 [R S-1 ~> kg m-3 ppt-1]
-  real :: T2    !< Temperature at point 2 [C ~> degC]
-  real :: S2    !< Salinity at point 2 [S ~> ppt]
-  real :: P2    !< Pressure at point 2 [R L2 T-2 ~> Pa]
-  real :: dRdT2 !< The partial derivative of density with temperature at point 2 [R C-1 ~> kg m-3 degC-1]
-  real :: dRdS2 !< The partial derivative of density with salinity at point 2 [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: T1    !< Temperature at point 1 [C ~> degC]
+  real(wp) :: S1    !< Salinity at point 1 [S ~> ppt]
+  real(wp) :: P1    !< Pressure at point 1 [R L2 T-2 ~> Pa]
+  real(wp) :: dRdT1 !< The partial derivative of density with temperature at point 1 [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: dRdS1 !< The partial derivative of density with salinity at point 1 [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: T2    !< Temperature at point 2 [C ~> degC]
+  real(wp) :: S2    !< Salinity at point 2 [S ~> ppt]
+  real(wp) :: P2    !< Pressure at point 2 [R L2 T-2 ~> Pa]
+  real(wp) :: dRdT2 !< The partial derivative of density with temperature at point 2 [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: dRdS2 !< The partial derivative of density with salinity at point 2 [R S-1 ~> kg m-3 ppt-1]
   ! Local variables
-  real :: drho  ! The density difference [R ~> kg m-3]
+  real(wp) :: drho  ! The density difference [R ~> kg m-3]
 
-  drho = 0.5 * ( (dRdT1+dRdT2)*(T1-T2) + (dRdS1+dRdS2)*(S1-S2))
+  drho = 0.5_wp * ( (dRdT1+dRdT2)*(T1-T2) + (dRdS1+dRdS2)*(S1-S2))
 
 end function delta_rho_from_derivs
 
@@ -2279,11 +2281,11 @@ end function delta_rho_from_derivs
 function absolute_position(n,ns,Pint,Karr,NParr,k_surface)
   integer, intent(in) :: n            !< Number of levels
   integer, intent(in) :: ns           !< Number of neutral surfaces
-  real,    intent(in) :: Pint(n+1)    !< Position of interfaces [R L2 T-2 ~> Pa] or other units
+  real(wp),    intent(in) :: Pint(n+1)    !< Position of interfaces [R L2 T-2 ~> Pa] or other units
   integer, intent(in) :: Karr(ns)     !< Index of interface above position
-  real,    intent(in) :: NParr(ns)    !< Non-dimensional position within layer Karr(:) [nondim]
+  real(wp),    intent(in) :: NParr(ns)    !< Non-dimensional position within layer Karr(:) [nondim]
   integer, intent(in) :: k_surface    !< k-interface to query
-  real                :: absolute_position !< The absolute position of a location [R L2 T-2 ~> Pa]
+  real(wp)                :: absolute_position !< The absolute position of a location [R L2 T-2 ~> Pa]
                                       !! or other units following Pint
   ! Local variables
   integer :: k
@@ -2298,11 +2300,11 @@ end function absolute_position
 function absolute_positions(n,ns,Pint,Karr,NParr)
   integer, intent(in) :: n         !< Number of levels
   integer, intent(in) :: ns        !< Number of neutral surfaces
-  real,    intent(in) :: Pint(n+1) !< Position of interface [R L2 T-2 ~> Pa] or other units
+  real(wp),    intent(in) :: Pint(n+1) !< Position of interface [R L2 T-2 ~> Pa] or other units
   integer, intent(in) :: Karr(ns)  !< Indexes of interfaces about positions
-  real,    intent(in) :: NParr(ns) !< Non-dimensional positions within layers Karr(:) [nondim]
+  real(wp),    intent(in) :: NParr(ns) !< Non-dimensional positions within layers Karr(:) [nondim]
 
-  real,  dimension(ns) :: absolute_positions !< Absolute positions [R L2 T-2 ~> Pa]
+  real(wp),  dimension(ns) :: absolute_positions !< Absolute positions [R L2 T-2 ~> Pa]
                                    !! or other units following Pint
 
   ! Local variables
@@ -2321,21 +2323,21 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
   integer,                      intent(in)    :: nk    !< Number of levels
   integer,                      intent(in)    :: nsurf !< Number of neutral surfaces
   integer,                      intent(in)    :: deg   !< Degree of polynomial reconstructions
-  real, dimension(nk),          intent(in)    :: hl    !< Left-column layer thickness [H ~> m or kg m-2]
-  real, dimension(nk),          intent(in)    :: hr    !< Right-column layer thickness [H ~> m or kg m-2]
-  real, dimension(nk),          intent(in)    :: Tl    !< Left-column layer tracer in arbitrary concentration
+  real(wp), dimension(nk),          intent(in)    :: hl    !< Left-column layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(nk),          intent(in)    :: hr    !< Right-column layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(nk),          intent(in)    :: Tl    !< Left-column layer tracer in arbitrary concentration
                                                        !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk),          intent(in)    :: Tr    !< Right-column layer tracer in arbitrary concentration
+  real(wp), dimension(nk),          intent(in)    :: Tr    !< Right-column layer tracer in arbitrary concentration
                                                        !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nsurf),       intent(in)    :: PiL   !< Fractional position of neutral surface
+  real(wp), dimension(nsurf),       intent(in)    :: PiL   !< Fractional position of neutral surface
                                                        !! within layer KoL of left column [nondim]
-  real, dimension(nsurf),       intent(in)    :: PiR   !< Fractional position of neutral surface
+  real(wp), dimension(nsurf),       intent(in)    :: PiR   !< Fractional position of neutral surface
                                                        !! within layer KoR of right column [nondim]
   integer, dimension(nsurf),    intent(in)    :: KoL   !< Index of first left interface above neutral surface
   integer, dimension(nsurf),    intent(in)    :: KoR   !< Index of first right interface above neutral surface
-  real, dimension(nsurf-1),     intent(in)    :: hEff  !< Effective thickness between two neutral
+  real(wp), dimension(nsurf-1),     intent(in)    :: hEff  !< Effective thickness between two neutral
                                                        !! surfaces [H ~> m or kg m-2]
-  real, dimension(nsurf-1),     intent(inout) :: Flx   !< Flux of tracer between pairs of neutral layers
+  real(wp), dimension(nsurf-1),     intent(inout) :: Flx   !< Flux of tracer between pairs of neutral layers
                                                        !! in units  (conc H or conc H L2) that depend on
                                                        !! the presence and units of coeff_l and coeff_r.
                                                        !! If the tracer is temperature, this could have
@@ -2343,68 +2345,68 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
                                                        !! [C H L2 ~> degC m3 or degC kg] if coeff_l has
                                                        !! units of [L2 ~> m2]
   logical,                      intent(in)    :: continuous !< True if using continuous reconstruction
-  real,                         intent(in)    :: h_neglect !< A negligibly small width for the purpose
+  real(wp),                         intent(in)    :: h_neglect !< A negligibly small width for the purpose
                                                        !! of cell reconstructions [H ~> m or kg m-2]
   type(remapping_CS), optional, intent(in)    :: remap_CS !< Remapping control structure used
                                                        !! to create sublayers
-  real,               optional, intent(in)    :: h_neglect_edge !< A negligibly small width used for edge value
+  real(wp),               optional, intent(in)    :: h_neglect_edge !< A negligibly small width used for edge value
                                                        !! calculations if continuous is false [H ~> m or kg m-2]
-  real, dimension(nk+1), optional, intent(in) :: coeff_l !< Left-column diffusivity  [L2 ~> m2] or [nondim]
-  real, dimension(nk+1), optional, intent(in) :: coeff_r !< Right-column diffusivity [L2 ~> m2] or [nondim]
+  real(wp), dimension(nk+1), optional, intent(in) :: coeff_l !< Left-column diffusivity  [L2 ~> m2] or [nondim]
+  real(wp), dimension(nk+1), optional, intent(in) :: coeff_r !< Right-column diffusivity [L2 ~> m2] or [nondim]
 
   ! Local variables
   integer :: k_sublayer, klb, klt, krb, krt
-  real :: T_right_sub, T_left_sub ! Tracer concentrations averaged over sub-intervals in the right and left
+  real(wp) :: T_right_sub, T_left_sub ! Tracer concentrations averaged over sub-intervals in the right and left
                                   ! columns in arbitrary concentration units (e.g. [C ~> degC] for temperature).
-  real :: T_right_layer, T_left_layer ! Tracer concentrations averaged over layers in the right and left
+  real(wp) :: T_right_layer, T_left_layer ! Tracer concentrations averaged over layers in the right and left
                                   ! columns in arbitrary concentration units (e.g. [C ~> degC] for temperature).
-  real :: T_right_top, T_right_bottom, T_right_top_int, T_right_bot_int ! Tracer concentrations
+  real(wp) :: T_right_top, T_right_bottom, T_right_top_int, T_right_bot_int ! Tracer concentrations
                         ! at various positions in the right column in arbitrary
                         ! concentration units (e.g. [C ~> degC] for temperature).
-  real :: T_left_top, T_left_bottom, T_left_top_int, T_left_bot_int ! Tracer concentrations
+  real(wp) :: T_left_top, T_left_bottom, T_left_top_int, T_left_bot_int ! Tracer concentrations
                         ! at various positions in the left column in arbitrary
                         ! concentration units (e.g. [C ~> degC] for temperature).
-  real :: dT_layer, dT_ave, dT_sublayer ! Differences in vertically averaged tracer concentrations
+  real(wp) :: dT_layer, dT_ave, dT_sublayer ! Differences in vertically averaged tracer concentrations
                         ! over various portions of the right and left columns in arbitrary
                         ! concentration units (e.g. [C ~> degC] for temperature).
-  real :: dT_top, dT_bottom, dT_top_int, dT_bot_int ! Differences in tracer concentrations
+  real(wp) :: dT_top, dT_bottom, dT_top_int, dT_bot_int ! Differences in tracer concentrations
                         ! at various positions between the right and left columns in arbitrary
                         ! concentration units (e.g. [C ~> degC] for temperature).
-  real :: khtr_ave ! An averaged diffusivity in normalized units [nondim] if coeff_l and coeff_r are
+  real(wp) :: khtr_ave ! An averaged diffusivity in normalized units [nondim] if coeff_l and coeff_r are
                    ! absent or in units copied from coeff_l and coeff_r [L2 ~> m2] or [nondim]
-  real, dimension(nk+1) :: Til !< Left-column interface tracer in arbitrary concentration
+  real(wp), dimension(nk+1) :: Til !< Left-column interface tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk+1) :: Tir !< Right-column interface tracer in arbitrary concentration
+  real(wp), dimension(nk+1) :: Tir !< Right-column interface tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk) :: aL_l !< Left-column left edge value of tracer in arbitrary concentration
+  real(wp), dimension(nk) :: aL_l !< Left-column left edge value of tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk) :: aR_l !< Left-column right edge value of tracer in arbitrary concentration
+  real(wp), dimension(nk) :: aR_l !< Left-column right edge value of tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk) :: aL_r !< Right-column left edge value of tracer in arbitrary concentration
+  real(wp), dimension(nk) :: aL_r !< Right-column left edge value of tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk) :: aR_r !< Right-column right edge value of tracer in arbitrary concentration
+  real(wp), dimension(nk) :: aR_r !< Right-column right edge value of tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
   ! Discontinuous reconstruction
   integer               :: iMethod
-  real, dimension(nk,2) :: Tid_l !< Left-column interface tracer in arbitrary concentration
+  real(wp), dimension(nk,2) :: Tid_l !< Left-column interface tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk,2) :: Tid_r !< Right-column interface tracer in arbitrary concentration
+  real(wp), dimension(nk,2) :: Tid_r !< Right-column interface tracer in arbitrary concentration
                               !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk,deg+1) :: ppoly_r_coeffs_l  ! Coefficients of the polynomial descriptions of
+  real(wp), dimension(nk,deg+1) :: ppoly_r_coeffs_l  ! Coefficients of the polynomial descriptions of
                               ! sub-gridscale tracer concentrations in the left column, in arbitrary
                               ! concentration units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk,deg+1) :: ppoly_r_coeffs_r  ! Coefficients of the polynomial descriptions of
+  real(wp), dimension(nk,deg+1) :: ppoly_r_coeffs_r  ! Coefficients of the polynomial descriptions of
                               ! sub-gridscale tracer concentrations in the right column, in arbitrary
                               ! concentration units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk,deg+1) :: ppoly_r_S_l   ! Reconstruction slopes that are unused here, in units of a vertical
+  real(wp), dimension(nk,deg+1) :: ppoly_r_S_l   ! Reconstruction slopes that are unused here, in units of a vertical
                               ! gradient, which for temperature would be [C H-1 ~> degC m-1 or degC m2 kg-1].
-  real, dimension(nk,deg+1) :: ppoly_r_S_r   ! Reconstruction slopes that are unused here, in units of a vertical
+  real(wp), dimension(nk,deg+1) :: ppoly_r_S_r   ! Reconstruction slopes that are unused here, in units of a vertical
                               ! gradient, which for temperature would be [C H-1 ~> degC m-1 or degC m2 kg-1].
   logical :: down_flux, tapering
 
   tapering = .false.
   if (present(coeff_l) .and. present(coeff_r)) tapering = .true.
-  khtr_ave = 1.0
+  khtr_ave = 1.0_wp
 
   ! Setup reconstruction edge values
   if (continuous) then
@@ -2413,10 +2415,10 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
     call ppm_left_right_edge_values(nk, Tl, Til, aL_l, aR_l)
     call ppm_left_right_edge_values(nk, Tr, Tir, aL_r, aR_r)
   else
-    ppoly_r_coeffs_l(:,:) = 0.
-    ppoly_r_coeffs_r(:,:) = 0.
-    Tid_l(:,:) = 0.
-    Tid_r(:,:) = 0.
+    ppoly_r_coeffs_l(:,:) = 0._wp
+    ppoly_r_coeffs_r(:,:) = 0._wp
+    Tid_l(:,:) = 0._wp
+    Tid_r(:,:) = 0._wp
 
     call build_reconstructions_1d( remap_CS, nk, hl, Tl, ppoly_r_coeffs_l, Tid_l, &
                                    ppoly_r_S_l, iMethod, h_neglect, h_neglect_edge )
@@ -2425,8 +2427,8 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
   endif
 
   do k_sublayer = 1, nsurf-1
-    if (hEff(k_sublayer) == 0.) then
-      Flx(k_sublayer) = 0.
+    if (hEff(k_sublayer) == 0._wp) then
+      Flx(k_sublayer) = 0._wp
     else
       if (tapering) then
         klb = KoL(k_sublayer+1)
@@ -2434,28 +2436,28 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
         krb = KoR(k_sublayer+1)
         krt = KoR(k_sublayer)
         ! these are added in this order to preserve vertically-uniform diffusivity answers
-        khtr_ave = 0.25 * ((coeff_l(klb) + coeff_l(klt)) + (coeff_r(krb) + coeff_r(krt)))
+        khtr_ave = 0.25_wp * ((coeff_l(klb) + coeff_l(klt)) + (coeff_r(krb) + coeff_r(krt)))
       endif
       if (continuous) then
         klb = KoL(k_sublayer+1)
-        T_left_bottom = ( 1. - PiL(k_sublayer+1) ) * Til(klb) + PiL(k_sublayer+1) * Til(klb+1)
+        T_left_bottom = ( 1._wp - PiL(k_sublayer+1) ) * Til(klb) + PiL(k_sublayer+1) * Til(klb+1)
         klt = KoL(k_sublayer)
-        T_left_top = ( 1. - PiL(k_sublayer) ) * Til(klt) + PiL(k_sublayer) * Til(klt+1)
-        T_left_layer = ppm_ave(PiL(k_sublayer), PiL(k_sublayer+1) + real(klb-klt), &
+        T_left_top = ( 1._wp - PiL(k_sublayer) ) * Til(klt) + PiL(k_sublayer) * Til(klt+1)
+        T_left_layer = ppm_ave(PiL(k_sublayer), PiL(k_sublayer+1) + real(klb-klt, wp), &
                                aL_l(klt), aR_l(klt), Tl(klt))
 
         krb = KoR(k_sublayer+1)
-        T_right_bottom = ( 1. - PiR(k_sublayer+1) ) * Tir(krb) + PiR(k_sublayer+1) * Tir(krb+1)
+        T_right_bottom = ( 1._wp - PiR(k_sublayer+1) ) * Tir(krb) + PiR(k_sublayer+1) * Tir(krb+1)
         krt = KoR(k_sublayer)
-        T_right_top = ( 1. - PiR(k_sublayer) ) * Tir(krt) + PiR(k_sublayer) * Tir(krt+1)
-        T_right_layer = ppm_ave(PiR(k_sublayer), PiR(k_sublayer+1) + real(krb-krt), &
+        T_right_top = ( 1._wp - PiR(k_sublayer) ) * Tir(krt) + PiR(k_sublayer) * Tir(krt+1)
+        T_right_layer = ppm_ave(PiR(k_sublayer), PiR(k_sublayer+1) + real(krb-krt, wp), &
                                 aL_r(krt), aR_r(krt), Tr(krt))
         dT_top = T_right_top - T_left_top
         dT_bottom = T_right_bottom - T_left_bottom
-        dT_ave = 0.5 * ( dT_top + dT_bottom )
+        dT_ave = 0.5_wp * ( dT_top + dT_bottom )
         dT_layer = T_right_layer - T_left_layer
-        if (signum(1.,dT_top) * signum(1.,dT_bottom) <= 0. .or. signum(1.,dT_ave) * signum(1.,dT_layer) <= 0.) then
-          dT_ave = 0.
+        if (signum(1._wp,dT_top) * signum(1._wp,dT_bottom) <= 0._wp .or. signum(1._wp,dT_ave) * signum(1._wp,dT_layer) <= 0._wp) then
+          dT_ave = 0._wp
         else
           dT_ave = dT_layer
         endif
@@ -2477,17 +2479,17 @@ subroutine neutral_surface_flux(nk, nsurf, deg, hl, hr, Tl, Tr, PiL, PiR, KoL, K
         ! Enforcing the below criterion incorrectly zero out fluxes
         !dT_layer = T_right_layer - T_left_layer
 
-        down_flux = dT_top <= 0. .and. dT_bottom <= 0. .and.       &
-                    dT_sublayer <= 0. .and. dT_top_int <= 0. .and. &
-                    dT_bot_int <= 0.
+        down_flux = dT_top <= 0._wp .and. dT_bottom <= 0._wp .and.       &
+                    dT_sublayer <= 0._wp .and. dT_top_int <= 0._wp .and. &
+                    dT_bot_int <= 0._wp
         down_flux = down_flux .or.                                 &
-                    (dT_top >= 0. .and. dT_bottom >= 0. .and.      &
-                    dT_sublayer >= 0. .and. dT_top_int >= 0. .and. &
-                    dT_bot_int >= 0.)
+                    (dT_top >= 0._wp .and. dT_bottom >= 0._wp .and.      &
+                    dT_sublayer >= 0._wp .and. dT_top_int >= 0._wp .and. &
+                    dT_bot_int >= 0._wp)
         if (down_flux) then
           Flx(k_sublayer) = dT_sublayer * hEff(k_sublayer) * khtr_ave
         else
-          Flx(k_sublayer) = 0.
+          Flx(k_sublayer) = 0._wp
         endif
       endif
     endif
@@ -2502,26 +2504,26 @@ subroutine neutral_surface_T_eval(nk, ns, k_sub, Ks, Ps, T_mean, T_int, deg, iMe
   integer,                   intent(in   ) :: ns        !< Number of neutral surfaces
   integer,                   intent(in   ) :: k_sub     !< Index of current neutral layer
   integer, dimension(ns),    intent(in   ) :: Ks        !< List of the layers associated with each neutral surface
-  real, dimension(ns),       intent(in   ) :: Ps        !< List of the positions within a layer of each surface [nondim]
-  real, dimension(nk),       intent(in   ) :: T_mean    !< Layer average of tracer in arbitrary concentration
+  real(wp), dimension(ns),       intent(in   ) :: Ps        !< List of the positions within a layer of each surface [nondim]
+  real(wp), dimension(nk),       intent(in   ) :: T_mean    !< Layer average of tracer in arbitrary concentration
                                                         !! units (e.g. [C ~> degC] for temperature)
-  real, dimension(nk,2),     intent(in   ) :: T_int     !< Layer interface values of tracer from reconstruction
+  real(wp), dimension(nk,2),     intent(in   ) :: T_int     !< Layer interface values of tracer from reconstruction
                                                         !! in concentration units (e.g. [C ~> degC] for temperature)
   integer,                   intent(in   ) :: deg       !< Degree of reconstruction polynomial (e.g. 1 is linear)
   integer,                   intent(in   ) :: iMethod   !< Method of integration to use
-  real, dimension(nk,deg+1), intent(in   ) :: T_poly    !< Coefficients of polynomial reconstructions in arbitrary
+  real(wp), dimension(nk,deg+1), intent(in   ) :: T_poly    !< Coefficients of polynomial reconstructions in arbitrary
                                                         !! concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_top     !< Tracer value at top (across discontinuity if necessary) in
+  real(wp),                      intent(  out) :: T_top     !< Tracer value at top (across discontinuity if necessary) in
                                                         !! concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_bot     !< Tracer value at bottom (across discontinuity if necessary)
+  real(wp),                      intent(  out) :: T_bot     !< Tracer value at bottom (across discontinuity if necessary)
                                                         !! in concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_sub     !< Average of the tracer value over the sublayer in arbitrary
+  real(wp),                      intent(  out) :: T_sub     !< Average of the tracer value over the sublayer in arbitrary
                                                         !! concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_top_int !< Tracer value at the top interface of a neutral layer in
+  real(wp),                      intent(  out) :: T_top_int !< Tracer value at the top interface of a neutral layer in
                                                         !! concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_bot_int !< Tracer value at the bottom interface of a neutral layer in
+  real(wp),                      intent(  out) :: T_bot_int !< Tracer value at the bottom interface of a neutral layer in
                                                         !! concentration units (e.g. [C ~> degC] for temperature)
-  real,                      intent(  out) :: T_layer   !< Cell-average tracer concentration in a layer that
+  real(wp),                      intent(  out) :: T_layer   !< Cell-average tracer concentration in a layer that
                                                         !! the reconstruction belongs to in concentration
                                                         !! units (e.g. [C ~> degC] for temperature)
 
@@ -2534,18 +2536,18 @@ subroutine neutral_surface_T_eval(nk, ns, k_sub, Ks, Ps, T_mean, T_int, deg, iMe
   endif
   kl = Ks(k_sub)
   ! First if the neutral surfaces spans the entirety of a cell, then do not search across the discontinuity
-  if ( (Ps(ks_top) == 0.) .and. (Ps(ks_bot) == 1.)) then
+  if ( (Ps(ks_top) == 0._wp) .and. (Ps(ks_bot) == 1._wp)) then
     T_top = T_int(kl,1)
     T_bot = T_int(kl,2)
   else
     ! Search across potential discontinuity at top
-    if ( (kl > 1) .and. (Ps(ks_top) == 0.)  ) then
+    if ( (kl > 1) .and. (Ps(ks_top) == 0._wp)  ) then
       T_top = T_int(kl-1,2)
     else
       T_top = evaluation_polynomial( T_poly(kl,:), deg+1, Ps(ks_top) )
     endif
     ! Search across potential discontinuity at bottom
-    if ( (kl < nk) .and. (Ps(ks_bot) == 1.) ) then
+    if ( (kl < nk) .and. (Ps(ks_bot) == 1._wp) ) then
       T_bot = T_int(kl+1,1)
     else
       T_bot = evaluation_polynomial( T_poly(kl,:), deg+1, Ps(ks_bot) )
@@ -2561,11 +2563,11 @@ end subroutine neutral_surface_T_eval
 !> Discontinuous PPM reconstructions of the left/right edge values within a cell
 subroutine ppm_left_right_edge_values(nk, Tl, Ti, aL, aR)
   integer,                    intent(in)    :: nk !< Number of levels
-  real, dimension(nk),        intent(in)    :: Tl !< Layer tracer (conc, e.g. degC) in arbitrary units [A ~> a]
-  real, dimension(nk+1),      intent(in)    :: Ti !< Interface tracer (conc, e.g. degC) in arbitrary units [A ~> a]
-  real, dimension(nk),        intent(inout) :: aL !< Left edge value of tracer (conc, e.g. degC)
+  real(wp), dimension(nk),        intent(in)    :: Tl !< Layer tracer (conc, e.g. degC) in arbitrary units [A ~> a]
+  real(wp), dimension(nk+1),      intent(in)    :: Ti !< Interface tracer (conc, e.g. degC) in arbitrary units [A ~> a]
+  real(wp), dimension(nk),        intent(inout) :: aL !< Left edge value of tracer (conc, e.g. degC)
                                                   !! in the same arbitrary units as Tl and Ti [A ~> a]
-  real, dimension(nk),        intent(inout) :: aR !< Right edge value of tracer (conc, e.g. degC)
+  real(wp), dimension(nk),        intent(inout) :: aR !< Right edge value of tracer (conc, e.g. degC)
                                                   !! in the same arbitrary units as Tl and Ti [A ~> a]
 
   integer :: k
@@ -2573,13 +2575,13 @@ subroutine ppm_left_right_edge_values(nk, Tl, Ti, aL, aR)
   do k = 1, nk
     aL(k) = Ti(k)
     aR(k) = Ti(k+1)
-    if ( signum(1., aR(k) - Tl(k))*signum(1., Tl(k) - aL(k)) <= 0.0 ) then
+    if ( signum(1._wp, aR(k) - Tl(k))*signum(1._wp, Tl(k) - aL(k)) <= 0.0_wp ) then
       aL(k) = Tl(k)
       aR(k) = Tl(k)
-    elseif ( sign(3., aR(k) - aL(k)) * ( (Tl(k) - aL(k)) + (Tl(k) - aR(k))) > abs(aR(k) - aL(k)) ) then
-      aL(k) = Tl(k) + 2.0 * ( Tl(k) - aR(k) )
-    elseif ( sign(3., aR(k) - aL(k)) * ( (Tl(k) - aL(k)) + (Tl(k) - aR(k))) < -abs(aR(k) - aL(k)) ) then
-      aR(k) = Tl(k) + 2.0 * ( Tl(k) - aL(k) )
+    elseif ( sign(3._wp, aR(k) - aL(k)) * ( (Tl(k) - aL(k)) + (Tl(k) - aR(k))) > abs(aR(k) - aL(k)) ) then
+      aL(k) = Tl(k) + 2.0_wp * ( Tl(k) - aR(k) )
+    elseif ( sign(3._wp, aR(k) - aL(k)) * ( (Tl(k) - aL(k)) + (Tl(k) - aR(k))) < -abs(aR(k) - aL(k)) ) then
+      aR(k) = Tl(k) + 2.0_wp * ( Tl(k) - aL(k) )
     endif
   enddo
 end subroutine ppm_left_right_edge_values
@@ -2598,15 +2600,15 @@ logical function ndiff_unit_tests_continuous(verbose)
   logical, intent(in) :: verbose !< If true, write results to stdout
   ! Local variables
   integer, parameter         :: nk = 4
-  real, dimension(nk+1)      :: Tio           ! Test interface temperatures [degC]
-  real, dimension(2*nk+2)    :: PiLRo, PiRLo  ! Fractional test positions [nondim]
+  real(wp), dimension(nk+1)      :: Tio           ! Test interface temperatures [degC]
+  real(wp), dimension(2*nk+2)    :: PiLRo, PiRLo  ! Fractional test positions [nondim]
   integer, dimension(2*nk+2) :: KoL, KoR      ! Test indexes
-  real, dimension(2*nk+1)    :: hEff          ! Test positions in arbitrary units [arbitrary]
-  real, dimension(2*nk+1)    :: Flx           ! Test flux in the arbitrary units of hEff times [degC]
+  real(wp), dimension(2*nk+1)    :: hEff          ! Test positions in arbitrary units [arbitrary]
+  real(wp), dimension(2*nk+1)    :: Flx           ! Test flux in the arbitrary units of hEff times [degC]
   logical :: v
-  real :: h_neglect  ! A negligible thickness in arbitrary units [arbitrary]
+  real(wp) :: h_neglect  ! A negligible thickness in arbitrary units [arbitrary]
 
-  h_neglect = 1.0e-30
+  h_neglect = 1.0e-30_wp
 
   v = verbose
 
@@ -2614,241 +2616,241 @@ logical function ndiff_unit_tests_continuous(verbose)
   write(stdout,*) '==== MOM_neutral_diffusion: ndiff_unit_tests_continuous ='
 
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,1.,1.,1., 0.,1.,2., 1., 'FV: Straight line on uniform grid')
+    test_fv_diff(v,1._wp,1._wp,1._wp, 0._wp,1._wp,2._wp, 1._wp, 'FV: Straight line on uniform grid')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,1.,1.,0., 0.,4.,8., 7., 'FV: Vanished right cell')
+    test_fv_diff(v,1._wp,1._wp,0._wp, 0._wp,4._wp,8._wp, 7._wp, 'FV: Vanished right cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,0.,1.,1., 0.,4.,8., 7., 'FV: Vanished left cell')
+    test_fv_diff(v,0._wp,1._wp,1._wp, 0._wp,4._wp,8._wp, 7._wp, 'FV: Vanished left cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,1.,2.,4., 0.,3.,9., 4., 'FV: Stretched grid')
+    test_fv_diff(v,1._wp,2._wp,4._wp, 0._wp,3._wp,9._wp, 4._wp, 'FV: Stretched grid')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,2.,0.,2., 0.,1.,2., 0., 'FV: Vanished middle cell')
+    test_fv_diff(v,2._wp,0._wp,2._wp, 0._wp,1._wp,2._wp, 0._wp, 'FV: Vanished middle cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,0.,1.,0., 0.,1.,2., 2., 'FV: Vanished on both sides')
+    test_fv_diff(v,0._wp,1._wp,0._wp, 0._wp,1._wp,2._wp, 2._wp, 'FV: Vanished on both sides')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,1.,0.,0., 0.,1.,2., 0., 'FV: Two vanished cell sides')
+    test_fv_diff(v,1._wp,0._wp,0._wp, 0._wp,1._wp,2._wp, 0._wp, 'FV: Two vanished cell sides')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fv_diff(v,0.,0.,0., 0.,1.,2., 0., 'FV: All vanished cells')
+    test_fv_diff(v,0._wp,0._wp,0._wp, 0._wp,1._wp,2._wp, 0._wp, 'FV: All vanished cells')
 
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,1.,1.,1., 0.,1.,2., 1., 'LSQ: Straight line on uniform grid')
+    test_fvlsq_slope(v,1._wp,1._wp,1._wp, 0._wp,1._wp,2._wp, 1._wp, 'LSQ: Straight line on uniform grid')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,1.,1.,0., 0.,1.,2., 1., 'LSQ: Vanished right cell')
+    test_fvlsq_slope(v,1._wp,1._wp,0._wp, 0._wp,1._wp,2._wp, 1._wp, 'LSQ: Vanished right cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,0.,1.,1., 0.,1.,2., 1., 'LSQ: Vanished left cell')
+    test_fvlsq_slope(v,0._wp,1._wp,1._wp, 0._wp,1._wp,2._wp, 1._wp, 'LSQ: Vanished left cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,1.,2.,4., 0.,3.,9., 2., 'LSQ: Stretched grid')
+    test_fvlsq_slope(v,1._wp,2._wp,4._wp, 0._wp,3._wp,9._wp, 2._wp, 'LSQ: Stretched grid')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,1.,0.,1., 0.,1.,2., 2., 'LSQ: Vanished middle cell')
+    test_fvlsq_slope(v,1._wp,0._wp,1._wp, 0._wp,1._wp,2._wp, 2._wp, 'LSQ: Vanished middle cell')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,0.,1.,0., 0.,1.,2., 0., 'LSQ: Vanished on both sides')
+    test_fvlsq_slope(v,0._wp,1._wp,0._wp, 0._wp,1._wp,2._wp, 0._wp, 'LSQ: Vanished on both sides')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,1.,0.,0., 0.,1.,2., 0., 'LSQ: Two vanished cell sides')
+    test_fvlsq_slope(v,1._wp,0._wp,0._wp, 0._wp,1._wp,2._wp, 0._wp, 'LSQ: Two vanished cell sides')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_fvlsq_slope(v,0.,0.,0., 0.,1.,2., 0., 'LSQ: All vanished cells')
+    test_fvlsq_slope(v,0._wp,0._wp,0._wp, 0._wp,1._wp,2._wp, 0._wp, 'LSQ: All vanished cells')
 
-  call interface_scalar(4, (/10.,10.,10.,10./), (/24.,18.,12.,6./), Tio, 1, h_neglect)
+  call interface_scalar(4, (/10._wp,10._wp,10._wp,10._wp/), (/24._wp,18._wp,12._wp,6._wp/), Tio, 1, h_neglect)
   !ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
   !  test_data1d(5, Tio, (/27.,21.,15.,9.,3./), 'Linear profile, interface temperatures')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_data1d(v,5, Tio, (/24.,22.5,15.,7.5,6./), 'Linear profile, linear interface temperatures')
-  call interface_scalar(4, (/10.,10.,10.,10./), (/24.,18.,12.,6./), Tio, 2, h_neglect)
+    test_data1d(v,5, Tio, (/24._wp,22.5_wp,15._wp,7.5_wp,6._wp/), 'Linear profile, linear interface temperatures')
+  call interface_scalar(4, (/10._wp,10._wp,10._wp,10._wp/), (/24._wp,18._wp,12._wp,6._wp/), Tio, 2, h_neglect)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_data1d(v,5, Tio, (/24.,22.,15.,8.,6./), 'Linear profile, PPM interface temperatures')
+    test_data1d(v,5, Tio, (/24._wp,22._wp,15._wp,8._wp,6._wp/), 'Linear profile, PPM interface temperatures')
 
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-1.0, 0.,  1.0, 1.0, 0.5, 'Check mid-point')
+    test_ifndp(v,-1.0_wp, 0._wp,  1.0_wp, 1.0_wp, 0.5_wp, 'Check mid-point')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v, 0.0, 0.,  1.0, 1.0, 0.0, 'Check bottom')
+    test_ifndp(v, 0.0_wp, 0._wp,  1.0_wp, 1.0_wp, 0.0_wp, 'Check bottom')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v, 0.1, 0.,  1.1, 1.0, 0.0, 'Check below')
+    test_ifndp(v, 0.1_wp, 0._wp,  1.1_wp, 1.0_wp, 0.0_wp, 'Check below')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-1.0, 0.,  0.0, 1.0, 1.0, 'Check top')
+    test_ifndp(v,-1.0_wp, 0._wp,  0.0_wp, 1.0_wp, 1.0_wp, 'Check top')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-1.0, 0., -0.1, 1.0, 1.0, 'Check above')
+    test_ifndp(v,-1.0_wp, 0._wp, -0.1_wp, 1.0_wp, 1.0_wp, 'Check above')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-1.0, 0.,  3.0, 1.0, 0.25, 'Check 1/4')
+    test_ifndp(v,-1.0_wp, 0._wp,  3.0_wp, 1.0_wp, 0.25_wp, 'Check 1/4')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-3.0, 0.,  1.0, 1.0, 0.75, 'Check 3/4')
+    test_ifndp(v,-3.0_wp, 0._wp,  1.0_wp, 1.0_wp, 0.75_wp, 'Check 3/4')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v, 1.0, 0.,  1.0, 1.0, 0.0, 'Check dRho=0 below')
+    test_ifndp(v, 1.0_wp, 0._wp,  1.0_wp, 1.0_wp, 0.0_wp, 'Check dRho=0 below')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-1.0, 0., -1.0, 1.0, 1.0, 'Check dRho=0 above')
+    test_ifndp(v,-1.0_wp, 0._wp, -1.0_wp, 1.0_wp, 1.0_wp, 'Check dRho=0 above')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v, 0.0, 0.,  0.0, 1.0, 0.5, 'Check dRho=0 mid')
+    test_ifndp(v, 0.0_wp, 0._wp,  0.0_wp, 1.0_wp, 0.5_wp, 'Check dRho=0 mid')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. &
-    test_ifndp(v,-2.0, .5,  5.0, 0.5, 0.5, 'Check dP=0')
+    test_ifndp(v,-2.0_wp, .5_wp,  5.0_wp, 0.5_wp, 0.5_wp, 'Check dP=0')
 
   ! Identical columns
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,2,2,3,3,3,3/), & ! KoL
                                    (/1,1,2,2,3,3,3,3/), & ! KoR
-                                   (/0.,0.,0.,0.,0.,0.,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.,1.,1./), & ! pR
-                                   (/0.,10.,0.,10.,0.,10.,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp,1._wp/), & ! pR
+                                   (/0._wp,10._wp,0._wp,10._wp,0._wp,10._wp,0._wp/), & ! hEff
                                    'Identical columns')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 8, &
-                                   absolute_positions(3, 8, (/0.,10.,20.,30./), KoL, PiLRo), &
-                                   (/0.,0.,10.,10.,20.,20.,30.,30./), '... left positions')
+                                   absolute_positions(3, 8, (/0._wp,10._wp,20._wp,30._wp/), KoL, PiLRo), &
+                                   (/0._wp,0._wp,10._wp,10._wp,20._wp,20._wp,30._wp,30._wp/), '... left positions')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 8, &
-                                   absolute_positions(3, 8, (/0.,10.,20.,30./), KoR, PiRLo), &
-                                   (/0.,0.,10.,10.,20.,20.,30.,30./), '... right positions')
-  call neutral_surface_flux(3, 2*3+2, 2, (/10.,10.,10./), (/10.,10.,10./), & ! nk, hL, hR
-                               (/20.,16.,12./), (/20.,16.,12./), & ! Tl, Tr
+                                   absolute_positions(3, 8, (/0._wp,10._wp,20._wp,30._wp/), KoR, PiRLo), &
+                                   (/0._wp,0._wp,10._wp,10._wp,20._wp,20._wp,30._wp,30._wp/), '... right positions')
+  call neutral_surface_flux(3, 2*3+2, 2, (/10._wp,10._wp,10._wp/), (/10._wp,10._wp,10._wp/), & ! nk, hL, hR
+                               (/20._wp,16._wp,12._wp/), (/20._wp,16._wp,12._wp/), & ! Tl, Tr
                                PiLRo, PiRLo, KoL, KoR, hEff, Flx, .true., h_neglect)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 7, Flx, &
-              (/0.,0.,0.,0.,0.,0.,0./), 'Identical columns, rho flux (=0)')
-  call neutral_surface_flux(3, 2*3+2, 2, (/10.,10.,10./), (/10.,10.,10./), & ! nk, hL, hR
-                               (/-1.,-1.,-1./), (/1.,1.,1./), & ! Sl, Sr
+              (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,0._wp/), 'Identical columns, rho flux (=0)')
+  call neutral_surface_flux(3, 2*3+2, 2, (/10._wp,10._wp,10._wp/), (/10._wp,10._wp,10._wp/), & ! nk, hL, hR
+                               (/-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp/), & ! Sl, Sr
                                PiLRo, PiRLo, KoL, KoR, hEff, Flx, .true., h_neglect)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 7, Flx, &
-              (/0.,20.,0.,20.,0.,20.,0./), 'Identical columns, S flux')
+              (/0._wp,20._wp,0._wp,20._wp,0._wp,20._wp,0._wp/), 'Identical columns, S flux')
 
   ! Right column slightly cooler than left
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/20.,16.,12.,8./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/20._wp,16._wp,12._wp,8._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,2,2,3,3,3,3/), & ! kL
                                    (/1,1,1,2,2,3,3,3/), & ! kR
-                                   (/0.,0.5,0.,0.5,0.,0.5,1.,1./), & ! pL
-                                   (/0.,0.,0.5,0.,0.5,0.,0.5,1./), & ! pR
-                                   (/0.,5.,5.,5.,5.,5.,0./), & ! hEff
+                                   (/0._wp,0.5_wp,0._wp,0.5_wp,0._wp,0.5_wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0.5_wp,0._wp,0.5_wp,0._wp,0.5_wp,1._wp/), & ! pR
+                                   (/0._wp,5._wp,5._wp,5._wp,5._wp,5._wp,0._wp/), & ! hEff
                                    'Right column slightly cooler')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 8, &
-                                   absolute_positions(3, 8, (/0.,10.,20.,30./), KoL, PiLRo), &
-                                   (/0.,5.,10.,15.,20.,25.,30.,30./), '... left positions')
+                                   absolute_positions(3, 8, (/0._wp,10._wp,20._wp,30._wp/), KoL, PiLRo), &
+                                   (/0._wp,5._wp,10._wp,15._wp,20._wp,25._wp,30._wp,30._wp/), '... left positions')
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or. test_data1d(v, 8, &
-                                   absolute_positions(3, 8, (/0.,10.,20.,30./), KoR, PiRLo), &
-                                   (/0.,0.,5.,10.,15.,20.,25.,30./), '... right positions')
+                                   absolute_positions(3, 8, (/0._wp,10._wp,20._wp,30._wp/), KoR, PiRLo), &
+                                   (/0._wp,0._wp,5._wp,10._wp,15._wp,20._wp,25._wp,30._wp/), '... right positions')
 
   ! Right column slightly warmer than left
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/24.,20.,16.,12./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/24._wp,20._wp,16._wp,12._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,1,2,2,3,3,3/), & ! kL
                                    (/1,1,2,2,3,3,3,3/), & ! kR
-                                   (/0.,0.,0.5,0.,0.5,0.,0.5,1./), & ! pL
-                                   (/0.,0.5,0.,0.5,0.,0.5,1.,1./), & ! pR
-                                   (/0.,5.,5.,5.,5.,5.,0./), & ! hEff
+                                   (/0._wp,0._wp,0.5_wp,0._wp,0.5_wp,0._wp,0.5_wp,1._wp/), & ! pL
+                                   (/0._wp,0.5_wp,0._wp,0.5_wp,0._wp,0.5_wp,1._wp,1._wp/), & ! pR
+                                   (/0._wp,5._wp,5._wp,5._wp,5._wp,5._wp,0._wp/), & ! hEff
                                    'Right column slightly warmer')
 
   ! Right column somewhat cooler than left
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/16.,12.,8.,4./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/16._wp,12._wp,8._wp,4._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,2,2,3,3,3,3,3/), & ! kL
                                    (/1,1,1,1,2,2,3,3/), & ! kR
-                                   (/0.,0.,0.5,0.,0.5,1.,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.5,0.,0.5,0.,1./), & ! pR
-                                   (/0.,0.,5.,5.,5.,0.,0./), & ! hEff
+                                   (/0._wp,0._wp,0.5_wp,0._wp,0.5_wp,1._wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0.5_wp,0._wp,0.5_wp,0._wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,5._wp,5._wp,5._wp,0._wp,0._wp/), & ! hEff
                                    'Right column somewhat cooler')
 
   ! Right column much colder than left with no overlap
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/9.,7.,5.,3./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/9._wp,7._wp,5._wp,3._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,2,3,3,3,3,3,3/), & ! kL
                                    (/1,1,1,1,1,2,3,3/), & ! kR
-                                   (/0.,0.,0.,1.,1.,1.,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.,0.,1./), & ! pR
-                                   (/0.,0.,0.,0.,0.,0.,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,1._wp,1._wp,1._wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,0._wp/), & ! hEff
                                    'Right column much cooler')
 
   ! Right column with mixed layer
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/22.,18.,14.,10./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/14.,14.,10.,2./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/22._wp,18._wp,14._wp,10._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/14._wp,14._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,2,3,3,3,3,3,3/), & ! kL
                                    (/1,1,1,1,2,3,3,3/), & ! kR
-                                   (/0.,0.,0.,0.,0.,1.,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.,0.,1./), & ! pR
-                                   (/0.,0.,0.,0.,10.,0.,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,1._wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,0._wp,0._wp,10._wp,0._wp,0._wp/), & ! hEff
                                    'Right column with mixed layer')
 
   ! Identical columns with mixed layer
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/14.,14.,10.,2./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/14.,14.,10.,2./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/14._wp,14._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/14._wp,14._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,2,2,3,3,3,3/), & ! kL
                                    (/1,1,2,2,3,3,3,3/), & ! kR
-                                   (/0.,0.,0.,0.,0.,0.,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.,1.,1./), & ! pR
-                                   (/0.,10.,0.,10.,0.,10.,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,1._wp,1._wp/), & ! pR
+                                   (/0._wp,10._wp,0._wp,10._wp,0._wp,10._wp,0._wp/), & ! hEff
                                    'Identical columns with mixed layer')
 
   ! Right column with unstable mixed layer
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/14.,14.,10.,2./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/10.,14.,12.,4./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/14._wp,14._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/10._wp,14._wp,12._wp,4._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,2,3,3,3,3,3,3/), & ! kL
                                    (/1,1,1,2,3,3,3,3/), & ! kR
-                                   (/0.,0.,0.,0.,0.,0.,.75,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.25,1.,1./), & ! pR
-                                   (/0.,0.,0.,0.,0.,7.5,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,.75_wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0.25_wp,1._wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,7.5_wp,0._wp/), & ! hEff
                                    'Right column with unstable mixed layer')
 
   ! Left column with unstable mixed layer
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/10.,14.,12.,4./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/14.,14.,10.,2./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/10._wp,14._wp,12._wp,4._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/14._wp,14._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,1,2,3,3,3,3/), & ! kL
                                    (/1,2,3,3,3,3,3,3/), & ! kR
-                                   (/0.,0.,0.,0.,0.,0.25,1.,1./), & ! pL
-                                   (/0.,0.,0.,0.,0.,0.,.75,1./), & ! pR
-                                   (/0.,0.,0.,0.,0.,7.5,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0.25_wp,1._wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,.75_wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,7.5_wp,0._wp/), & ! hEff
                                    'Left column with unstable mixed layer')
 
   ! Two unstable mixed layers
   call find_neutral_surface_positions_continuous(3, &
-             (/0.,10.,20.,30./), (/8.,12.,10.,2./), (/0.,0.,0.,0./), & ! Left positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Left dRdT and dRdS
-             (/0.,10.,20.,30./), (/10.,14.,12.,4./), (/0.,0.,0.,0./), & ! Right positions, T and S
-             (/-1.,-1.,-1.,-1./), (/1.,1.,1.,1./), &! Right dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/8._wp,12._wp,10._wp,2._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Left positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Left dRdT and dRdS
+             (/0._wp,10._wp,20._wp,30._wp/), (/10._wp,14._wp,12._wp,4._wp/), (/0._wp,0._wp,0._wp,0._wp/), & ! Right positions, T and S
+             (/-1._wp,-1._wp,-1._wp,-1._wp/), (/1._wp,1._wp,1._wp,1._wp/), &! Right dRdT and dRdS
              PiLRo, PiRLo, KoL, KoR, hEff)
   ndiff_unit_tests_continuous = ndiff_unit_tests_continuous .or.  test_nsp(v, 8, KoL, KoR, PiLRo, PiRLo, hEff, &
                                    (/1,1,1,1,2,3,3,3/), & ! kL
                                    (/1,2,3,3,3,3,3,3/), & ! kR
-                                   (/0.,0.,0.,0.,0.,0.,0.75,1./), & ! pL
-                                   (/0.,0.,0.,0.5,0.5,0.5,1.,1./), & ! pR
-                                   (/0.,0.,0.,0.,0.,6.,0./), & ! hEff
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,0._wp,0.75_wp,1._wp/), & ! pL
+                                   (/0._wp,0._wp,0._wp,0.5_wp,0.5_wp,0.5_wp,1._wp,1._wp/), & ! pR
+                                   (/0._wp,0._wp,0._wp,0._wp,0._wp,6._wp,0._wp/), & ! hEff
                                    'Two unstable mixed layers')
 
   if (.not. ndiff_unit_tests_continuous) write(stdout,*) 'Pass'
@@ -2860,20 +2862,20 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ! Local variables
   integer, parameter          :: nk = 3
   integer, parameter          :: ns = nk*4
-  real, dimension(nk)         :: Sl, Sr    ! Salinities [ppt] and temperatures [degC]
-  real, dimension(nk)         :: hl, hr    ! Thicknesses in pressure units [R L2 T-2 ~> Pa] or other
+  real(wp), dimension(nk)         :: Sl, Sr    ! Salinities [ppt] and temperatures [degC]
+  real(wp), dimension(nk)         :: hl, hr    ! Thicknesses in pressure units [R L2 T-2 ~> Pa] or other
                                            ! arbitrary units [arbitrary]
-  real, dimension(nk,2)       :: TiL, SiL, TiR, SiR ! Cell edge salinities [ppt] and temperatures [degC]
-  real, dimension(nk,2)       :: Pres_l, Pres_r ! Interface pressures [R L2 T-2 ~> Pa]
+  real(wp), dimension(nk,2)       :: TiL, SiL, TiR, SiR ! Cell edge salinities [ppt] and temperatures [degC]
+  real(wp), dimension(nk,2)       :: Pres_l, Pres_r ! Interface pressures [R L2 T-2 ~> Pa]
   integer, dimension(ns)      :: KoL, KoR  ! Index of the layer where the interface is found in the
                                            ! left and right columns
-  real, dimension(ns)         :: PoL, PoR  ! Fractional position of neutral surface within layer KoL
+  real(wp), dimension(ns)         :: PoL, PoR  ! Fractional position of neutral surface within layer KoL
                                            ! of the left column or KoR of the right column [nondim]
-  real, dimension(ns-1)       :: hEff      ! Effective thickness between two neutral surfaces
+  real(wp), dimension(ns-1)       :: hEff      ! Effective thickness between two neutral surfaces
                                            ! in the same units as hl and hr [arbitrary]
   type(neutral_diffusion_CS)  :: CS        !< Neutral diffusion control structure
-  real, dimension(nk,2)       :: ppoly_T_l, ppoly_T_r ! Linear reconstruction for T [degC]
-  real, dimension(nk,2)       :: ppoly_S_l, ppoly_S_r ! Linear reconstruction for S [ppt]
+  real(wp), dimension(nk,2)       :: ppoly_T_l, ppoly_T_r ! Linear reconstruction for T [degC]
+  real(wp), dimension(nk,2)       :: ppoly_S_l, ppoly_S_r ! Linear reconstruction for S [ppt]
   logical, dimension(nk)      :: stable_l, stable_r
   integer :: k
   logical :: v
@@ -2885,15 +2887,15 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ! Unit tests for find_neutral_surface_positions_discontinuous
   ! Salinity is 0 for all these tests
   allocate(CS%EOS)
-  call EOS_manual_init(CS%EOS, form_of_EOS=EOS_LINEAR, dRho_dT=-1., dRho_dS=0.)
-  Sl(:) = 0. ; Sr(:) = 0. ; ; SiL(:,:) = 0. ; SiR(:,:) = 0.
-  ppoly_T_l(:,:) = 0.; ppoly_T_r(:,:) = 0.
-  ppoly_S_l(:,:) = 0.; ppoly_S_r(:,:) = 0.
+  call EOS_manual_init(CS%EOS, form_of_EOS=EOS_LINEAR, dRho_dT=-1._wp, dRho_dS=0._wp)
+  Sl(:) = 0._wp ; Sr(:) = 0._wp ; ; SiL(:,:) = 0._wp ; SiR(:,:) = 0._wp
+  ppoly_T_l(:,:) = 0._wp; ppoly_T_r(:,:) = 0._wp
+  ppoly_S_l(:,:) = 0._wp; ppoly_S_r(:,:) = 0._wp
   ! Intialize any control structures needed for unit tests
-  CS%ref_pres = -1.
+  CS%ref_pres = -1._wp
 
-  hL = (/10.,10.,10./) ; hR = (/10.,10.,10./)
-  Pres_l(1,1) = 0. ; Pres_l(1,2) = hL(1) ; Pres_r(1,1) = 0. ; Pres_r(1,2) = hR(1)
+  hL = (/10._wp,10._wp,10._wp/) ; hR = (/10._wp,10._wp,10._wp/)
+  Pres_l(1,1) = 0._wp ; Pres_l(1,2) = hL(1) ; Pres_r(1,1) = 0._wp ; Pres_r(1,2) = hR(1)
   do k = 2,nk
     Pres_l(k,1) = Pres_l(k-1,2)
     Pres_l(k,2) = Pres_l(k,1) + hL(k)
@@ -2903,8 +2905,8 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   CS%delta_rho_form = 'mid_pressure'
   CS%neutral_pos_method = 1
 
-  TiL(1,:) = (/ 22.00, 18.00 /); TiL(2,:) = (/ 18.00, 14.00 /); TiL(3,:) = (/ 14.00, 10.00 /);
-  TiR(1,:) = (/ 22.00, 18.00 /); TiR(2,:) = (/ 18.00, 14.00 /); TiR(3,:) = (/ 14.00, 10.00 /);
+  TiL(1,:) = (/ 22.00_wp, 18.00_wp /); TiL(2,:) = (/ 18.00_wp, 14.00_wp /); TiL(3,:) = (/ 14.00_wp, 10.00_wp /);
+  TiR(1,:) = (/ 22.00_wp, 18.00_wp /); TiR(2,:) = (/ 18.00_wp, 14.00_wp /); TiR(3,:) = (/ 14.00_wp, 10.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2912,13 +2914,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.00, 1.00, 1.00, 0.00, 0.00, 1.00, 1.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 10.00, 0.00, 0.00, 0.00, 10.00, 0.00, 0.00, 0.00, 10.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 10.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp /),  & ! hEff
     'Identical Columns')
 
-  TiL(1,:) = (/ 22.00, 18.00 /); TiL(2,:) = (/ 18.00, 14.00 /); TiL(3,:) = (/ 14.00, 10.00 /);
-  TiR(1,:) = (/ 20.00, 16.00 /); TiR(2,:) = (/ 16.00, 12.00 /); TiR(3,:) = (/ 12.00, 8.00 /);
+  TiL(1,:) = (/ 22.00_wp, 18.00_wp /); TiL(2,:) = (/ 18.00_wp, 14.00_wp /); TiL(3,:) = (/ 14.00_wp, 10.00_wp /);
+  TiR(1,:) = (/ 20.00_wp, 16.00_wp /); TiR(2,:) = (/ 16.00_wp, 12.00_wp /); TiR(3,:) = (/ 12.00_wp, 8.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2926,13 +2928,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 1.00 /),  & ! PoR
-    (/ 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp /),  & ! hEff
     'Right slightly cooler')
 
-  TiL(1,:) = (/ 20.00, 16.00 /); TiL(2,:) = (/ 16.00, 12.00 /); TiL(3,:) = (/ 12.00, 8.00 /);
-  TiR(1,:) = (/ 22.00, 18.00 /); TiR(2,:) = (/ 18.00, 14.00 /); TiR(3,:) = (/ 14.00, 10.00 /);
+  TiL(1,:) = (/ 20.00_wp, 16.00_wp /); TiL(2,:) = (/ 16.00_wp, 12.00_wp /); TiL(3,:) = (/ 12.00_wp, 8.00_wp /);
+  TiR(1,:) = (/ 22.00_wp, 18.00_wp /); TiR(2,:) = (/ 18.00_wp, 14.00_wp /); TiR(3,:) = (/ 14.00_wp, 10.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2940,13 +2942,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 1.00 /),  & ! PoL
-    (/ 0.00, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 0.00, 0.50, 0.50, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00, 5.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.50_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp, 5.00_wp, 0.00_wp /),  & ! hEff
     'Left slightly cooler')
 
-  TiL(1,:) = (/ 22.00, 20.00 /); TiL(2,:) = (/ 18.00, 16.00 /); TiL(3,:) = (/ 14.00, 12.00 /);
-  TiR(1,:) = (/ 32.00, 24.00 /); TiR(2,:) = (/ 22.00, 14.00 /); TiR(3,:) = (/ 12.00, 4.00 /);
+  TiL(1,:) = (/ 22.00_wp, 20.00_wp /); TiL(2,:) = (/ 18.00_wp, 16.00_wp /); TiL(3,:) = (/ 14.00_wp, 12.00_wp /);
+  TiR(1,:) = (/ 32.00_wp, 24.00_wp /); TiR(2,:) = (/ 22.00_wp, 14.00_wp /); TiR(3,:) = (/ 12.00_wp, 4.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2954,13 +2956,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 0.00, 0.00, 1.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 1.00, 0.00, 0.00, 0.25, 0.50, 0.75, 1.00, 0.00, 0.00, 0.00, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 4.00, 0.00, 4.00, 0.00, 0.00, 0.00, 0.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.25_wp, 0.50_wp, 0.75_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 4.00_wp, 0.00_wp, 4.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp /),  & ! hEff
     'Right more strongly stratified')
 
-  TiL(1,:) = (/ 22.00, 18.00 /); TiL(2,:) = (/ 18.00, 14.00 /); TiL(3,:) = (/ 14.00, 10.00 /);
-  TiR(1,:) = (/ 14.00, 14.00 /); TiR(2,:) = (/ 14.00, 14.00 /); TiR(3,:) = (/ 12.00, 8.00 /);
+  TiL(1,:) = (/ 22.00_wp, 18.00_wp /); TiL(2,:) = (/ 18.00_wp, 14.00_wp /); TiL(3,:) = (/ 14.00_wp, 10.00_wp /);
+  TiR(1,:) = (/ 14.00_wp, 14.00_wp /); TiR(2,:) = (/ 14.00_wp, 14.00_wp /); TiR(3,:) = (/ 12.00_wp, 8.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2968,13 +2970,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 0.00, 0.50, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 1.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.50, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.50_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.50_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 5.00_wp, 0.00_wp /),  & ! hEff
     'Deep Mixed layer on the right')
 
-  TiL(1,:) = (/ 14.00, 14.00 /); TiL(2,:) = (/ 14.00, 12.00 /); TiL(3,:) = (/ 10.00, 8.00 /);
-  TiR(1,:) = (/ 14.00, 14.00 /); TiR(2,:) = (/ 14.00, 14.00 /); TiR(3,:) = (/ 14.00, 14.00 /);
+  TiL(1,:) = (/ 14.00_wp, 14.00_wp /); TiL(2,:) = (/ 14.00_wp, 12.00_wp /); TiL(3,:) = (/ 10.00_wp, 8.00_wp /);
+  TiR(1,:) = (/ 14.00_wp, 14.00_wp /); TiR(2,:) = (/ 14.00_wp, 14.00_wp /); TiR(3,:) = (/ 14.00_wp, 14.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2982,13 +2984,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 1.00, 1.00, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp /),  & ! hEff
     'Right unstratified column')
 
-  TiL(1,:) = (/ 14.00, 14.00 /); TiL(2,:) = (/ 14.00, 12.00 /); TiL(3,:) = (/ 10.00, 8.00 /);
-  TiR(1,:) = (/ 14.00, 14.00 /); TiR(2,:) = (/ 14.00, 14.00 /); TiR(3,:) = (/ 12.00, 4.00 /);
+  TiL(1,:) = (/ 14.00_wp, 14.00_wp /); TiL(2,:) = (/ 14.00_wp, 12.00_wp /); TiL(3,:) = (/ 10.00_wp, 8.00_wp /);
+  TiR(1,:) = (/ 14.00_wp, 14.00_wp /); TiR(2,:) = (/ 14.00_wp, 14.00_wp /); TiR(3,:) = (/ 12.00_wp, 4.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -2996,13 +2998,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.00, 1.00, 1.00, 0.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0.25, 0.50, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 4.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.25_wp, 0.50_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 4.00_wp, 0.00_wp /),  & ! hEff
     'Right unstratified column')
 
-  TiL(1,:) = (/ 14.00, 14.00 /); TiL(2,:) = (/ 14.00, 10.00 /); TiL(3,:) = (/ 10.00, 2.00 /);
-  TiR(1,:) = (/ 14.00, 14.00 /); TiR(2,:) = (/ 14.00, 10.00 /); TiR(3,:) = (/ 10.00, 2.00 /);
+  TiL(1,:) = (/ 14.00_wp, 14.00_wp /); TiL(2,:) = (/ 14.00_wp, 10.00_wp /); TiL(3,:) = (/ 10.00_wp, 2.00_wp /);
+  TiR(1,:) = (/ 14.00_wp, 14.00_wp /); TiR(2,:) = (/ 14.00_wp, 10.00_wp /); TiR(3,:) = (/ 10.00_wp, 2.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -3010,13 +3012,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 1.00, 1.00, 0.00, 0.00, 1.00, 1.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 1.00, 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 10.00, 0.00, 0.00, 0.00, 10.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp /),  & ! hEff
     'Identical columns with mixed layer')
 
-  TiL(1,:) = (/ 14.00, 12.00 /); TiL(2,:) = (/ 10.00, 10.00 /); TiL(3,:) = (/ 8.00, 2.00 /);
-  TiR(1,:) = (/ 14.00, 12.00 /); TiR(2,:) = (/ 12.00, 8.00 /); TiR(3,:) = (/ 8.00, 2.00 /);
+  TiL(1,:) = (/ 14.00_wp, 12.00_wp /); TiL(2,:) = (/ 10.00_wp, 10.00_wp /); TiL(3,:) = (/ 8.00_wp, 2.00_wp /);
+  TiR(1,:) = (/ 14.00_wp, 12.00_wp /); TiR(2,:) = (/ 12.00_wp, 8.00_wp /); TiR(3,:) = (/ 8.00_wp, 2.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -3024,13 +3026,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 0.00, 1.00, 1.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 1.00, 1.00, 0.00, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 10.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 10.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 10.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp /),  & ! hEff
     'Left interior unstratified')
 
-  TiL(1,:) = (/ 12.00, 12.00 /); TiL(2,:) = (/ 12.00, 10.00 /); TiL(3,:) = (/ 10.00, 6.00 /);
-  TiR(1,:) = (/ 12.00, 10.00 /); TiR(2,:) = (/ 10.00, 12.00 /); TiR(3,:) = (/ 8.00, 4.00 /);
+  TiL(1,:) = (/ 12.00_wp, 12.00_wp /); TiL(2,:) = (/ 12.00_wp, 10.00_wp /); TiL(3,:) = (/ 10.00_wp, 6.00_wp /);
+  TiR(1,:) = (/ 12.00_wp, 10.00_wp /); TiR(2,:) = (/ 10.00_wp, 12.00_wp /); TiR(3,:) = (/ 8.00_wp, 4.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -3038,13 +3040,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0.00, 0.50, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 0.00, 1.00, 1.00, 0.00, 1.00, 0.00, 0.00, 0.50, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 10.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.50_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.50_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 10.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 5.00_wp, 0.00_wp /),  & ! hEff
     'Left mixed layer, Right unstable interior')
 
-  TiL(1,:) = (/ 14.00, 14.00 /); TiL(2,:) = (/ 10.00, 10.00 /); TiL(3,:) = (/ 8.00, 6.00 /);
-  TiR(1,:) = (/ 10.00, 14.00 /); TiR(2,:) = (/ 16.00, 16.00 /); TiR(3,:) = (/ 12.00, 4.00 /);
+  TiL(1,:) = (/ 14.00_wp, 14.00_wp /); TiL(2,:) = (/ 10.00_wp, 10.00_wp /); TiL(3,:) = (/ 8.00_wp, 6.00_wp /);
+  TiR(1,:) = (/ 10.00_wp, 14.00_wp /); TiR(2,:) = (/ 16.00_wp, 16.00_wp /); TiR(3,:) = (/ 12.00_wp, 4.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -3052,13 +3054,13 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 0.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.00, 0.00, 1.00, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 0.00, 0.50, 0.75, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 4.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.50_wp, 0.75_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 4.00_wp, 0.00_wp /),  & ! hEff
     'Left thick mixed layer, Right unstable mixed')
 
-  TiL(1,:) = (/ 8.00, 12.00 /); TiL(2,:) = (/ 12.00, 10.00 /); TiL(3,:) = (/ 8.00, 4.00 /);
-  TiR(1,:) = (/ 10.00, 14.00 /); TiR(2,:) = (/ 14.00, 12.00 /); TiR(3,:) = (/ 10.00, 6.00 /);
+  TiL(1,:) = (/ 8.00_wp, 12.00_wp /); TiL(2,:) = (/ 12.00_wp, 10.00_wp /); TiL(3,:) = (/ 8.00_wp, 4.00_wp /);
+  TiR(1,:) = (/ 10.00_wp, 14.00_wp /); TiR(2,:) = (/ 14.00_wp, 12.00_wp /); TiR(3,:) = (/ 10.00_wp, 6.00_wp /);
   call mark_unstable_cells( CS, nk, Til, Sil, Pres_l, stable_l )
   call mark_unstable_cells( CS, nk, Tir, Sir, Pres_r, stable_r )
   call find_neutral_surface_positions_discontinuous(CS, nk, Pres_l, hL, TiL, SiL, ppoly_T_l, ppoly_S_l, stable_l, &
@@ -3066,42 +3068,42 @@ logical function ndiff_unit_tests_discontinuous(verbose)
   ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or.  test_nsp(v, 12, KoL, KoR, PoL, PoR, hEff, &
     (/ 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3 /),  & ! KoL
     (/ 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3 /),  & ! KoR
-    (/ 0.00, 1.00, 1.00, 1.00, 0.00, 0.00, 0.00, 1.00, 0.00, 0.00, 0.50, 1.00 /),  & ! PoL
-    (/ 0.00, 0.00, 0.00, 1.00, 0.00, 1.00, 1.00, 0.00, 0.00, 0.50, 1.00, 1.00 /),  & ! PoR
-    (/ 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5.00, 0.00 /),  & ! hEff
+    (/ 0.00_wp, 1.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.50_wp, 1.00_wp /),  & ! PoL
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 1.00_wp, 0.00_wp, 1.00_wp, 1.00_wp, 0.00_wp, 0.00_wp, 0.50_wp, 1.00_wp, 1.00_wp /),  & ! PoR
+    (/ 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 0.00_wp, 5.00_wp, 0.00_wp /),  & ! hEff
     'Unstable mixed layers, left cooler')
 
-  call EOS_manual_init(CS%EOS, form_of_EOS = EOS_LINEAR, dRho_dT = -1., dRho_dS = 2.)
+  call EOS_manual_init(CS%EOS, form_of_EOS = EOS_LINEAR, dRho_dT = -1._wp, dRho_dS = 2._wp)
   ! Tests for linearized version of searching the layer for neutral surface position
   ! EOS linear in T, uniform alpha
   CS%max_iter = 10
   ! Unit tests require explicit initialization of tolerance
-  CS%Drho_tol = 0.
-  CS%x_tol = 0.
-  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5, &
-             find_neutral_pos_linear(CS, 0., 10., 35., -0.2, 0., &
-                                     -0.2, 0., -0.2, 0.,                     &
-                                     (/12.,-4./), (/34.,0./)), "Temp Uniform Linearized Alpha/Beta"))
+  CS%Drho_tol = 0._wp
+  CS%x_tol = 0._wp
+  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5_wp, &
+             find_neutral_pos_linear(CS, 0._wp, 10._wp, 35._wp, -0.2_wp, 0._wp, &
+                                     -0.2_wp, 0._wp, -0.2_wp, 0._wp,                     &
+                                     (/12._wp,-4._wp/), (/34._wp,0._wp/)), "Temp Uniform Linearized Alpha/Beta"))
   ! EOS linear in S, uniform beta
-  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5, &
-             find_neutral_pos_linear(CS, 0., 10., 35., 0., 0.8, &
-                                     0., 0.8, 0., 0.8,                &
-                                    (/12.,0./), (/34.,2./)), "Salt Uniform Linearized Alpha/Beta"))
+  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5_wp, &
+             find_neutral_pos_linear(CS, 0._wp, 10._wp, 35._wp, 0._wp, 0.8_wp, &
+                                     0._wp, 0.8_wp, 0._wp, 0.8_wp,                &
+                                    (/12._wp,0._wp/), (/34._wp,2._wp/)), "Salt Uniform Linearized Alpha/Beta"))
   ! EOS linear in T/S, uniform alpha/beta
-  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5,   &
-             find_neutral_pos_linear(CS, 0., 10., 35., -0.5, 0.5,                &
-                                     -0.5, 0.5, -0.5, 0.5,  &
-                                     (/12.,-4./), (/34.,2./)), "Temp/salt Uniform Linearized Alpha/Beta"))
+  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5_wp,   &
+             find_neutral_pos_linear(CS, 0._wp, 10._wp, 35._wp, -0.5_wp, 0.5_wp,                &
+                                     -0.5_wp, 0.5_wp, -0.5_wp, 0.5_wp,  &
+                                     (/12._wp,-4._wp/), (/34._wp,2._wp/)), "Temp/salt Uniform Linearized Alpha/Beta"))
   ! EOS linear in T, insensitive to So
-  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5, &
-             find_neutral_pos_linear(CS, 0., 10., 35., -0.2, 0., &
-                                     -0.4, 0., -0.6, 0.,  &
-                                     (/12.,-4./), (/34.,0./)), "Temp stratified Linearized Alpha/Beta"))
+  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5_wp, &
+             find_neutral_pos_linear(CS, 0._wp, 10._wp, 35._wp, -0.2_wp, 0._wp, &
+                                     -0.4_wp, 0._wp, -0.6_wp, 0._wp,  &
+                                     (/12._wp,-4._wp/), (/34._wp,0._wp/)), "Temp stratified Linearized Alpha/Beta"))
   ! EOS linear in S, insensitive to T
-  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5, &
-             find_neutral_pos_linear(CS, 0., 10., 35., 0., 0.8,  &
-                                      0., 1.0,  0., 0.5,  &
-                                     (/12.,0./), (/34.,2./)), "Salt stratified Linearized Alpha/Beta"))
+  ndiff_unit_tests_discontinuous = ndiff_unit_tests_discontinuous .or. (test_rnp(0.5_wp, &
+             find_neutral_pos_linear(CS, 0._wp, 10._wp, 35._wp, 0._wp, 0.8_wp,  &
+                                      0._wp, 1.0_wp,  0._wp, 0.5_wp,  &
+                                     (/12._wp,0._wp/), (/34._wp,2._wp/)), "Salt stratified Linearized Alpha/Beta"))
   if (.not. ndiff_unit_tests_discontinuous) write(stdout,*) 'Pass'
 
 end function ndiff_unit_tests_discontinuous
@@ -3109,18 +3111,18 @@ end function ndiff_unit_tests_discontinuous
 !> Returns true if a test of fv_diff() fails, and conditionally writes results to stream
 logical function test_fv_diff(verbose, hkm1, hk, hkp1, Skm1, Sk, Skp1, Ptrue, title)
   logical,          intent(in) :: verbose !< If true, write results to stdout
-  real,             intent(in) :: hkm1  !< Left cell width [nondim]
-  real,             intent(in) :: hk    !< Center cell width [nondim]
-  real,             intent(in) :: hkp1  !< Right cell width [nondim]
-  real,             intent(in) :: Skm1  !< Left cell average value in arbitrary units [arbitrary]
-  real,             intent(in) :: Sk    !< Center cell average value in arbitrary units [arbitrary]
-  real,             intent(in) :: Skp1  !< Right cell average value in arbitrary units [arbitrary]
-  real,             intent(in) :: Ptrue !< True answer in arbitrary units [arbitrary]
+  real(wp),             intent(in) :: hkm1  !< Left cell width [nondim]
+  real(wp),             intent(in) :: hk    !< Center cell width [nondim]
+  real(wp),             intent(in) :: hkp1  !< Right cell width [nondim]
+  real(wp),             intent(in) :: Skm1  !< Left cell average value in arbitrary units [arbitrary]
+  real(wp),             intent(in) :: Sk    !< Center cell average value in arbitrary units [arbitrary]
+  real(wp),             intent(in) :: Skp1  !< Right cell average value in arbitrary units [arbitrary]
+  real(wp),             intent(in) :: Ptrue !< True answer in arbitrary units [arbitrary]
   character(len=*), intent(in) :: title !< Title for messages
 
   ! Local variables
   integer :: stdunit
-  real :: Pret ! Returned normalized gradient in arbitrary units [arbitrary]
+  real(wp) :: Pret ! Returned normalized gradient in arbitrary units [arbitrary]
 
   Pret = fv_diff(hkm1, hk, hkp1, Skm1, Sk, Skp1)
   test_fv_diff = (Pret /= Ptrue)
@@ -3141,18 +3143,18 @@ end function test_fv_diff
 !> Returns true if a test of fvlsq_slope() fails, and conditionally writes results to stream
 logical function test_fvlsq_slope(verbose, hkm1, hk, hkp1, Skm1, Sk, Skp1, Ptrue, title)
   logical,          intent(in) :: verbose !< If true, write results to stdout
-  real,             intent(in) :: hkm1  !< Left cell width in arbitrary units [B ~> b]
-  real,             intent(in) :: hk    !< Center cell width in arbitrary units [B ~> b]
-  real,             intent(in) :: hkp1  !< Right cell width in arbitrary units [B ~> b]
-  real,             intent(in) :: Skm1  !< Left cell average value in arbitrary units [A ~> a]
-  real,             intent(in) :: Sk    !< Center cell average value in arbitrary units [A ~> a]
-  real,             intent(in) :: Skp1  !< Right cell average value in arbitrary units [A ~> a]
-  real,             intent(in) :: Ptrue !< True answer in arbitrary units [A B-1 ~> a b-1]
+  real(wp),             intent(in) :: hkm1  !< Left cell width in arbitrary units [B ~> b]
+  real(wp),             intent(in) :: hk    !< Center cell width in arbitrary units [B ~> b]
+  real(wp),             intent(in) :: hkp1  !< Right cell width in arbitrary units [B ~> b]
+  real(wp),             intent(in) :: Skm1  !< Left cell average value in arbitrary units [A ~> a]
+  real(wp),             intent(in) :: Sk    !< Center cell average value in arbitrary units [A ~> a]
+  real(wp),             intent(in) :: Skp1  !< Right cell average value in arbitrary units [A ~> a]
+  real(wp),             intent(in) :: Ptrue !< True answer in arbitrary units [A B-1 ~> a b-1]
   character(len=*), intent(in) :: title !< Title for messages
 
   ! Local variables
   integer :: stdunit
-  real :: Pret  ! Returned slope value [A B-1 ~> a b-1]
+  real(wp) :: Pret  ! Returned slope value [A B-1 ~> a b-1]
 
   Pret = fvlsq_slope(hkm1, hk, hkp1, Skm1, Sk, Skp1)
   test_fvlsq_slope = (Pret /= Ptrue)
@@ -3173,16 +3175,16 @@ end function test_fvlsq_slope
 !> Returns true if a test of interpolate_for_nondim_position() fails, and conditionally writes results to stream
 logical function test_ifndp(verbose, rhoNeg, Pneg, rhoPos, Ppos, Ptrue, title)
   logical,          intent(in) :: verbose !< If true, write results to stdout
-  real,             intent(in) :: rhoNeg !< Lighter density [R ~> kg m-3]
-  real,             intent(in) :: Pneg   !< Interface position of lighter density [nondim]
-  real,             intent(in) :: rhoPos !< Heavier density [R ~> kg m-3]
-  real,             intent(in) :: Ppos   !< Interface position of heavier density [nondim]
-  real,             intent(in) :: Ptrue  !< True answer [nondim]
+  real(wp),             intent(in) :: rhoNeg !< Lighter density [R ~> kg m-3]
+  real(wp),             intent(in) :: Pneg   !< Interface position of lighter density [nondim]
+  real(wp),             intent(in) :: rhoPos !< Heavier density [R ~> kg m-3]
+  real(wp),             intent(in) :: Ppos   !< Interface position of heavier density [nondim]
+  real(wp),             intent(in) :: Ptrue  !< True answer [nondim]
   character(len=*), intent(in) :: title  !< Title for messages
 
   ! Local variables
   integer :: stdunit
-  real :: Pret ! Interpolated fractional position [nondim]
+  real(wp) :: Pret ! Interpolated fractional position [nondim]
 
   Pret = interpolate_for_nondim_position(rhoNeg, Pneg, rhoPos, Ppos)
   test_ifndp = (Pret /= Ptrue)
@@ -3206,8 +3208,8 @@ end function test_ifndp
 logical function test_data1d(verbose, nk, Po, Ptrue, title)
   logical,             intent(in) :: verbose !< If true, write results to stdout
   integer,             intent(in) :: nk    !< Number of layers
-  real, dimension(nk), intent(in) :: Po    !< Calculated answer [arbitrary]
-  real, dimension(nk), intent(in) :: Ptrue !< True answer [arbitrary]
+  real(wp), dimension(nk), intent(in) :: Po    !< Calculated answer [arbitrary]
+  real(wp), dimension(nk), intent(in) :: Ptrue !< True answer [arbitrary]
   character(len=*),    intent(in) :: title !< Title for messages
 
   ! Local variables
@@ -3277,16 +3279,16 @@ logical function test_nsp(verbose, ns, KoL, KoR, pL, pR, hEff, KoL0, KoR0, pL0, 
   integer,                intent(in) :: ns    !< Number of surfaces
   integer, dimension(ns), intent(in) :: KoL   !< Index of first left interface above neutral surface
   integer, dimension(ns), intent(in) :: KoR   !< Index of first right interface above neutral surface
-  real, dimension(ns),    intent(in) :: pL    !< Fractional position of neutral surface within layer
+  real(wp), dimension(ns),    intent(in) :: pL    !< Fractional position of neutral surface within layer
                                               !! KoL of left column [nondim]
-  real, dimension(ns),    intent(in) :: pR    !< Fractional position of neutral surface within layer
+  real(wp), dimension(ns),    intent(in) :: pR    !< Fractional position of neutral surface within layer
                                               !! KoR of right column [nondim]
-  real, dimension(ns-1),  intent(in) :: hEff  !< Effective thickness between two neutral surfaces [R L2 T-2 ~> Pa]
+  real(wp), dimension(ns-1),  intent(in) :: hEff  !< Effective thickness between two neutral surfaces [R L2 T-2 ~> Pa]
   integer, dimension(ns), intent(in) :: KoL0  !< Correct value for KoL
   integer, dimension(ns), intent(in) :: KoR0  !< Correct value for KoR
-  real, dimension(ns),    intent(in) :: pL0   !< Correct value for pL [nondim]
-  real, dimension(ns),    intent(in) :: pR0   !< Correct value for pR [nondim]
-  real, dimension(ns-1),  intent(in) :: hEff0 !< Correct value for hEff [R L2 T-2 ~> Pa]
+  real(wp), dimension(ns),    intent(in) :: pL0   !< Correct value for pL [nondim]
+  real(wp), dimension(ns),    intent(in) :: pR0   !< Correct value for pR [nondim]
+  real(wp), dimension(ns-1),  intent(in) :: hEff0 !< Correct value for hEff [R L2 T-2 ~> Pa]
   character(len=*),       intent(in) :: title !< Title for messages
 
   ! Local variables
@@ -3331,12 +3333,12 @@ end function test_nsp
 logical function compare_nsp_row(KoL, KoR, pL, pR, KoL0, KoR0, pL0, pR0)
   integer,  intent(in) :: KoL   !< Index of first left interface above neutral surface
   integer,  intent(in) :: KoR   !< Index of first right interface above neutral surface
-  real,     intent(in) :: pL    !< Fractional position of neutral surface within layer KoL of left column [nondim]
-  real,     intent(in) :: pR    !< Fractional position of neutral surface within layer KoR of right column [nondim]
+  real(wp),     intent(in) :: pL    !< Fractional position of neutral surface within layer KoL of left column [nondim]
+  real(wp),     intent(in) :: pR    !< Fractional position of neutral surface within layer KoR of right column [nondim]
   integer,  intent(in) :: KoL0  !< Correct value for KoL
   integer,  intent(in) :: KoR0  !< Correct value for KoR
-  real,     intent(in) :: pL0   !< Correct value for pL [nondim]
-  real,     intent(in) :: pR0   !< Correct value for pR [nondim]
+  real(wp),     intent(in) :: pL0   !< Correct value for pL [nondim]
+  real(wp),     intent(in) :: pR0   !< Correct value for pR [nondim]
 
   compare_nsp_row = .false.
   if (KoL /= KoL0) compare_nsp_row = .true.
@@ -3347,8 +3349,8 @@ end function compare_nsp_row
 
 !> Compares output position from refine_nondim_position with an expected value
 logical function test_rnp(expected_pos, test_pos, title)
-  real,             intent(in) :: expected_pos !< The expected position [arbitrary]
-  real,             intent(in) :: test_pos !< The position returned by the code [arbitrary]
+  real(wp),             intent(in) :: expected_pos !< The expected position [arbitrary]
+  real(wp),             intent(in) :: test_pos !< The position returned by the code [arbitrary]
   character(len=*), intent(in) :: title    !< A label for this test
   ! Local variables
   integer :: stdunit

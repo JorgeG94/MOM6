@@ -3,6 +3,7 @@ module polynomial_functions
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public :: evaluation_polynomial, integration_polynomial, first_derivative_polynomial
@@ -16,17 +17,17 @@ contains
 !! where C refers to the array 'coeff'.
 !! The number of coefficients is given by ncoef and x
 !! is the coordinate where the polynomial is to be evaluated.
-real function evaluation_polynomial( coeff, ncoef, x )
-  real, dimension(:), intent(in) :: coeff !< The coefficients of the polynomial, in units that
+real(wp) function evaluation_polynomial( coeff, ncoef, x )
+  real(wp), dimension(:), intent(in) :: coeff !< The coefficients of the polynomial, in units that
                                           !! vary with the index k as [A H^(k-1)]
   integer,            intent(in) :: ncoef !< The number of polynomial coefficients
-  real,               intent(in) :: x     !< The position at which to evaluate the polynomial
+  real(wp),               intent(in) :: x     !< The position at which to evaluate the polynomial
                                           !! in arbitrary thickness units [H]
   ! Local variables
   integer :: k
-  real    :: f    ! value of polynomial at x in arbitrary units [A]
+  real(wp)    :: f    ! value of polynomial at x in arbitrary units [A]
 
-  f = 0.0
+  f = 0.0_wp
   do k = 1,ncoef
     f = f + coeff(k) * ( x**(k-1) )
   enddo
@@ -43,19 +44,19 @@ end function evaluation_polynomial
 !! where C refers to the array 'coeff'.
 !! The number of coefficients is given by ncoef and x
 !! is the coordinate where the polynomial's derivative is to be evaluated.
-real function first_derivative_polynomial( coeff, ncoef, x )
-  real, dimension(:), intent(in) :: coeff !< The coefficients of the polynomial, in units that
+real(wp) function first_derivative_polynomial( coeff, ncoef, x )
+  real(wp), dimension(:), intent(in) :: coeff !< The coefficients of the polynomial, in units that
                                           !! vary with the index k as [A H^(k-1)]
   integer,            intent(in) :: ncoef !< The number of polynomial coefficients
-  real, intent(in)               :: x     !< The position at which to evaluate the derivative
+  real(wp), intent(in)               :: x     !< The position at which to evaluate the derivative
                                           !! in arbitrary thickness units [H]
   ! Local variables
   integer                               :: k
-  real                                  :: f    ! value of the derivative at x in [A H-1]
+  real(wp)                                  :: f    ! value of the derivative at x in [A H-1]
 
-  f = 0.0
+  f = 0.0_wp
   do k = 2,ncoef
-    f = f + REAL(k-1)*coeff(k) * ( x**(k-2) )
+    f = f + REAL(k-1, wp)*coeff(k) * ( x**(k-2) )
   enddo
 
   first_derivative_polynomial = f
@@ -65,22 +66,22 @@ end function first_derivative_polynomial
 !> Exact integration of polynomial of degree npoly in arbitrary units of [A H]
 !!
 !! The array of coefficients (Coeff) must be of size npoly+1.
-real function integration_polynomial( xi0, xi1, Coeff, npoly )
-  real,               intent(in) :: xi0   !< The lower bound of the integral in arbitrary
+real(wp) function integration_polynomial( xi0, xi1, Coeff, npoly )
+  real(wp),               intent(in) :: xi0   !< The lower bound of the integral in arbitrary
                                           !! thickness units [H]
-  real,               intent(in) :: xi1   !< The upper bound of the integral in arbitrary
+  real(wp),               intent(in) :: xi1   !< The upper bound of the integral in arbitrary
                                           !! thickness units [H]
-  real, dimension(:), intent(in) :: Coeff !< The coefficients of the polynomial, in units that
+  real(wp), dimension(:), intent(in) :: Coeff !< The coefficients of the polynomial, in units that
                                           !! vary with the index k as [A H^(k-1)]
   integer,            intent(in) :: npoly !< The degree of the polynomial
   ! Local variables
   integer :: k
-  real    :: integral  ! The integral of the polynomial over the specified range in [A H]
+  real(wp)    :: integral  ! The integral of the polynomial over the specified range in [A H]
 
-  integral = 0.0
+  integral = 0.0_wp
 
   do k = 1,npoly+1
-    integral = integral + Coeff(k) * (xi1**k - xi0**k) / real(k)
+    integral = integral + Coeff(k) * (xi1**k - xi0**k) / real(k, wp)
   enddo
 !
 !One non-answer-changing way of unrolling the above is:

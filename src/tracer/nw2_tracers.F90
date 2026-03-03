@@ -19,6 +19,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : surface, thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -33,8 +35,8 @@ type, public :: nw2_tracers_CS ; private
   integer :: ntr = 0  !< The number of tracers that are actually used.
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:) => NULL()   !< The array of tracers used in this package, in [conc] (g m-3)?
-  real, allocatable , dimension(:) :: restore_rate !< The rate at which the tracer is damped toward
+  real(wp), pointer :: tr(:,:,:,:) => NULL()   !< The array of tracers used in this package, in [conc] (g m-3)?
+  real(wp), allocatable , dimension(:) :: restore_rate !< The rate at which the tracer is damped toward
                                              !! its target profile [T-1 ~> s-1]
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
                                              !! regulate the timing of diagnostic output.
@@ -60,10 +62,10 @@ logical function register_nw2_tracers(HI, GV, US, param_file, CS, tr_Reg, restar
 # include "version_variable.h"
   character(len=40)  :: mdl = "nw2_tracers" ! This module's name.
   character(len=8)  :: var_name ! The variable's name.
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [conc]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [conc]
   integer :: isd, ied, jsd, jed, nz, m, ig
   integer :: n_groups ! Number of groups of three tracers (i.e. # tracers/3)
-  real, allocatable, dimension(:) :: timescale_in_days ! Damping timescale [days]
+  real(wp), allocatable, dimension(:) :: timescale_in_days ! Damping timescale [days]
   type(vardesc) :: tr_desc ! Descriptions and metadata for the tracers
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nz = GV%ke
 
@@ -81,13 +83,13 @@ logical function register_nw2_tracers(HI, GV, US, param_file, CS, tr_Reg, restar
                  "group is restored with an independent restoration rate.", &
                  default=3)
   allocate(timescale_in_days(n_groups))
-  timescale_in_days = (/365., 730., 1460./)
+  timescale_in_days = (/365._wp, 730._wp, 1460._wp/)
   call get_param(param_file, mdl, "NW2_TRACER_RESTORE_TIMESCALE", timescale_in_days, &
                  "A list of timescales, one for each tracer group.", &
                  units="days")
 
   CS%ntr = 3 * n_groups
-  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0)
+  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0_wp)
   allocate(CS%restore_rate(CS%ntr))
 
   do m=1,CS%ntr
@@ -100,7 +102,7 @@ logical function register_nw2_tracers(HI, GV, US, param_file, CS, tr_Reg, restar
     call register_tracer(tr_ptr, tr_Reg, param_file, HI, GV, tr_desc=tr_desc, &
                          registry_diags=.true., restart_CS=restart_CS, mandatory=.false.)
     ig = int( (m+2)/3 ) ! maps (1,2,3)->1, (4,5,6)->2, ...
-    CS%restore_rate(m) = 1.0 / ( timescale_in_days(ig) * 86400.0*US%s_to_T )
+    CS%restore_rate(m) = 1.0_wp / ( timescale_in_days(ig) * 86400.0_wp*US%s_to_T )
   enddo
 
   CS%tr_Reg => tr_Reg
@@ -116,7 +118,7 @@ subroutine initialize_nw2_tracers(restart, day, G, GV, US, h, tv, diag, CS)
   type(ocean_grid_type),              intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),              intent(in) :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),              intent(in) :: tv   !< A structure pointing to various
                                                          !! thermodynamic variables
@@ -125,9 +127,9 @@ subroutine initialize_nw2_tracers(restart, day, G, GV, US, h, tv, diag, CS)
   type(nw2_tracers_CS),               pointer    :: CS !< The control structure returned by a previous
                                                        !! call to register_nw2_tracer.
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Interface heights [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz  ! Vertical extent of layers [Z ~> m]
-  real :: rscl ! z* scaling factor [nondim]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Interface heights [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz  ! Vertical extent of layers [Z ~> m]
+  real(wp) :: rscl ! z* scaling factor [nondim]
   character(len=8)  :: var_name ! The variable's name.
   integer :: i, j, k, m
 
@@ -149,7 +151,7 @@ subroutine initialize_nw2_tracers(restart, day, G, GV, US, h, tv, diag, CS)
     enddo ; enddo ; enddo
     ! Re-calculate for interface positions in z*-space (m)
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      if (G%bathyT(i,j)>0.) then
+      if (G%bathyT(i,j)>0._wp) then
         rscl = G%bathyT(i,j) / ( eta(i,j,1) + G%bathyT(i,j) )
         do K=GV%ke, 1, -1
           eta(i,j,K) = eta(i,j,K+1) + G%mask2dT(i,j) * dz(i,j,k) * rscl
@@ -180,28 +182,28 @@ subroutine nw2_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US
               evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea   !< an array to which the amount of fluid entrained
                                               !! from the layer above during this call will be
                                               !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb   !< an array to which the amount of fluid entrained
                                               !! from the layer below during this call will be
                                               !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
   type(thermo_var_ptrs),   intent(in) :: tv   !< A structure pointing to various thermodynamic variables
   type(nw2_tracers_CS),    pointer    :: CS   !< The control structure returned by a previous
                                               !! call to register_nw2_tracer.
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                               !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                               !! fluxes can be applied [H ~> m or kg m-2]
 !   This subroutine applies diapycnal diffusion and any other column
 ! tracer physics or chemistry to the tracers from this file.
@@ -210,13 +212,13 @@ subroutine nw2_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US
 ! The arguments to this subroutine are redundant in that
 !     h_new(k) = h_old(k) + ea(k) - eb(k-1) + eb(k) - ea(k+1)
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Interface heights [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz  ! Vertical extent of layers [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1) :: eta ! Interface heights [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz  ! Vertical extent of layers [Z ~> m]
   integer :: i, j, k, m
-  real :: dt_x_rate ! dt * restoring rate [nondim]
-  real :: rscl ! z* scaling factor [nondim]
-  real :: target_value ! tracer target value for damping [conc]
+  real(wp) :: dt_x_rate ! dt * restoring rate [nondim]
+  real(wp) :: rscl ! z* scaling factor [nondim]
+  real(wp) :: target_value ! tracer target value for damping [conc]
 
 ! if (.not.associated(CS)) return
 
@@ -248,7 +250,7 @@ subroutine nw2_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US
     enddo ; enddo ; enddo
     ! Re-calculate for interface positions in z*-space [Z ~> m]
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      if (G%bathyT(i,j)>0.) then
+      if (G%bathyT(i,j)>0._wp) then
         rscl = G%bathyT(i,j) / ( eta(i,j,1) + G%bathyT(i,j) )
         do K=GV%ke, 1, -1
           eta(i,j,K) = eta(i,j,K+1) + G%mask2dT(i,j) * dz(i,j,k) * rscl
@@ -272,25 +274,25 @@ end subroutine nw2_tracer_column_physics
 
 !> The target value of a NeverWorld2 tracer label m [conc] at non-dimensional
 !! position x=lon/Lx, y=lat/Ly, z=eta/H
-real function nw2_tracer_dist(m, G, GV, eta, i, j, k)
+real(wp) function nw2_tracer_dist(m, G, GV, eta, i, j, k)
   integer, intent(in) :: m !< Indicates the NW2 tracer
   type(ocean_grid_type),   intent(in) :: G   !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV  !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), &
                            intent(in) :: eta !< Interface position [Z ~> m]
   integer, intent(in) :: i !< Cell index i
   integer, intent(in) :: j !< Cell index j
   integer, intent(in) :: k !< Layer index k
   ! Local variables
-  real :: pi ! 3.1415... [nondim]
-  real :: x, y, z ! non-dimensional relative positions [nondim]
-  pi = 2.*acos(0.)
+  real(wp) :: pi ! 3.1415... [nondim]
+  real(wp) :: x, y, z ! non-dimensional relative positions [nondim]
+  pi = 2._wp*acos(0._wp)
   x = ( G%geolonT(i,j) - G%west_lon ) / G%len_lon ! 0 ... 1
   y = -G%geolatT(i,j) / G%south_lat ! -1 ... 1
-  z = - 0.5 * ( eta(i,j,K) + eta(i,j,K+1) ) / GV%max_depth ! 0 ... 1
+  z = - 0.5_wp * ( eta(i,j,K) + eta(i,j,K+1) ) / GV%max_depth ! 0 ... 1
   select case ( mod(m-1,3) )
   case (0) ! sin(2 pi x/L)
-    nw2_tracer_dist = sin( 2.0 * pi * x )
+    nw2_tracer_dist = sin( 2.0_wp * pi * x )
   case (1) ! y/L
     nw2_tracer_dist = y
   case (2) ! -z/L

@@ -25,6 +25,8 @@ use MOM_coms,                only : Get_PElist
 use MOM_EOS,                 only : calculate_density, EOS_domain
 use stochastic_physics,      only : init_stochastic_physics_ocn, run_stochastic_physics_ocn
 
+use MOM_datatypes, only : wp
+
 #include <MOM_memory.h>
 
 implicit none ; private
@@ -49,25 +51,25 @@ type, public:: stochastic_CS
   integer :: id_epbl2_wts   = -1 !< Diagnostic id for epbl dissipation perturbation
   integer :: id_skeb_taperu = -1 !< Diagnostic id for u taper of SKEB velocity increment
   integer :: id_skeb_taperv = -1 !< Diagnostic id for v taper of SKEB velocity increment
-  real    :: skeb_gm_coef     !< If skeb_use_gm is true, then skeb_gm_coef * GM_work is added to the
+  real(wp)    :: skeb_gm_coef     !< If skeb_use_gm is true, then skeb_gm_coef * GM_work is added to the
                               !! dissipation rate used to set the amplitude of SKEBS [nondim]
-  real    :: skeb_frict_coef  !< If skeb_use_frict is true, then skeb_gm_coef * GM_work is added to the
+  real(wp)    :: skeb_frict_coef  !< If skeb_use_frict is true, then skeb_gm_coef * GM_work is added to the
                               !! dissipation rate used to set the amplitude of SKEBS [nondim]
-  real, allocatable :: skeb_diss(:,:,:) !< Dissipation rate used to set amplitude of SKEBS [L2 T-3 ~> m2 s-3]
+  real(wp), allocatable :: skeb_diss(:,:,:) !< Dissipation rate used to set amplitude of SKEBS [L2 T-3 ~> m2 s-3]
                                         !! Index into this at h points.
   ! stochastic patterns
-  real, allocatable :: sppt_wts(:,:)  !< Random pattern for ocean SPPT
+  real(wp), allocatable :: sppt_wts(:,:)  !< Random pattern for ocean SPPT
                                       !! tendencies with a number between 0 and 2 [nondim]
-  real, allocatable :: skeb_wts(:,:)  !< Random pattern for ocean SKEB [nondim]
-  real, allocatable :: epbl1_wts(:,:) !< Random pattern for K.E. generation [nondim]
-  real, allocatable :: epbl2_wts(:,:) !< Random pattern for K.E. dissipation [nondim]
+  real(wp), allocatable :: skeb_wts(:,:)  !< Random pattern for ocean SKEB [nondim]
+  real(wp), allocatable :: epbl1_wts(:,:) !< Random pattern for K.E. generation [nondim]
+  real(wp), allocatable :: epbl2_wts(:,:) !< Random pattern for K.E. dissipation [nondim]
   type(time_type), pointer :: Time !< Pointer to model time (needed for sponges)
   type(diag_ctrl), pointer :: diag=>NULL() !< A structure that is used to regulate the
 
   ! Taper array to smoothly zero out the SKEBS velocity increment near land
-  real, allocatable :: taperCu(:,:) !< Taper applied to u component of stochastic
+  real(wp), allocatable :: taperCu(:,:) !< Taper applied to u component of stochastic
                                     !! velocity increment range [0,1], [nondim]
-  real, allocatable :: taperCv(:,:) !< Taper applied to v component of stochastic
+  real(wp), allocatable :: taperCv(:,:) !< Taper applied to v component of stochastic
                                     !! velocity increment range [0,1], [nondim]
 
 end type stochastic_CS
@@ -76,7 +78,7 @@ contains
 
 !!   This subroutine initializes the stochastics physics control structure.
 subroutine stochastics_init(dt, grid, GV, CS, param_file, diag, Time)
-  real, intent(in)                       :: dt      !< time step [T ~> s]
+  real(wp), intent(in)                       :: dt      !< time step [T ~> s]
   type(ocean_grid_type),   intent(in)    :: grid    !< horizontal grid information
   type(verticalGrid_type), intent(in)    :: GV      !< vertical grid structure
   type(stochastic_CS), pointer, intent(inout) :: CS !< stochastic control structure
@@ -93,7 +95,7 @@ subroutine stochastics_init(dt, grid, GV, CS, param_file, diag, Time)
   integer :: nxT, nxB          ! number of x-points including halo
   integer :: nyT, nyB          ! number of y-points including halo
   integer :: i, j, k           ! loop indices
-  real    :: tmp(grid%isdB:grid%iedB,grid%jsdB:grid%jedB) ! Used to construct tapers
+  real(wp)    :: tmp(grid%isdB:grid%iedB,grid%jsdB:grid%jedB) ! Used to construct tapers
   integer :: taper_width       ! Width (in cells) of the taper that brings the stochastic velocity
                                ! increments to 0 at the boundary.
 
@@ -137,7 +139,7 @@ subroutine stochastics_init(dt, grid, GV, CS, param_file, diag, Time)
                  "then DO_SKEB must also be True.")
   call get_param(param_file, mdl, "SKEB_GM_COEF", CS%skeb_gm_coef, &
                "Fraction of GM work that is added to backscatter rate.", &
-               units="nondim", default=0.0, do_not_log=.not.CS%skeb_use_gm)
+               units="nondim", default=0.0_wp, do_not_log=.not.CS%skeb_use_gm)
   call get_param(param_file, mdl, "SKEB_USE_FRICT", CS%skeb_use_frict, &
                  "If true, adds horizontal friction dissipation rate "//&
                  "to the SKEBS amplitude.", default=.false., do_not_log=.not.CS%do_skeb)
@@ -145,7 +147,7 @@ subroutine stochastics_init(dt, grid, GV, CS, param_file, diag, Time)
                  "True then DO_SKEB must also be True.")
   call get_param(param_file, mdl, "SKEB_FRICT_COEF", CS%skeb_frict_coef, &
                "Fraction of horizontal friction work that is added to backscatter rate.", &
-               units="nondim", default=0.0, do_not_log=.not.CS%skeb_use_frict)
+               units="nondim", default=0.0_wp, do_not_log=.not.CS%skeb_use_frict)
   call get_param(param_file, mdl, "PERT_EPBL", CS%pert_epbl, &
                  "If true, then stochastically perturb the kinetic energy "//&
                  "production and dissipation terms.  Amplitude and correlations are "//&
@@ -171,7 +173,7 @@ subroutine stochastics_init(dt, grid, GV, CS, param_file, diag, Time)
 
     if (CS%do_sppt) allocate(CS%sppt_wts(grid%isd:grid%ied,grid%jsd:grid%jed))
     if (CS%do_skeb) allocate(CS%skeb_wts(grid%isdB:grid%iedB,grid%jsdB:grid%jedB))
-    if (CS%do_skeb) allocate(CS%skeb_diss(grid%isd:grid%ied,grid%jsd:grid%jed,GV%ke), source=0.)
+    if (CS%do_skeb) allocate(CS%skeb_diss(grid%isd:grid%ied,grid%jsd:grid%jed,GV%ke), source=0._wp)
     if (CS%pert_epbl) then
       allocate(CS%epbl1_wts(grid%isd:grid%ied,grid%jsd:grid%jed))
       allocate(CS%epbl2_wts(grid%isd:grid%ied,grid%jsd:grid%jed))
@@ -269,24 +271,24 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
   type(verticalGrid_type), intent(in)    :: GV     !< ocean vertical grid
   type(stochastic_CS),     intent(inout) :: CS     !< stochastic control structure
 
-  real, dimension(SZIB_(grid),SZJ_(grid),SZK_(GV)), intent(inout) :: uc        !< zonal velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(grid),SZJB_(grid),SZK_(GV)), intent(inout) :: vc        !< meridional velocity [L T-1 ~> m s-1]
-  real, dimension(SZI_(grid),SZJ_(grid),SZK_(GV)),  intent(in)    :: thickness !< thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZIB_(grid),SZJ_(grid),SZK_(GV)), intent(inout) :: uc        !< zonal velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(grid),SZJB_(grid),SZK_(GV)), intent(inout) :: vc        !< meridional velocity [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(grid),SZJ_(grid),SZK_(GV)),  intent(in)    :: thickness !< thickness [H ~> m or kg m-2]
   type(thermo_var_ptrs),                            intent(in)    :: tv       !< points to thermodynamic fields
-  real,                                       intent(in)    :: dt       !< time increment [T ~> s]
+  real(wp),                                       intent(in)    :: dt       !< time increment [T ~> s]
   type(time_type),                            intent(in)    :: Time_end !< Time at the end of the interval
 ! locals
 
-  real, dimension(SZIB_(grid),SZJB_(grid),SZK_(GV)) :: psi         !< Streamfunction for stochastic velocity increments
+  real(wp), dimension(SZIB_(grid),SZJB_(grid),SZK_(GV)) :: psi         !< Streamfunction for stochastic velocity increments
                                                                    !! [L2 T-1 ~> m2 s-1]
-  real, dimension(SZIB_(grid),SZJ_(grid) ,SZK_(GV)) :: ustar       !< Stochastic u velocity increment [L T-1 ~> m s-1]
-  real, dimension(SZI_(grid) ,SZJB_(grid),SZK_(GV)) :: vstar       !< Stochastic v velocity increment [L T-1 ~> m s-1]
-  real, dimension(SZI_(grid),SZJ_(grid))            :: diss_tmp    !< Temporary array used in smoothing skeb_diss
+  real(wp), dimension(SZIB_(grid),SZJ_(grid) ,SZK_(GV)) :: ustar       !< Stochastic u velocity increment [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(grid) ,SZJB_(grid),SZK_(GV)) :: vstar       !< Stochastic v velocity increment [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(grid),SZJ_(grid))            :: diss_tmp    !< Temporary array used in smoothing skeb_diss
                                                                    !! [L2 T-3 ~> m2 s-2]
-  real, dimension(3,3) :: local_weights                            !< 3x3 stencil weights used in smoothing skeb_diss
+  real(wp), dimension(3,3) :: local_weights                            !< 3x3 stencil weights used in smoothing skeb_diss
                                                                    !! [L2 ~> m2]
 
-  real    :: shr,ten,tot,kh
+  real(wp)    :: shr,ten,tot,kh
   integer :: i,j,k,iter
   integer, dimension(2) :: EOSdom ! The i-computational domain for the equation of state
 
@@ -296,7 +298,7 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
     ! fill in halos with zeros
     do k=1,GV%ke
       do j=grid%jsd,grid%jed ; do i=grid%isd,grid%ied
-        CS%skeb_diss(i,j,k) = 0.0
+        CS%skeb_diss(i,j,k) = 0.0_wp
       enddo ; enddo
     enddo
 
@@ -326,10 +328,10 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
         ! This does not preserve rotational symmetry
         local_weights = grid%mask2dT(i-1:i+1,j-1:j+1)*grid%areaT(i-1:i+1,j-1:j+1)
         diss_tmp(i,j) = sum(local_weights*CS%skeb_diss(i-1:i+1,j-1:j+1,k)) / &
-                       (sum(local_weights) + 1.E-16)
+                       (sum(local_weights) + 1.E-16_wp)
       enddo ; enddo
       do j=grid%jsc-1,grid%jec+1 ; do i=grid%isc-1,grid%iec+1
-        if (grid%mask2dT(i,j)==0.) cycle
+        if (grid%mask2dT(i,j)==0._wp) cycle
         CS%skeb_diss(i,j,k) = diss_tmp(i,j)
       enddo ; enddo
     enddo
@@ -341,8 +343,8 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
 
   do k=1,GV%ke
     do J=grid%jscB-1,grid%jecB ; do I=grid%iscB-1,grid%iecB
-      psi(I,J,k) = sqrt(0.25 * dt * max((CS%skeb_diss(i  ,j  ,k) + CS%skeb_diss(i+1,j+1,k)) + &
-                                        (CS%skeb_diss(i  ,j+1,k) + CS%skeb_diss(i+1,j  ,k)), 0.) ) &
+      psi(I,J,k) = sqrt(0.25_wp * dt * max((CS%skeb_diss(i  ,j  ,k) + CS%skeb_diss(i+1,j+1,k)) + &
+                                        (CS%skeb_diss(i  ,j+1,k) + CS%skeb_diss(i+1,j  ,k)), 0._wp) ) &
                                   * CS%skeb_wts(I,J)
     enddo ; enddo
   enddo
@@ -363,7 +365,7 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
 
   call enable_averages(dt, Time_end, CS%diag)
   if (CS%id_diss > 0) then
-     call post_data(CS%id_diss, sqrt(dt * max(CS%skeb_diss(:,:,:), 0.)), CS%diag)
+     call post_data(CS%id_diss, sqrt(dt * max(CS%skeb_diss(:,:,:), 0._wp)), CS%diag)
   endif
   if (CS%id_skeb_wts > 0) then
      call post_data(CS%id_skeb_wts, CS%skeb_wts, CS%diag)
@@ -378,7 +380,7 @@ subroutine apply_skeb(grid,GV,CS,uc,vc,thickness,tv,dt,Time_end)
      call post_data(CS%id_psi, psi(:,:,:), CS%diag)
   endif
   call disable_averaging(CS%diag)
-  CS%skeb_diss(:,:,:) = 0.0 ! Must zero before next time step.
+  CS%skeb_diss(:,:,:) = 0.0_wp ! Must zero before next time step.
 
   call callTree_leave("apply_skeb(), MOM_stochastics.F90")
 
@@ -391,17 +393,17 @@ end subroutine apply_skeb
 !! input fields have valid values in the first two halo points upon entry.
 subroutine smooth_x9_uv(G, field_u, field_v, zero_land)
   type(ocean_grid_type),             intent(in)    :: G         !< Ocean grid
-  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: field_u   !< u-point field to be smoothed[arbitrary]
-  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: field_v   !< v-point field to be smoothed [arbitrary]
+  real(wp), dimension(SZIB_(G),SZJ_(G)), intent(inout) :: field_u   !< u-point field to be smoothed[arbitrary]
+  real(wp), dimension(SZI_(G),SZJB_(G)), intent(inout) :: field_v   !< v-point field to be smoothed [arbitrary]
   logical,                 optional, intent(in)    :: zero_land !< If present and false, return the average
                                                                 !! of the surrounding ocean points when
                                                                 !! smoothing, otherwise use a value of 0 for
                                                                 !! land points and include them in the averages.
 
   ! Local variables.
-  real :: fu_prev(SZIB_(G),SZJ_(G))  ! The value of the u-point field at the previous iteration [arbitrary]
-  real :: fv_prev(SZI_(G),SZJB_(G))  ! The value of the v-point field at the previous iteration [arbitrary]
-  real :: Iwts             ! The inverse of the sum of the weights [nondim]
+  real(wp) :: fu_prev(SZIB_(G),SZJ_(G))  ! The value of the u-point field at the previous iteration [arbitrary]
+  real(wp) :: fv_prev(SZI_(G),SZJB_(G))  ! The value of the v-point field at the previous iteration [arbitrary]
+  real(wp) :: Iwts             ! The inverse of the sum of the weights [nondim]
   logical :: zero_land_val ! The value of the zero_land optional argument or .true. if it is absent.
   integer :: i, j, s, is, ie, js, je, Isq, Ieq, Jsq, Jeq
 
@@ -413,16 +415,16 @@ subroutine smooth_x9_uv(G, field_u, field_v, zero_land)
   do s=1,0,-1
     fu_prev(:,:) = field_u(:,:)
     ! apply smoothing on field_u using rotationally symmetric expressions.
-    do j=js-s,je+s ; do I=Isq-s,Ieq+s ; if (G%mask2dCu(I,j) > 0.0) then
-      Iwts = 0.0625
+    do j=js-s,je+s ; do I=Isq-s,Ieq+s ; if (G%mask2dCu(I,j) > 0.0_wp) then
+      Iwts = 0.0625_wp
       if (.not. zero_land_val) &
-        Iwts = 1.0 / ( (4.0*G%mask2dCu(I,j) + &
-                        ( 2.0*((G%mask2dCu(I-1,j) + G%mask2dCu(I+1,j)) + &
+        Iwts = 1.0_wp / ( (4.0_wp*G%mask2dCu(I,j) + &
+                        ( 2.0_wp*((G%mask2dCu(I-1,j) + G%mask2dCu(I+1,j)) + &
                                (G%mask2dCu(I,j-1) + G%mask2dCu(I,j+1))) + &
                          ((G%mask2dCu(I-1,j-1) + G%mask2dCu(I+1,j+1)) + &
-                          (G%mask2dCu(I-1,j+1) + G%mask2dCu(I+1,j-1))) ) ) + 1.0e-16 )
-      field_u(I,j) = Iwts * ( 4.0*G%mask2dCu(I,j) * fu_prev(I,j) &
-                            + (2.0*((G%mask2dCu(I-1,j) * fu_prev(I-1,j) + G%mask2dCu(I+1,j) * fu_prev(I+1,j)) + &
+                          (G%mask2dCu(I-1,j+1) + G%mask2dCu(I+1,j-1))) ) ) + 1.0e-16_wp )
+      field_u(I,j) = Iwts * ( 4.0_wp*G%mask2dCu(I,j) * fu_prev(I,j) &
+                            + (2.0_wp*((G%mask2dCu(I-1,j) * fu_prev(I-1,j) + G%mask2dCu(I+1,j) * fu_prev(I+1,j)) + &
                                     (G%mask2dCu(I,j-1) * fu_prev(I,j-1) + G%mask2dCu(I,j+1) * fu_prev(I,j+1))) &
                               + ((G%mask2dCu(I-1,j-1) * fu_prev(I-1,j-1) + G%mask2dCu(I+1,j+1) * fu_prev(I+1,j+1)) + &
                                  (G%mask2dCu(I-1,j+1) * fu_prev(I-1,j+1) + G%mask2dCu(I+1,j-1) * fu_prev(I-1,j-1))) ))
@@ -430,16 +432,16 @@ subroutine smooth_x9_uv(G, field_u, field_v, zero_land)
 
     fv_prev(:,:) = field_v(:,:)
     ! apply smoothing on field_v using rotationally symmetric expressions.
-    do J=Jsq-s,Jeq+s ; do i=is-s,ie+s ; if (G%mask2dCv(i,J) > 0.0) then
-      Iwts = 0.0625
+    do J=Jsq-s,Jeq+s ; do i=is-s,ie+s ; if (G%mask2dCv(i,J) > 0.0_wp) then
+      Iwts = 0.0625_wp
       if (.not. zero_land_val) &
-        Iwts = 1.0 / ( (4.0*G%mask2dCv(i,J) + &
-                        ( 2.0*((G%mask2dCv(i-1,J) + G%mask2dCv(i+1,J)) + &
+        Iwts = 1.0_wp / ( (4.0_wp*G%mask2dCv(i,J) + &
+                        ( 2.0_wp*((G%mask2dCv(i-1,J) + G%mask2dCv(i+1,J)) + &
                                (G%mask2dCv(i,J-1) + G%mask2dCv(i,J+1))) + &
                          ((G%mask2dCv(i-1,J-1) + G%mask2dCv(i+1,J+1)) + &
-                          (G%mask2dCv(i-1,J+1) + G%mask2dCv(i+1,J-1))) ) ) + 1.0e-16 )
-      field_v(i,J) = Iwts * ( 4.0*G%mask2dCv(i,J) * fv_prev(i,J) &
-                            + (2.0*((G%mask2dCv(i-1,J) * fv_prev(i-1,J) + G%mask2dCv(i+1,J) * fv_prev(i+1,J)) + &
+                          (G%mask2dCv(i-1,J+1) + G%mask2dCv(i+1,J-1))) ) ) + 1.0e-16_wp )
+      field_v(i,J) = Iwts * ( 4.0_wp*G%mask2dCv(i,J) * fv_prev(i,J) &
+                            + (2.0_wp*((G%mask2dCv(i-1,J) * fv_prev(i-1,J) + G%mask2dCv(i+1,J) * fv_prev(i+1,J)) + &
                                     (G%mask2dCv(i,J-1) * fv_prev(i,J-1) + G%mask2dCv(i,J+1) * fv_prev(i,J+1))) &
                               + ((G%mask2dCv(i-1,J-1) * fv_prev(i-1,J-1) + G%mask2dCv(i+1,J+1) * fv_prev(i+1,J+1)) + &
                                  (G%mask2dCv(i-1,J+1) * fv_prev(i-1,J+1) + G%mask2dCv(i+1,J-1) * fv_prev(i-1,J-1))) ))

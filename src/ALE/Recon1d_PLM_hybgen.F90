@@ -15,6 +15,8 @@ module Recon1d_PLM_hybgen
 
 use Recon1d_type, only : Recon1d, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public PLM_hybgen, testing
@@ -37,9 +39,9 @@ public PLM_hybgen, testing
 !! - reconstruct_parent()   -> reconstruct()
 type, extends (Recon1d) :: PLM_hybgen
 
-  real, allocatable :: ul(:) !< Left edge value [A]
-  real, allocatable :: ur(:) !< Right edge value [A]
-  real, allocatable :: slp(:) !< Right minus left edge values [A]
+  real(wp), allocatable :: ul(:) !< Left edge value [A]
+  real(wp), allocatable :: ur(:) !< Right edge value [A]
+  real(wp), allocatable :: slp(:) !< Right minus left edge values [A]
 
 contains
   !> Implementation of the PLM_hybgen initialization
@@ -72,7 +74,7 @@ contains
 subroutine init(this, n, h_neglect, check)
   class(PLM_hybgen),     intent(out) :: this      !< This reconstruction
   integer,           intent(in)  :: n         !< Number of cells in this column
-  real, optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+  real(wp), optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
   logical, optional, intent(in)  :: check     !< If true, enable some consistency checking
 
   this%n = n
@@ -92,16 +94,16 @@ end subroutine init
 !> Calculate a 1D PLM reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(PLM_hybgen), intent(inout) :: this !< This reconstruction
-  real,          intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,          intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),          intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),          intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp ! The PLM slopes (difference across cell) [A]
-  real :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
+  real(wp) :: slp ! The PLM slopes (difference across cell) [A]
+  real(wp) :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
                                     ! differences across the cell [A]
-  real :: u_min, u_max ! Minimum and maximum value across cell [A]
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
-  real :: h_c0 ! Thickness of center with h_neglect added [H]
+  real(wp) :: u_min, u_max ! Minimum and maximum value across cell [A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
+  real(wp) :: h_c0 ! Thickness of center with h_neglect added [H]
   integer :: k, n
 
   n = this%n
@@ -114,7 +116,7 @@ subroutine reconstruct(this, h, u)
   ! Boundary cells use PCM
   this%ul(1) = u(1)
   this%ur(1) = u(1)
-  this%slp(1) = 0.
+  this%slp(1) = 0._wp
 
   ! Loop over interior cells
   do k = 2, n-1
@@ -137,39 +139,39 @@ subroutine reconstruct(this, h, u)
     ! http://dx.doi.org/10.1016/0021-991(84)90143-8.
     ! For uniform resolution it simplifies to ( u_r - u_l )/2 .
     sigma_c = ( h_c / ( h_c0 + ( h_l + h_r ) ) ) * ( &
-                  ( 2.*h_l + h_c ) / ( h_r + h_c0 ) * sigma_r &
-                + ( 2.*h_r + h_c ) / ( h_l + h_c0 ) * sigma_l )
+                  ( 2._wp*h_l + h_c ) / ( h_r + h_c0 ) * sigma_r &
+                + ( 2._wp*h_r + h_c ) / ( h_l + h_c0 ) * sigma_l )
     if (h_c <= this%h_neglect) then
-      sigma_c = 0.
+      sigma_c = 0._wp
     else
-      sigma_c = ( h_c / ( h_c + 0.5 * ( h_l + h_r ) ) ) * ( u_r - u_l )
+      sigma_c = ( h_c / ( h_c + 0.5_wp * ( h_l + h_r ) ) ) * ( u_r - u_l )
     endif
 
     ! Limit slope so that reconstructions are bounded by neighbors
     u_min = min( u_l, u_c, u_r )
     u_max = max( u_l, u_c, u_r )
 
-    if ( (sigma_l * sigma_r) > 0.0 ) then
+    if ( (sigma_l * sigma_r) > 0.0_wp ) then
       ! This limits the slope so that the edge values are bounded by the two cell averages spanning the edge
-      slp = sign( min( abs(sigma_c), 2.*min( u_c - u_min, u_max - u_c ) ), sigma_c )
+      slp = sign( min( abs(sigma_c), 2._wp*min( u_c - u_min, u_max - u_c ) ), sigma_c )
 !     slp = sign( min( abs(sigma_c), 2. * abs(u_c - u_l), 2. * abs(u_r - u_c) ), sigma_c )
     else
       ! Extrema in the mean values require a PCM reconstruction
-      slp = 0.0
+      slp = 0.0_wp
     endif
     this%slp(k) = slp
 
     ! Left edge
     u_min = min( u_c, u_l )
     u_max = max( u_c, u_l )
-    u_l = u_c - 0.5 * slp
+    u_l = u_c - 0.5_wp * slp
     this%ul(k) = max( min( u_l, u_max), u_min )
     this%ul(k) = u_l
 
     ! Right edge
     u_min = min( u_c, u_r )
     u_max = max( u_c, u_r )
-    u_r = u_c + 0.5 * slp
+    u_r = u_c + 0.5_wp * slp
     this%ur(k) = max( min( u_r, u_max), u_min )
     this%ur(k) = u_r
   enddo
@@ -177,49 +179,49 @@ subroutine reconstruct(this, h, u)
   ! Boundary cells use PCM
   this%ul(n) = u(n)
   this%ur(n) = u(n)
-  this%slp(n) = 0.
+  this%slp(n) = 0._wp
 
 end subroutine reconstruct
 
 !> Value of PLM_hybgen reconstruction at a point in cell k [A]
-real function f(this, k, x)
+real(wp) function f(this, k, x)
   class(PLM_hybgen), intent(in) :: this !< This reconstruction
   integer,       intent(in) :: k    !< Cell number
-  real,          intent(in) :: x    !< Non-dimensional position within element [nondim]
-  real :: xc ! Bounded version of x [nondim]
-  real :: du ! Difference across cell [A]
-  real :: u_a, u_b ! Two estimate of f [A]
+  real(wp),          intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp) :: xc ! Bounded version of x [nondim]
+  real(wp) :: du ! Difference across cell [A]
+  real(wp) :: u_a, u_b ! Two estimate of f [A]
 
   du = this%ur(k) - this%ul(k)
-  xc = max( 0., min( 1., x ) )
+  xc = max( 0._wp, min( 1._wp, x ) )
 
   ! This expression for u_a can overshoot u_r but is good for x<<1
   u_a = this%ul(k) + du * xc
   ! This expression for u_b can overshoot u_l but is good for 1-x<<1
-  u_b = this%ur(k) + du * ( xc - 1. )
+  u_b = this%ur(k) + du * ( xc - 1._wp )
 
   ! Since u_a and u_b are both bounded, this will perserve uniformity
-  f = 0.5 * ( u_a + u_b )
+  f = 0.5_wp * ( u_a + u_b )
 
 end function f
 
 !> Derivative of PLM_hybgen reconstruction at a point in cell k [A]
-real function dfdx(this, k, x)
+real(wp) function dfdx(this, k, x)
   class(PLM_hybgen), intent(in) :: this !< This reconstruction
   integer,       intent(in) :: k    !< Cell number
-  real,          intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp),          intent(in) :: x    !< Non-dimensional position within element [nondim]
 
   dfdx = this%ur(k) - this%ul(k)
 
 end function dfdx
 
 !> Average between xa and xb for cell k of a 1D PLM reconstruction [A]
-real function average(this, k, xa, xb)
+real(wp) function average(this, k, xa, xb)
   class(PLM_hybgen), intent(in) :: this !< This reconstruction
   integer,       intent(in) :: k    !< Cell number
-  real,          intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-  real,          intent(in) :: xb   !< End of averaging interval on element (0 to 1)
-  real :: xmab ! Mid-point between xa and xb (0 to 1)
+  real(wp),          intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+  real(wp),          intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+  real(wp) :: xmab ! Mid-point between xa and xb (0 to 1)
 ! real :: u_a, u_b ! Values at xa and xb [A]
 
   ! This form is not guaranteed to be bounded by {ul,ur}
@@ -228,7 +230,7 @@ real function average(this, k, xa, xb)
 ! average = 0.5 * ( u_a + u_b )
 
   ! Mid-point between xa and xb
-  xmab = 0.5 * ( xa + xb )
+  xmab = 0.5_wp * ( xa + xb )
 
   ! The following expression is exact at xmab=0 and xmab=1,
   ! i.e. gives the numerically correct values.
@@ -269,26 +271,26 @@ end subroutine destroy
 !> Checks the PLM_hybgen reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(PLM_hybgen), intent(in) :: this !< This reconstruction
-  real,          intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,          intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),          intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),          intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell reconstruction is monotonic within each cell (it should be as a straight line)
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell is a straight line (to within machine precision)
   do k = 1, this%n
-    if ( abs(2. * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
-         max(abs(2. * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
+    if ( abs(2._wp * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
+         max(abs(2._wp * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
   enddo
 
 ! The following test fails MOM_remapping:test_recon_consistency with Intel/2023.2.0 on gaea at iter=84
@@ -324,8 +326,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,       intent(in)    :: stdout  !< I/O channel for stdout
   integer,       intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -337,31 +339,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/1.,2.,5./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/1.,4.,5./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/1._wp,2._wp,5._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/1._wp,4._wp,5._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,0./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/0.,2.,0./), 'dfdx in center')
-  call test%real_arr(3, ur, (/0.,2.,0./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/0._wp,2._wp,0._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/0._wp,2._wp,0._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/0._wp,2._wp,0._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.,3.25,5./), 'Return interval average')
+  call test%real_arr(3, um, (/1._wp,3.25_wp,5._wp/), 'Return interval average')
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )
@@ -375,13 +377,13 @@ logical function unit_tests(this, verbose, stdout, stderr)
   ! The O(h^2) slopes are -, 2, 2, - and the limited
   ! slopes are 0, 1, 1, 0 so the everywhere the reconstructions
   ! are bounded by neighbors but ur(2) and ul(3) are out-of-order.
-  call this%reconstruct( (/1.,1.,1.,1./), (/0.,3.,4.,7./) )
+  call this%reconstruct( (/1._wp,1._wp,1._wp,1._wp/), (/0._wp,3._wp,4._wp,7._wp/) )
   do k = 1, 4
-    ul(k) = this%f(k, 0.)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(4, ul, (/0.,2.,3.,7./), 'Evaluation on left edge')
-  call test%real_arr(4, ur, (/0.,4.,5.,7./), 'Evaluation on right edge')
+  call test%real_arr(4, ul, (/0._wp,2._wp,3._wp,7._wp/), 'Evaluation on left edge')
+  call test%real_arr(4, ur, (/0._wp,4._wp,5._wp,7._wp/), 'Evaluation on right edge')
 
   deallocate( um, ul, ur )
 

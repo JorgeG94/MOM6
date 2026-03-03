@@ -11,6 +11,8 @@ use MOM_tidal_forcing, only : tidal_frequency
 use MOM_time_manager,  only : time_type, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public Filt_register, Filt_init, Filt_accum
@@ -25,12 +27,12 @@ type, public :: Filter_CS ; private
   !>@}
   character(len=8) :: key              !< Identifier of the variable to be filtered
   character(len=2), allocatable, dimension(:) :: filter_names !< Names of filters
-  real, allocatable, dimension(:)      :: filter_omega !< Target frequencies of filters [rad T-1 ~> rad s-1]
-  real, allocatable, dimension(:)      :: filter_alpha !< Bandwidth parameters of filters [nondim]
-  real, allocatable, dimension(:,:,:)  :: s1, &        !< A dummy variable for solving the system of ODEs [A]
+  real(wp), allocatable, dimension(:)      :: filter_omega !< Target frequencies of filters [rad T-1 ~> rad s-1]
+  real(wp), allocatable, dimension(:)      :: filter_alpha !< Bandwidth parameters of filters [nondim]
+  real(wp), allocatable, dimension(:,:,:)  :: s1, &        !< A dummy variable for solving the system of ODEs [A]
                                           u1           !< Filtered data, representing the narrow-band signal
                                                        !< oscillating around the target frequency [A]
-  real :: old_time = -1.0              !< The time of the previous accumulating step [T ~> s]
+  real(wp) :: old_time = -1.0_wp              !< The time of the previous accumulating step [T ~> s]
 end type Filter_CS
 
 contains
@@ -46,7 +48,7 @@ subroutine Filt_register(nf, key, grid, HI, CS, restart_CS)
 
   ! Local variables
   type(axis_info) :: filter_axis(1)
-  real, dimension(:), allocatable :: n_filters         !< Labels of filters [nondim]
+  real(wp), dimension(:), allocatable :: n_filters         !< Labels of filters [nondim]
   integer :: c
 
   CS%nf  = nf
@@ -63,8 +65,8 @@ subroutine Filt_register(nf, key, grid, HI, CS, restart_CS)
       call MOM_error(FATAL, "MOM_streaming_filter: horizontal grid not supported")
   end select
 
-  allocate(CS%s1(CS%is:CS%ie, CS%js:CS%je, nf), source=0.0)
-  allocate(CS%u1(CS%is:CS%ie, CS%js:CS%je, nf), source=0.0)
+  allocate(CS%s1(CS%is:CS%ie, CS%js:CS%je, nf), source=0.0_wp)
+  allocate(CS%u1(CS%is:CS%ie, CS%js:CS%je, nf), source=0.0_wp)
 
   ! Register restarts for s1 and u1
   allocate(n_filters(nf))
@@ -108,13 +110,13 @@ subroutine Filt_init(param_file, US, CS, restart_CS)
     call get_param(param_file, mdl, "FILTER_"//trim(CS%filter_names(c))//"_OMEGA", &
                    CS%filter_omega(c), "Target frequency of the "//trim(CS%filter_names(c))//&
                    " filter. This is used if USE_FILTER is true and "//trim(CS%filter_names(c))//&
-                   " is in FILTER_NAMES.", units="rad s-1", scale=US%T_to_s, default=0.0)
+                   " is in FILTER_NAMES.", units="rad s-1", scale=US%T_to_s, default=0.0_wp)
     call get_param(param_file, mdl, "FILTER_"//trim(CS%filter_names(c))//"_ALPHA", &
                    CS%filter_alpha(c), "Bandwidth parameter of the "//trim(CS%filter_names(c))//&
                    " filter. Must be positive.", units="nondim", fail_if_missing=.true.)
 
-    if (CS%filter_omega(c)<=0.0) CS%filter_omega(c) = tidal_frequency(trim(CS%filter_names(c)))
-    if (CS%filter_alpha(c)<=0.0) call MOM_error(FATAL, "MOM_streaming_filter: bandwidth <= 0")
+    if (CS%filter_omega(c)<=0.0_wp) CS%filter_omega(c) = tidal_frequency(trim(CS%filter_names(c)))
+    if (CS%filter_alpha(c)<=0.0_wp) call MOM_error(FATAL, "MOM_streaming_filter: bandwidth <= 0")
 
     write(mesg,*) "MOM_streaming_filter: ", trim(CS%filter_names(c)), &
                   " filter registered, target frequency = ", CS%filter_omega(c), &
@@ -145,14 +147,14 @@ end subroutine Filt_init
 !> This subroutine timesteps the filter equations. Here, u is the broadband input signal from the model,
 !! and u1 is the filtered, narrowband output signal, obtained from the solution of the filter equations.
 subroutine Filt_accum(u, u1, Time, US, CS)
-  real, dimension(:,:,:), pointer, intent(out)   :: u1   !< Output of the filter [A]
+  real(wp), dimension(:,:,:), pointer, intent(out)   :: u1   !< Output of the filter [A]
   type(time_type),                 intent(in)    :: Time !< The current model time
   type(unit_scale_type),           intent(in)    :: US   !< A dimensional unit scaling type
   type(Filter_CS),        target,  intent(inout) :: CS   !< Control structure of MOM_streaming_filter
-  real, dimension(CS%is:CS%ie,CS%js:CS%je), intent(in) :: u !< Input into the filter [A]
+  real(wp), dimension(CS%is:CS%ie,CS%js:CS%je), intent(in) :: u !< Input into the filter [A]
 
   ! Local variables
-  real    :: now, &              !< The current model time [T ~> s]
+  real(wp)    :: now, &              !< The current model time [T ~> s]
              dt, &               !< Time step size for the filter equations [T ~> s]
              c1, c2              !< Coefficients for the filter equations [nondim]
   integer :: i, j, k
@@ -160,7 +162,7 @@ subroutine Filt_accum(u, u1, Time, US, CS)
   now = US%s_to_T * time_type_to_real(Time)
 
   ! Initialize CS%old_time at the first time step
-  if (CS%old_time<0.0) CS%old_time = now
+  if (CS%old_time<0.0_wp) CS%old_time = now
 
   ! Timestep the filter equations only if we are in a new time step
   if (CS%old_time<now) then
@@ -169,7 +171,7 @@ subroutine Filt_accum(u, u1, Time, US, CS)
 
     do k=1,CS%nf
       c1 = CS%filter_omega(k) * dt
-      c2 = 1.0 - CS%filter_alpha(k) * c1
+      c2 = 1.0_wp - CS%filter_alpha(k) * c1
 
       do j=CS%js,CS%je ; do i=CS%is,CS%ie
         CS%s1(i,j,k) =  c1 *  CS%u1(i,j,k) + CS%s1(i,j,k)

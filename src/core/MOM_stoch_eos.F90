@@ -14,6 +14,7 @@ use MOM_time_manager,     only : time_type
 use MOM_unit_scaling,     only : unit_scale_type
 use MOM_variables,        only : thermo_var_ptrs
 use MOM_verticalGrid,     only : verticalGrid_type
+use MOM_datatypes, only : wp
 !use random_numbers_mod,  only : getRandomNumbers, initializeRandomNumberStream, randomNumberStream
 
 implicit none; private
@@ -28,19 +29,19 @@ public MOM_calc_varT
 !> Describes parameters of the stochastic component of the EOS
 !! correction, described in Stanley et al. JAMES 2020.
 type, public :: MOM_stoch_eos_CS ; private
-  real, allocatable :: l2_inv(:,:)  !< One over sum of the T cell side side lengths squared [L-2 ~> m-2]
-  real, allocatable :: rgauss(:,:)  !< nondimensional random Gaussian [nondim]
-  real        :: tfac=0.27          !< Nondimensional decorrelation time factor, ~1/3.7 [nondim]
-  real        :: amplitude=0.624499 !< Nondimensional standard deviation of Gaussian [nondim]
+  real(wp), allocatable :: l2_inv(:,:)  !< One over sum of the T cell side side lengths squared [L-2 ~> m-2]
+  real(wp), allocatable :: rgauss(:,:)  !< nondimensional random Gaussian [nondim]
+  real(wp)        :: tfac=0.27_wp          !< Nondimensional decorrelation time factor, ~1/3.7 [nondim]
+  real(wp)        :: amplitude=0.624499_wp !< Nondimensional standard deviation of Gaussian [nondim]
   integer     :: seed               !< PRNG seed
   type(PRNG)  ::  rn_CS             !< PRNG control structure
-  real, allocatable :: pattern(:,:) !< Random pattern for stochastic EOS [nondim]
-  real, allocatable :: phi(:,:)     !< temporal correlation stochastic EOS [nondim]
+  real(wp), allocatable :: pattern(:,:) !< Random pattern for stochastic EOS [nondim]
+  real(wp), allocatable :: phi(:,:)     !< temporal correlation stochastic EOS [nondim]
   logical :: use_stoch_eos!< If true, use the stochastic equation of state (Stanley et al. 2020)
-  real :: stanley_coeff   !< Coefficient correlating the temperature gradient
+  real(wp) :: stanley_coeff   !< Coefficient correlating the temperature gradient
                           !! and SGS T variance [nondim]; if <0, turn off scheme in all codes
-  real :: stanley_a       !< a in exp(aX) in stochastic coefficient [nondim]
-  real :: kappa_smooth    !< A diffusivity for smoothing T/S in vanished layers [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
+  real(wp) :: stanley_a       !< a in exp(aX) in stochastic coefficient [nondim]
+  real(wp) :: kappa_smooth    !< A diffusivity for smoothing T/S in vanished layers [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
 
   !>@{ Diagnostic IDs
   integer :: id_stoch_eos  = -1, id_stoch_phi  = -1, id_tvar_sgs = -1
@@ -73,26 +74,26 @@ logical function MOM_stoch_eos_init(Time, G, GV, US, param_file, diag, CS, resta
                  "to the EOS in the PGF.", default=.false.)
   call get_param(param_file, "MOM_stoch_eos", "STANLEY_COEFF", CS%stanley_coeff, &
                  "Coefficient correlating the temperature gradient "//&
-                 "and SGS T variance.", units="nondim", default=-1.0)
+                 "and SGS T variance.", units="nondim", default=-1.0_wp)
   call get_param(param_file, "MOM_stoch_eos", "STANLEY_A", CS%stanley_a, &
                  "Coefficient a which scales chi in stochastic perturbation of the "//&
-                 "SGS T variance.", units="nondim", default=1.0, &
-                 do_not_log=((CS%stanley_coeff<0.0) .or. .not.CS%use_stoch_eos))
+                 "SGS T variance.", units="nondim", default=1.0_wp, &
+                 do_not_log=((CS%stanley_coeff<0.0_wp) .or. .not.CS%use_stoch_eos))
   call get_param(param_file, "MOM_stoch_eos", "KD_SMOOTH", CS%kappa_smooth, &
                  "A diapycnal diffusivity that is used to interpolate "//&
                  "more sensible values of T & S into thin layers.", &
-                 units="m2 s-1", default=1.0e-6, scale=GV%m2_s_to_HZ_T, &
-                 do_not_log=(CS%stanley_coeff<0.0))
+                 units="m2 s-1", default=1.0e-6_wp, scale=GV%m2_s_to_HZ_T, &
+                 do_not_log=(CS%stanley_coeff<0.0_wp))
 
   ! Don't run anything if STANLEY_COEFF < 0
-  if (CS%stanley_coeff >= 0.0) then
+  if (CS%stanley_coeff >= 0.0_wp) then
     if (.not.allocated(CS%pattern)) call MOM_error(FATAL, &
         "MOM_stoch_eos_CS%pattern is not allocated when it should be, suggesting that "//&
         "stoch_EOS_register_restarts() has not been called before MOM_stoch_eos_init().")
 
-    allocate(CS%phi(G%isd:G%ied,G%jsd:G%jed), source=0.0)
-    allocate(CS%l2_inv(G%isd:G%ied,G%jsd:G%jed), source=0.0)
-    allocate(CS%rgauss(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+    allocate(CS%phi(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
+    allocate(CS%l2_inv(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
+    allocate(CS%rgauss(G%isd:G%ied,G%jsd:G%jed), source=0.0_wp)
     call get_param(param_file, "MOM_stoch_eos", "SEED_STOCH_EOS", CS%seed, &
                  "Specfied seed for random number sequence ", default=0)
     call random_2d_constructor(CS%rn_CS, G%HI, Time, CS%seed)
@@ -100,7 +101,7 @@ logical function MOM_stoch_eos_init(Time, G, GV, US, param_file, diag, CS, resta
     ! fill array with approximation of grid area needed for decorrelation time-scale calculation
     do j=G%jsc,G%jec
       do i=G%isc,G%iec
-        CS%l2_inv(i,j) = 1.0 / ( (G%dxT(i,j)**2) + (G%dyT(i,j)**2) )
+        CS%l2_inv(i,j) = 1.0_wp / ( (G%dxT(i,j)**2) + (G%dyT(i,j)**2) )
       enddo
     enddo
 
@@ -123,7 +124,7 @@ logical function MOM_stoch_eos_init(Time, G, GV, US, param_file, diag, CS, resta
   endif
 
   ! This module is only used if explicitly enabled or a positive correlation coefficient is set.
-  MOM_stoch_eos_init = CS%use_stoch_eos .or. (CS%stanley_coeff >= 0.0)
+  MOM_stoch_eos_init = CS%use_stoch_eos .or. (CS%stanley_coeff >= 0.0_wp)
 
 end function MOM_stoch_eos_init
 
@@ -136,10 +137,10 @@ subroutine stoch_EOS_register_restarts(HI, param_file, CS, restart_CS)
 
   call get_param(param_file, "MOM_stoch_eos", "STANLEY_COEFF", CS%stanley_coeff, &
                  "Coefficient correlating the temperature gradient "//&
-                 "and SGS T variance.", units="nondim", default=-1.0, do_not_log=.true.)
+                 "and SGS T variance.", units="nondim", default=-1.0_wp, do_not_log=.true.)
 
-  if (CS%stanley_coeff >= 0.0) then
-    allocate(CS%pattern(HI%isd:HI%ied,HI%jsd:HI%jed), source=0.0)
+  if (CS%stanley_coeff >= 0.0_wp) then
+    allocate(CS%pattern(HI%isd:HI%ied,HI%jsd:HI%jed), source=0.0_wp)
     call register_restart_field(CS%pattern, "stoch_eos_pattern", .false., restart_CS, &
                                 "Random pattern for stoch EOS", "nondim")
   endif
@@ -149,17 +150,17 @@ end subroutine stoch_EOS_register_restarts
 !> Generates a pattern in space and time for the ocean stochastic equation of state
 subroutine MOM_stoch_eos_run(G, u, v, delt, Time, CS)
   type(ocean_grid_type),   intent(in)    :: G    !< The ocean's grid structure.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(G)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(G)), &
                            intent(in)    :: u    !< The zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(G)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(G)), &
                            intent(in)    :: v    !< The meridional velocity [L T-1 ~> m s-1].
-  real,                    intent(in)    :: delt !< Time step size for AR1 process [T ~> s].
+  real(wp),                    intent(in)    :: delt !< Time step size for AR1 process [T ~> s].
   type(time_type),         intent(in)    :: Time !< Time for stochastic process
   type(MOM_stoch_eos_CS),  intent(inout) :: CS   !< Stochastic control structure
 
   ! local variables
-  real    :: ubar, vbar ! Averaged velocities [L T-1 ~> m s-1]
-  real    :: phi        ! A temporal correlation factor [nondim]
+  real(wp)    :: ubar, vbar ! Averaged velocities [L T-1 ~> m s-1]
+  real(wp)    :: phi        ! A temporal correlation factor [nondim]
   integer :: i, j
 
   ! Return without doing anything if this capability is not enabled.
@@ -171,8 +172,8 @@ subroutine MOM_stoch_eos_run(G, u, v, delt, Time, CS)
   ! advance AR(1)
   do j=G%jsc,G%jec
     do i=G%isc,G%iec
-      ubar = 0.5*(u(I,j,1)*G%mask2dCu(I,j)+u(I-1,j,1)*G%mask2dCu(I-1,j))
-      vbar = 0.5*(v(i,J,1)*G%mask2dCv(i,J)+v(i,J-1,1)*G%mask2dCv(i,J-1))
+      ubar = 0.5_wp*(u(I,j,1)*G%mask2dCu(I,j)+u(I-1,j,1)*G%mask2dCu(I-1,j))
+      vbar = 0.5_wp*(v(i,J,1)*G%mask2dCv(i,J)+v(i,J-1,1)*G%mask2dCv(i,J-1))
       phi = exp(-delt*CS%tfac * sqrt(((ubar**2) + (vbar**2))*CS%l2_inv(i,j)))
       CS%pattern(i,j) = phi*CS%pattern(i,j) + CS%amplitude*sqrt(1-phi**2)*CS%rgauss(i,j)
       CS%phi(i,j) = phi
@@ -198,29 +199,29 @@ subroutine MOM_calc_varT(G, GV, US, h, tv, CS, dt)
   type(ocean_grid_type),   intent(in)   :: G   !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)   :: GV  !< Vertical grid structure
   type(unit_scale_type),   intent(in)   :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)),  &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(G)),  &
                           intent(in)    :: h   !< Layer thickness [H ~> m]
   type(thermo_var_ptrs),  intent(inout) :: tv  !< Thermodynamics structure
   type(MOM_stoch_eos_CS), intent(inout) :: CS  !< Stochastic control structure
-  real,                   intent(in)    :: dt  !< Time increment [T ~> s]
+  real(wp),                   intent(in)    :: dt  !< Time increment [T ~> s]
 
   ! local variables
-  real, dimension(SZI_(G), SZJ_(G), SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G), SZJ_(G), SZK_(GV)) :: &
     T, &          !> The temperature (or density) [C ~> degC], with the values in
                   !! in massless layers filled vertically by diffusion.
     S             !> The filled salinity [S ~> ppt], with the values in
                   !! in massless layers filled vertically by diffusion.
-  real :: hl(5)              !> Copy of local stencil of H [H ~> m]
-  real :: dTdi2, dTdj2       !> Differences in T variance [C2 ~> degC2]
+  real(wp) :: hl(5)              !> Copy of local stencil of H [H ~> m]
+  real(wp) :: dTdi2, dTdj2       !> Differences in T variance [C2 ~> degC2]
   integer :: i, j, k
 
   ! Nothing happens if a negative correlation coefficient is set.
-  if (CS%stanley_coeff < 0.0) return
+  if (CS%stanley_coeff < 0.0_wp) return
 
   ! This block does a thickness weighted variance calculation and helps control for
   ! extreme gradients along layers which are vanished against topography. It is
   ! still a poor approximation in the interior when coordinates are strongly tilted.
-  if (.not. associated(tv%varT)) allocate(tv%varT(G%isd:G%ied, G%jsd:G%jed, GV%ke), source=0.0)
+  if (.not. associated(tv%varT)) allocate(tv%varT(G%isd:G%ied, G%jsd:G%jed, GV%ke), source=0.0_wp)
   call vert_fill_TS(h, tv%T, tv%S, CS%kappa_smooth*dt, T, S, G, GV, US, halo_here=1, larger_h_denom=.true.)
 
   do k=1,G%ke
@@ -235,11 +236,11 @@ subroutine MOM_calc_varT(G, GV, US, h, tv, CS, dt)
         ! SGS variance in i-direction [C2 ~> degC2]
         dTdi2 = ( ( G%mask2dCu(I  ,j) * (G%IdxCu(I  ,j) * ( T(i+1,j,k) - T(i,j,k) )) &
                   + G%mask2dCu(I-1,j) * (G%IdxCu(I-1,j) * ( T(i,j,k) - T(i-1,j,k) )) &
-                ) * G%dxT(i,j) * 0.5 )**2
+                ) * G%dxT(i,j) * 0.5_wp )**2
         ! SGS variance in j-direction [C2 ~> degC2]
         dTdj2 = ( ( G%mask2dCv(i,J  ) * (G%IdyCv(i,J  ) * ( T(i,j+1,k) - T(i,j,k) )) &
                   + G%mask2dCv(i,J-1) * (G%IdyCv(i,J-1) * ( T(i,j,k) - T(i,j-1,k) )) &
-                ) * G%dyT(i,j) * 0.5 )**2
+                ) * G%dyT(i,j) * 0.5_wp )**2
         tv%varT(i,j,k) = CS%stanley_coeff * ( dTdi2 + dTdj2 )
         ! Turn off scheme near land
         tv%varT(i,j,k) = tv%varT(i,j,k) * (minval(hl) / (maxval(hl) + GV%H_subroundoff))

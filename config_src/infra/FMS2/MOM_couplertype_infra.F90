@@ -15,6 +15,8 @@ use atmos_ocean_fluxes_mod, only : aof_set_coupler_flux
 use MOM_domain_infra,  only : domain2D
 use MOM_time_manager,  only : time_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: CT_spawn, CT_initialized, CT_destructor
@@ -84,8 +86,8 @@ function atmos_ocn_coupler_flux(name, flux_type, implementation, param, mol_wt, 
                                                        !! perhaps 'air_sea_gas_flux'.
   character(len=*),                intent(in) :: implementation !< A name describing the specific
                                                        !! implementation of this flux, such as 'ocmip2'.
-  real,    dimension(:), optional, intent(in) :: param !< An array of parameters used for the fluxes
-  real,                  optional, intent(in) :: mol_wt !< The molecular weight of this tracer
+  real(wp),    dimension(:), optional, intent(in) :: param !< An array of parameters used for the fluxes
+  real(wp),                  optional, intent(in) :: mol_wt !< The molecular weight of this tracer
   character(len=*),      optional, intent(in) :: ice_restart_file !< A sea-ice restart file to use with this flux.
   character(len=*),      optional, intent(in) :: ocean_restart_file !< An ocean restart file to use with this flux.
   character(len=*),      optional, intent(in) :: units !< The units of the flux
@@ -277,8 +279,8 @@ subroutine CT_increment_data_2d(var_in, var, halo_size, scale_factor, scale_prev
   type(coupler_2d_bc_type),   intent(in)    :: var_in  !< coupler_type structure with the data to add to the other type
   type(coupler_2d_bc_type),   intent(inout) :: var     !< The coupler_type structure whose fields are being incremented
   integer,          optional, intent(in)    :: halo_size !< The extent of the halo to increment; 0 by default
-  real,             optional, intent(in)    :: scale_factor  !< A scaling factor for the data that is being added
-  real,             optional, intent(in)    :: scale_prev    !< A scaling factor for the data that is already here
+  real(wp),             optional, intent(in)    :: scale_factor  !< A scaling factor for the data that is being added
+  real(wp),             optional, intent(in)    :: scale_prev    !< A scaling factor for the data that is already here
 
   call coupler_type_increment_data(var_in, var, halo_size=halo_size, scale_factor=scale_factor, &
                          scale_prev=scale_prev)
@@ -291,8 +293,8 @@ subroutine CT_increment_data_3d(var_in, var, halo_size, scale_factor, scale_prev
   type(coupler_3d_bc_type),   intent(in)    :: var_in  !< coupler_type structure with the data to add to the other type
   type(coupler_3d_bc_type),   intent(inout) :: var     !< The coupler_type structure whose fields are being incremented
   integer,          optional, intent(in)    :: halo_size !< The extent of the halo to increment; 0 by default
-  real,             optional, intent(in)    :: scale_factor  !< A scaling factor for the data that is being added
-  real,             optional, intent(in)    :: scale_prev    !< A scaling factor for the data that is already here
+  real(wp),             optional, intent(in)    :: scale_factor  !< A scaling factor for the data that is being added
+  real(wp),             optional, intent(in)    :: scale_prev    !< A scaling factor for the data that is already here
   character(len=*), optional, intent(in)    :: exclude_flux_type !< A string describing which types
                                                          !! of fluxes to exclude from this increment.
   character(len=*), optional, intent(in)    :: only_flux_type    !< A string describing which types
@@ -308,7 +310,7 @@ end subroutine CT_increment_data_3d
 !! If scale is 0, this is a direct assignment to 0, so that NaNs will not persist.
 subroutine CT_rescale_data_2d(var, scale)
   type(coupler_2d_bc_type),   intent(inout) :: var   !< The BC_type structure whose fields are being rescaled
-  real,                       intent(in)    :: scale !< A scaling factor to multiply fields by
+  real(wp),                       intent(in)    :: scale !< A scaling factor to multiply fields by
 
   call coupler_type_rescale_data(var, scale)
 
@@ -318,7 +320,7 @@ end subroutine CT_rescale_data_2d
 !! If scale is 0, this is a direct assignment to 0, so that NaNs will not persist.
 subroutine CT_rescale_data_3d(var, scale)
   type(coupler_3d_bc_type),   intent(inout) :: var   !< The BC_type structure whose fields are being rescaled
-  real,                       intent(in)    :: scale !< A scaling factor to multiply fields by
+  real(wp),                       intent(in)    :: scale !< A scaling factor to multiply fields by
 
   call coupler_type_rescale_data(var, scale)
 
@@ -328,7 +330,7 @@ end subroutine CT_rescale_data_3d
 !! coupler_3d_bc_type
 subroutine CT_increment_data_2d_3d(var_in, weights, var, halo_size)
   type(coupler_3d_bc_type),   intent(in)    :: var_in  !< coupler_type structure with the data to add to the other type
-  real, dimension(:,:,:),     intent(in)    :: weights !< An array of normalized weights for the 3d-data to
+  real(wp), dimension(:,:,:),     intent(in)    :: weights !< An array of normalized weights for the 3d-data to
                                                        !! increment the 2d-data.  There is no renormalization,
                                                        !! so if the weights do not sum to 1 in the 3rd dimension
                                                        !! there may be adverse consequences!
@@ -373,10 +375,10 @@ subroutine CT_extract_data(var_in, bc_index, field_index, array_out, &
   integer,                    intent(in)    :: field_index !< The index of the field in the boundary
                                                          !! condition that is being copied, or the
                                                          !! surface flux by default.
-  real, dimension(1:,1:),     intent(out)   :: array_out !< The recipient array for the field; its size
+  real(wp), dimension(1:,1:),     intent(out)   :: array_out !< The recipient array for the field; its size
                                                          !! must match the size of the data being copied
                                                          !! unless idim and jdim are supplied.
-  real,             optional, intent(in)    :: scale_factor !< A scaling factor for the data that is being added
+  real(wp),             optional, intent(in)    :: scale_factor !< A scaling factor for the data that is being added
   integer,          optional, intent(in)    :: halo_size !< The extent of the halo to copy; 0 by default
   integer, dimension(4), optional, intent(in) :: idim    !< The data and computational domain extents of
                                                          !! the first dimension of the output array
@@ -391,7 +393,7 @@ end subroutine CT_extract_data
 !> Set single 2d field in coupler_2d_bc_type from a two-dimensional array.
 subroutine CT_set_data(array_in, bc_index, field_index, var, &
                        scale_factor, halo_size, idim, jdim)
-  real, dimension(1:,1:),     intent(in)    :: array_in  !< The source array for the field; its size
+  real(wp), dimension(1:,1:),     intent(in)    :: array_in  !< The source array for the field; its size
                                                          !! must match the size of the data being copied
                                                          !! unless idim and jdim are supplied.
   integer,                    intent(in)    :: bc_index  !< The index of the boundary condition
@@ -400,7 +402,7 @@ subroutine CT_set_data(array_in, bc_index, field_index, var, &
                                                          !! boundary condition that is being set. The
                                                          !! surface concentration is set by default.
   type(coupler_2d_bc_type),   intent(inout) :: var       !< BC_type structure with the data to set
-  real,             optional, intent(in)    :: scale_factor !< A scaling factor for the data that is being added
+  real(wp),             optional, intent(in)    :: scale_factor !< A scaling factor for the data that is being added
   integer,          optional, intent(in)    :: halo_size !< The extent of the halo to copy; 0 by default
   integer, dimension(4), optional, intent(in) :: idim    !< The data and computational domain extents of
                                                          !! the first dimension of the output array

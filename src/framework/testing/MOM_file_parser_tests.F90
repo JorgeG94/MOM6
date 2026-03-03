@@ -28,6 +28,8 @@ use MOM_unit_testing, only : string
 use MOM_unit_testing, only : create_test_file
 use MOM_unit_testing, only : delete_test_file
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: run_file_parser_tests
@@ -326,10 +328,10 @@ end subroutine test_read_param_int_array_type_err
 
 subroutine test_read_param_real
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
   type(string) :: lines(1)
   character(len=*), parameter :: sample_input = '3.14'
-  real, parameter :: sample_result = 3.14
+  real(wp), parameter :: sample_result = 3.14_wp
 
   lines = string(sample_param_name // ' = ' // sample_input)
   call create_test_file(param_filename, lines)
@@ -344,7 +346,7 @@ end subroutine test_read_param_real
 
 subroutine test_read_param_real_missing
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
 
   call create_test_file(param_filename)
 
@@ -356,7 +358,7 @@ end subroutine test_read_param_real_missing
 
 subroutine test_read_param_real_undefined
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
   type(string) :: lines(1)
 
   lines = string('#undef ' // sample_param_name)
@@ -370,7 +372,7 @@ end subroutine test_read_param_real_undefined
 
 subroutine test_read_param_real_type_err
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
   type(string) :: lines(1)
 
   lines = string(sample_param_name // ' = not_a_real')
@@ -384,10 +386,10 @@ end subroutine test_read_param_real_type_err
 
 subroutine test_read_param_real_array
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
   type(string) :: lines(1)
   character(len=*), parameter :: sample_input = '1., 2., 3.'
-  real, parameter :: sample_result(3) = [1., 2., 3.]
+  real(wp), parameter :: sample_result(3) = [1._wp, 2._wp, 3._wp]
 
   lines = string(sample_param_name // ' = ' // sample_input)
   call create_test_file(param_filename, lines)
@@ -402,7 +404,7 @@ end subroutine test_read_param_real_array
 
 subroutine test_read_param_real_array_missing
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
 
   call create_test_file(param_filename)
 
@@ -414,7 +416,7 @@ end subroutine test_read_param_real_array_missing
 
 subroutine test_read_param_real_array_undefined
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
   type(string) :: lines(1)
 
   lines = string('#undef ' // sample_param_name)
@@ -428,7 +430,7 @@ end subroutine test_read_param_real_array_undefined
 
 subroutine test_read_param_real_array_type_err
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
   type(string) :: lines(1)
 
   lines = string(sample_param_name // ' = not_a_real_array')
@@ -653,7 +655,7 @@ subroutine test_read_param_time_unit
 
   call set_calendar_type(NOLEAP)
   call open_param_file(param_filename, param)
-  call read_param(param, sample_param_name, sample, timeunit=86400.)
+  call read_param(param, sample_param_name, sample, timeunit=86400._wp)
   call close_param_file(param)
 end subroutine test_read_param_time_unit
 
@@ -1271,7 +1273,7 @@ end subroutine test_log_param_int_array
 
 subroutine test_log_param_real
   type(param_file_type) :: param
-  real, parameter :: sample = 1.
+  real(wp), parameter :: sample = 1._wp
   character(len=*), parameter :: desc = "Parameter description"
 
   call create_test_file(param_filename)
@@ -1284,7 +1286,7 @@ end subroutine test_log_param_real
 
 subroutine test_log_param_real_array
   type(param_file_type) :: param
-  real, parameter :: sample(3) = [1., 2., 3.]
+  real(wp), parameter :: sample(3) = [1._wp, 2._wp, 3._wp]
   character(len=*), parameter :: desc = "Parameter description"
 
   call create_test_file(param_filename)
@@ -1386,7 +1388,7 @@ subroutine test_log_param_time_with_unit
 
   call open_param_file(param_filename, param)
   call log_param(param, module_name, sample_param_name, sample, desc=desc, &
-      units=sample_units, timeunit=86400., default=default_date)
+      units=sample_units, timeunit=86400._wp, default=default_date)
   call close_param_file(param)
 end subroutine test_log_param_time_with_unit
 
@@ -1396,7 +1398,7 @@ subroutine test_log_param_time_with_timeunit
   type(time_type) :: sample
   integer :: i
   character(len=*), parameter :: desc = "Parameter description"
-  real, parameter :: timeunits(5) = [1., 3600., 86400., 3.1e7, 1e8]
+  real(wp), parameter :: timeunits(5) = [1._wp, 3600._wp, 86400._wp, 3.1e7_wp, 1e8_wp]
 
   call set_calendar_type(NOLEAP)
   call create_test_file(param_filename)
@@ -1463,7 +1465,7 @@ end subroutine test_get_param_int_array_no_read_no_log
 
 subroutine test_get_param_real
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
 
   call create_test_file(param_filename)
 
@@ -1475,7 +1477,7 @@ end subroutine test_get_param_real
 
 subroutine test_get_param_real_no_read_no_log
   type(param_file_type) :: param
-  real :: sample
+  real(wp) :: sample
 
   call create_test_file(param_filename)
 
@@ -1488,7 +1490,7 @@ end subroutine test_get_param_real_no_read_no_log
 
 subroutine test_get_param_real_array
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
 
   call create_test_file(param_filename)
 
@@ -1500,7 +1502,7 @@ end subroutine test_get_param_real_array
 
 subroutine test_get_param_real_array_no_read_no_log
   type(param_file_type) :: param
-  real :: sample(3)
+  real(wp) :: sample(3)
 
   call create_test_file(param_filename)
 

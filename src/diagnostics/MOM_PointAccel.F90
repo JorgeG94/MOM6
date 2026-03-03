@@ -21,6 +21,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : ocean_internal_state, accel_diag_ptrs, cont_diag_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -47,7 +49,7 @@ type, public :: PointAccel_CS ; private
 ! The following are pointers to many of the state variables and accelerations
 ! that are used to step the physical model forward.  They all use the same
 ! names as the variables they point to in MOM.F90
-  real, pointer, dimension(:,:,:) :: &
+  real(wp), pointer, dimension(:,:,:) :: &
     u_av => NULL(), &       !< Time average u-velocity [L T-1 ~> m s-1]
     v_av => NULL(), &       !< Time average velocity [L T-1 ~> m s-1]
     u_prev => NULL(), &     !< Previous u-velocity [L T-1 ~> m s-1]
@@ -69,38 +71,38 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
   type(ocean_grid_type),       intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),     intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),       intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                                intent(in) :: um  !< The new zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                intent(in) :: hin !< The layer thickness [H ~> m or kg m-2].
   type(accel_diag_ptrs),       intent(in) :: ADp !< A structure pointing to the various
                                                  !! accelerations in the momentum equations.
   type(cont_diag_ptrs),        intent(in) :: CDp !<  A structure with pointers to various terms
                                                  !! in the continuity equations.
-  real,                        intent(in) :: dt  !< The ocean dynamics time step [T ~> s].
+  real(wp),                        intent(in) :: dt  !< The ocean dynamics time step [T ~> s].
   type(PointAccel_CS),         pointer    :: CS  !< The control structure returned by a previous
                                                  !! call to PointAccel_init.
-  real,                        intent(in) :: vel_rpt !< The velocity magnitude that triggers a report [L T-1 ~> m s-1]
-  real, optional,              intent(in) :: str !< The surface wind stress [R L Z T-2 ~> Pa]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), &
+  real(wp),                        intent(in) :: vel_rpt !< The velocity magnitude that triggers a report [L T-1 ~> m s-1]
+  real(wp), optional,              intent(in) :: str !< The surface wind stress [R L Z T-2 ~> Pa]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)+1), &
                      optional, intent(in) :: a   !< The layer coupling coefficients from vertvisc
                                                  !! [H T-1 ~> m s-1 or Pa s m-1]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                      optional, intent(in) :: hv  !< The layer thicknesses at velocity grid points,
                                                  !! from vertvisc [H ~> m or kg m-2].
 
   ! Local variables
-  real    :: CFL              ! The local velocity-based CFL number [nondim]
-  real    :: Angstrom         ! A negligibly small thickness [H ~> m or kg m-2]
-  real    :: du               ! A velocity change [L T-1 ~> m s-1]
-  real    :: Inorm(SZK_(GV))  ! The inverse of the normalized velocity change [L T-1 ~> m s-1]
-  real    :: e(SZK_(GV)+1)    ! Simple estimates of interface heights based on the sum of thicknesses [m]
-  real    :: h_scale          ! A scaling factor for thicknesses [m H-1 ~> 1] or [kg m-2 H-1 ~> 1]
-  real    :: vel_scale        ! A scaling factor for velocities [m T s-1 L-1 ~> 1]
-  real    :: uh_scale         ! A scaling factor for transport per unit length [m2 T s-1 L-1 H-1 ~> 1]
+  real(wp)    :: CFL              ! The local velocity-based CFL number [nondim]
+  real(wp)    :: Angstrom         ! A negligibly small thickness [H ~> m or kg m-2]
+  real(wp)    :: du               ! A velocity change [L T-1 ~> m s-1]
+  real(wp)    :: Inorm(SZK_(GV))  ! The inverse of the normalized velocity change [L T-1 ~> m s-1]
+  real(wp)    :: e(SZK_(GV)+1)    ! Simple estimates of interface heights based on the sum of thicknesses [m]
+  real(wp)    :: h_scale          ! A scaling factor for thicknesses [m H-1 ~> 1] or [kg m-2 H-1 ~> 1]
+  real(wp)    :: vel_scale        ! A scaling factor for velocities [m T s-1 L-1 ~> 1]
+  real(wp)    :: uh_scale         ! A scaling factor for transport per unit length [m2 T s-1 L-1 H-1 ~> 1]
                               ! or [kg T m-1 s-1 L-1 H-1 ~> 1]
-  real    :: temp_scale       ! A scaling factor for temperatures [degC C-1 ~> 1]
-  real    :: saln_scale       ! A scaling factor for salinities [ppt S-1 ~> 1]
+  real(wp)    :: temp_scale       ! A scaling factor for temperatures [degC C-1 ~> 1]
+  real(wp)    :: saln_scale       ! A scaling factor for salinities [ppt S-1 ~> 1]
   integer :: yr, mo, day, hr, minute, sec, yearday
   integer :: k, ks, ke
   integer :: nz
@@ -138,13 +140,13 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     do k=1,nz
       if (((max(CS%u_av(I,j,k),um(I,j,k)) >= vel_rpt) .or. &
            (min(CS%u_av(I,j,k),um(I,j,k)) <= -vel_rpt)) .and. &
-          ((hin(i,j,k) + hin(i+1,j,k)) > 3.0*Angstrom)) exit
+          ((hin(i,j,k) + hin(i+1,j,k)) > 3.0_wp*Angstrom)) exit
     enddo
     ks = k
     do k=nz,1,-1
       if (((max(CS%u_av(I,j,k), um(I,j,k)) >= vel_rpt) .or. &
            (min(CS%u_av(I,j,k), um(I,j,k)) <= -vel_rpt)) .and. &
-          ((hin(i,j,k) + hin(i+1,j,k)) > 3.0*Angstrom)) exit
+          ((hin(i,j,k) + hin(i+1,j,k)) > 3.0_wp*Angstrom)) exit
     enddo
     ke = k
     if (ke < ks) then
@@ -159,12 +161,12 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     write (file,'(/,"--------------------------")')
     write (file,'(/,"Time ",I0," ",I0," ",F6.2," U-velocity violation at ",I0,": ",I0,", ",I0, &
         & " (",F7.2," E ",F7.2," N) Layers ",I0," to ",I0,". dt = ",1PG10.4)') &
-        yr, yearday, (REAL(sec)/3600.0), pe_here(), I, j, &
+        yr, yearday, (REAL(sec, wp)/3600.0_wp), pe_here(), I, j, &
         G%geoLonCu(I,j), G%geoLatCu(I,j), ks, ke, US%T_to_s*dt
 
     if (ks <= GV%nk_rho_varies) ks = 1
     do k=ks,ke
-      if ((hin(i,j,k) + hin(i+1,j,k)) > 3.0*Angstrom) do_k(k) = .true.
+      if ((hin(i,j,k) + hin(i+1,j,k)) > 3.0_wp*Angstrom) do_k(k) = .true.
     enddo
 
     write(file,'(/,"Layers:")', advance='no')
@@ -181,7 +183,7 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     write(file,'(/,"CFL u: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) then
       CFL = abs(um(I,j,k)) * dt * G%dy_Cu(I,j)
-      if (um(I,j,k) < 0.0) then ; CFL = CFL * G%IareaT(i+1,j)
+      if (um(I,j,k) < 0.0_wp) then ; CFL = CFL * G%IareaT(i+1,j)
       else ; CFL = CFL * G%IareaT(i,j) ; endif
       write(file,'(ES10.3," ")', advance='no') CFL
     endif ; enddo
@@ -295,11 +297,11 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%vh(i,J-1,k)*G%IdxCv(i,J-1)) ; enddo
     write(file,'(/," vhC--:")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                        (0.5*CS%v_av(i,j-1,k)*uh_scale*(hin(i,j-1,k) + hin(i,j,k))) ; enddo
+                        (0.5_wp*CS%v_av(i,j-1,k)*uh_scale*(hin(i,j-1,k) + hin(i,j,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," vhCp--:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                          (0.5*CS%v_prev(i,j-1,k)*uh_scale*(hin(i,j-1,k) + hin(i,j,k))) ; enddo
+                          (0.5_wp*CS%v_prev(i,j-1,k)*uh_scale*(hin(i,j-1,k) + hin(i,j,k))) ; enddo
     endif
 
     write(file,'(/,"vh-+:  ")', advance='no')
@@ -307,11 +309,11 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%vh(i,J,k)*G%IdxCv(i,J)) ; enddo
     write(file,'(/," vhC-+:")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                        (0.5*CS%v_av(i,J,k)*uh_scale*(hin(i,j,k) + hin(i,j+1,k))) ; enddo
+                        (0.5_wp*CS%v_av(i,J,k)*uh_scale*(hin(i,j,k) + hin(i,j+1,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," vhCp-+:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                          (0.5*CS%v_prev(i,J,k)*uh_scale*(hin(i,j,k) + hin(i,j+1,k))) ; enddo
+                          (0.5_wp*CS%v_prev(i,J,k)*uh_scale*(hin(i,j,k) + hin(i,j+1,k))) ; enddo
     endif
 
     write(file,'(/,"vh+-:  ")', advance='no')
@@ -319,11 +321,11 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                       (uh_scale*CDp%vh(i+1,J-1,k)*G%IdxCv(i+1,J-1)) ; enddo
     write(file,'(/," vhC+-:")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                    (0.5*CS%v_av(i+1,J-1,k)*uh_scale*(hin(i+1,j-1,k) + hin(i+1,j,k))) ; enddo
+                    (0.5_wp*CS%v_av(i+1,J-1,k)*uh_scale*(hin(i+1,j-1,k) + hin(i+1,j,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," vhCp+-:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                      (0.5*CS%v_prev(i+1,J-1,k)*uh_scale*(hin(i+1,j-1,k) + hin(i+1,j,k))) ; enddo
+                      (0.5_wp*CS%v_prev(i+1,J-1,k)*uh_scale*(hin(i+1,j-1,k) + hin(i+1,j,k))) ; enddo
     endif
 
     write(file,'(/,"vh++:  ")', advance='no')
@@ -331,11 +333,11 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                           (uh_scale*CDp%vh(i+1,J,k)*G%IdxCv(i+1,J)) ; enddo
     write(file,'(/," vhC++:")', advance='no')
          do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                     (0.5*CS%v_av(i+1,J,k)*uh_scale*(hin(i+1,j,k) + hin(i+1,j+1,k))) ; enddo
+                     (0.5_wp*CS%v_av(i+1,J,k)*uh_scale*(hin(i+1,j,k) + hin(i+1,j+1,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," vhCp++:")', advance='no')
            do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-                       (0.5*CS%v_av(i+1,J,k)*uh_scale*(hin(i+1,j,k) + hin(i+1,j+1,k))) ; enddo
+                       (0.5_wp*CS%v_av(i+1,J,k)*uh_scale*(hin(i+1,j,k) + hin(i+1,j+1,k))) ; enddo
     endif
 
     write(file,'(/,"D:     ",2(ES10.3))') US%Z_to_m*(G%bathyT(i,j) + G%Z_ref), US%Z_to_m*(G%bathyT(i+1,j) + G%Z_ref)
@@ -344,8 +346,8 @@ subroutine write_u_accel(I, j, um, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     if (prev_avail) then
       do k=ks,ke
         du = um(I,j,k) - CS%u_prev(I,j,k)
-        if (abs(du) < 1.0e-6*US%m_s_to_L_T) du = 1.0e-6*US%m_s_to_L_T
-        Inorm(k) = 1.0 / du
+        if (abs(du) < 1.0e-6_wp*US%m_s_to_L_T) du = 1.0e-6_wp*US%m_s_to_L_T
+        Inorm(k) = 1.0_wp / du
       enddo
 
       write(file,'(2/,"Norm:  ")', advance='no')
@@ -410,38 +412,38 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
   type(ocean_grid_type),       intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),     intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),       intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                                intent(in) :: vm  !< The new meridional velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                intent(in) :: hin !< The layer thickness [H ~> m or kg m-2].
   type(accel_diag_ptrs),       intent(in) :: ADp !< A structure pointing to the various
                                                  !! accelerations in the momentum equations.
   type(cont_diag_ptrs),        intent(in) :: CDp !< A structure with pointers to various terms in
                                                  !! the continuity equations.
-  real,                        intent(in) :: dt  !< The ocean dynamics time step [T ~> s].
+  real(wp),                        intent(in) :: dt  !< The ocean dynamics time step [T ~> s].
   type(PointAccel_CS),         pointer    :: CS  !< The control structure returned by a previous
                                                  !! call to PointAccel_init.
-  real,                        intent(in) :: vel_rpt !< The velocity magnitude that triggers a report [L T-1 ~> m s-1]
-  real, optional,              intent(in) :: str !< The surface wind stress [R L Z T-2 ~> Pa]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), &
+  real(wp),                        intent(in) :: vel_rpt !< The velocity magnitude that triggers a report [L T-1 ~> m s-1]
+  real(wp), optional,              intent(in) :: str !< The surface wind stress [R L Z T-2 ~> Pa]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)+1), &
                      optional, intent(in) :: a   !< The layer coupling coefficients from vertvisc
                                                  !! [H T-1 ~> m s-1 or Pa s m-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                      optional, intent(in) :: hv  !< The layer thicknesses at velocity grid points,
                                                  !! from vertvisc [H ~> m or kg m-2].
 
   ! Local variables
-  real    :: CFL              ! The local velocity-based CFL number [nondim]
-  real    :: Angstrom         ! A negligibly small thickness [H ~> m or kg m-2]
-  real    :: dv               ! A velocity change [L T-1 ~> m s-1]
-  real    :: Inorm(SZK_(GV))  ! The inverse of the normalized velocity change [L T-1 ~> m s-1]
-  real    :: e(SZK_(GV)+1)    ! Simple estimates of interface heights based on the sum of thicknesses [m]
-  real    :: h_scale          ! A scaling factor for thicknesses [m H-1 ~> 1] or [kg m-2 H-1 ~> 1]
-  real    :: vel_scale        ! A scaling factor for velocities [m T s-1 L-1 ~> 1]
-  real    :: uh_scale         ! A scaling factor for transport per unit length [m2 T s-1 L-1 H-1 ~> 1]
+  real(wp)    :: CFL              ! The local velocity-based CFL number [nondim]
+  real(wp)    :: Angstrom         ! A negligibly small thickness [H ~> m or kg m-2]
+  real(wp)    :: dv               ! A velocity change [L T-1 ~> m s-1]
+  real(wp)    :: Inorm(SZK_(GV))  ! The inverse of the normalized velocity change [L T-1 ~> m s-1]
+  real(wp)    :: e(SZK_(GV)+1)    ! Simple estimates of interface heights based on the sum of thicknesses [m]
+  real(wp)    :: h_scale          ! A scaling factor for thicknesses [m H-1 ~> 1] or [kg m-2 H-1 ~> 1]
+  real(wp)    :: vel_scale        ! A scaling factor for velocities [m T s-1 L-1 ~> 1]
+  real(wp)    :: uh_scale         ! A scaling factor for transport per unit length [m2 T s-1 L-1 H-1 ~> 1]
                               ! or [kg T m-1 s-1 L-1 H-1 ~> 1]
-  real    :: temp_scale       ! A scaling factor for temperatures [degC C-1 ~> 1]
-  real    :: saln_scale       ! A scaling factor for salinities [ppt S-1 ~> 1]
+  real(wp)    :: temp_scale       ! A scaling factor for temperatures [degC C-1 ~> 1]
+  real(wp)    :: saln_scale       ! A scaling factor for salinities [ppt S-1 ~> 1]
   integer :: yr, mo, day, hr, minute, sec, yearday
   integer :: k, ks, ke
   integer :: nz
@@ -478,13 +480,13 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     do k=1,nz
       if (((max(CS%v_av(i,J,k), vm(i,J,k)) >= vel_rpt) .or. &
            (min(CS%v_av(i,J,k), vm(i,J,k)) <= -vel_rpt)) .and. &
-          ((hin(i,j,k) + hin(i,j+1,k)) > 3.0*Angstrom)) exit
+          ((hin(i,j,k) + hin(i,j+1,k)) > 3.0_wp*Angstrom)) exit
     enddo
     ks = k
     do k=nz,1,-1
       if (((max(CS%v_av(i,J,k), vm(i,J,k)) >= vel_rpt) .or. &
            (min(CS%v_av(i,J,k), vm(i,J,k)) <= -vel_rpt)) .and. &
-          ((hin(i,j,k) + hin(i,j+1,k)) > 3.0*Angstrom)) exit
+          ((hin(i,j,k) + hin(i,j+1,k)) > 3.0_wp*Angstrom)) exit
     enddo
     ke = k
     if (ke < ks) then
@@ -499,12 +501,12 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     write (file,'(/,"--------------------------")')
     write (file,'(/,"Time ",I0," ",I0," ",F6.2," V-velocity violation at ",I0,": ",I0,", ",I0, &
         & " (",F7.2," E ",F7.2," N) Layers ",I0," to ",I0,". dt = ",1PG10.4)') &
-        yr, yearday, (REAL(sec)/3600.0), pe_here(), i, J, &
+        yr, yearday, (REAL(sec, wp)/3600.0_wp), pe_here(), i, J, &
         G%geoLonCv(i,J), G%geoLatCv(i,J), ks, ke, US%T_to_s*dt
 
     if (ks <= GV%nk_rho_varies) ks = 1
     do k=ks,ke
-      if ((hin(i,j,k) + hin(i,j+1,k)) > 3.0*Angstrom) do_k(k) = .true.
+      if ((hin(i,j,k) + hin(i,j+1,k)) > 3.0_wp*Angstrom) do_k(k) = .true.
     enddo
 
     write(file,'(/,"Layers:")', advance='no')
@@ -522,7 +524,7 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     write(file,'(/,"CFL v: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) then
       CFL = abs(vm(i,J,k)) * dt * G%dx_Cv(i,J)
-      if (vm(i,J,k) < 0.0) then ; CFL = CFL * G%IareaT(i,j+1)
+      if (vm(i,J,k) < 0.0_wp) then ; CFL = CFL * G%IareaT(i,j+1)
       else ; CFL = CFL * G%IareaT(i,j) ; endif
       write(file,'(ES10.3," ")', advance='no') CFL
     endif ; enddo
@@ -639,11 +641,11 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%uh(I-1,j,k)*G%IdyCu(I-1,j)) ; enddo
     write(file,'(/," uhC--: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_av(I-1,j,k) * uh_scale*0.5*(hin(i-1,j,k) + hin(i,j,k))) ; enddo
+            (CS%u_av(I-1,j,k) * uh_scale*0.5_wp*(hin(i-1,j,k) + hin(i,j,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," uhCp--:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_prev(I-1,j,k) * uh_scale*0.5*(hin(i-1,j,k) + hin(i,j,k))) ; enddo
+            (CS%u_prev(I-1,j,k) * uh_scale*0.5_wp*(hin(i-1,j,k) + hin(i,j,k))) ; enddo
     endif
 
     write(file,'(/,"uh-+:  ")', advance='no')
@@ -651,11 +653,11 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%uh(I-1,j+1,k)*G%IdyCu(I-1,j+1)) ; enddo
     write(file,'(/," uhC-+: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_av(I-1,j+1,k) * uh_scale*0.5*(hin(i-1,j+1,k) + hin(i,j+1,k))) ; enddo
+            (CS%u_av(I-1,j+1,k) * uh_scale*0.5_wp*(hin(i-1,j+1,k) + hin(i,j+1,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," uhCp-+:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_prev(I-1,j+1,k) * uh_scale*0.5*(hin(i-1,j+1,k) + hin(i,j+1,k))) ; enddo
+            (CS%u_prev(I-1,j+1,k) * uh_scale*0.5_wp*(hin(i-1,j+1,k) + hin(i,j+1,k))) ; enddo
     endif
 
     write(file,'(/,"uh+-:  ")', advance='no')
@@ -663,11 +665,11 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%uh(I,j,k)*G%IdyCu(I,j)) ; enddo
     write(file,'(/," uhC+-: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_av(I,j,k) * uh_scale*0.5*(hin(i,j,k) + hin(i+1,j,k))) ; enddo
+            (CS%u_av(I,j,k) * uh_scale*0.5_wp*(hin(i,j,k) + hin(i+1,j,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," uhCp+-:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_prev(I,j,k) * uh_scale*0.5*(hin(i,j,k) + hin(i+1,j,k))) ; enddo
+            (CS%u_prev(I,j,k) * uh_scale*0.5_wp*(hin(i,j,k) + hin(i+1,j,k))) ; enddo
     endif
 
     write(file,'(/,"uh++:  ")', advance='no')
@@ -675,11 +677,11 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
                                     (uh_scale*CDp%uh(I,j+1,k)*G%IdyCu(I,j+1)) ; enddo
     write(file,'(/," uhC++: ")', advance='no')
     do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_av(I,j+1,k) * uh_scale*0.5*(hin(i,j+1,k) + hin(i+1,j+1,k))) ; enddo
+            (CS%u_av(I,j+1,k) * uh_scale*0.5_wp*(hin(i,j+1,k) + hin(i+1,j+1,k))) ; enddo
     if (prev_avail) then
       write(file,'(/," uhCp++:")', advance='no')
       do k=ks,ke ; if (do_k(k)) write(file,'(ES10.3," ")', advance='no') &
-            (CS%u_prev(I,j+1,k) * uh_scale*0.5*(hin(i,j+1,k) + hin(i+1,j+1,k))) ; enddo
+            (CS%u_prev(I,j+1,k) * uh_scale*0.5_wp*(hin(i,j+1,k) + hin(i+1,j+1,k))) ; enddo
     endif
 
     write(file,'(/,"D:     ",2(ES10.3))') US%Z_to_m*(G%bathyT(i,j) + G%Z_ref), US%Z_to_m*(G%bathyT(i,j+1) + G%Z_ref)
@@ -688,8 +690,8 @@ subroutine write_v_accel(i, J, vm, hin, ADp, CDp, dt, G, GV, US, CS, vel_rpt, st
     if (prev_avail) then
       do k=ks,ke
         dv = vm(i,J,k) - CS%v_prev(i,J,k)
-        if (abs(dv) < 1.0e-6*US%m_s_to_L_T) dv = 1.0e-6*US%m_s_to_L_T
-        Inorm(k) = 1.0 / dv
+        if (abs(dv) < 1.0e-6_wp*US%m_s_to_L_T) dv = 1.0e-6_wp*US%m_s_to_L_T
+        Inorm(k) = 1.0_wp / dv
       enddo
 
       write(file,'(2/,"Norm:  ")', advance='no')

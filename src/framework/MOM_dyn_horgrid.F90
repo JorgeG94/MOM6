@@ -10,6 +10,8 @@ use MOM_error_handler,   only : MOM_error, MOM_mesg, FATAL, WARNING
 use MOM_hor_index,       only : hor_index_type
 use MOM_unit_scaling,    only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public create_dyn_horgrid, destroy_dyn_horgrid, set_derived_dyn_horgrid
@@ -68,7 +70,7 @@ type, public :: dyn_horgrid_type
                              !! directionally split parts of the calculation.  This can be altered
                              !! during the course of the run via calls to set_first_direction.
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     mask2dT, &   !< 0 for land points and 1 for ocean points on the h-grid [nondim].
     geoLatT, &   !< The geographic latitude at q points [degrees of latitude] or [m].
     geoLonT, &   !< The geographic longitude at q points [degrees of longitude] or [m].
@@ -78,14 +80,14 @@ type, public :: dyn_horgrid_type
     IdyT, &      !< IdyT is 1/dyT [L-1 ~> m-1].
     areaT, &     !< The area of an h-cell [L2 ~> m2].
     IareaT       !< 1/areaT [L-2 ~> m-2].
-  real, allocatable, dimension(:,:) :: sin_rot
+  real(wp), allocatable, dimension(:,:) :: sin_rot
                  !< The sine of the angular rotation between the local model grid's northward
                  !! and the true northward directions [nondim].
-  real, allocatable, dimension(:,:) :: cos_rot
+  real(wp), allocatable, dimension(:,:) :: cos_rot
                  !< The cosine of the angular rotation between the local model grid's northward
                  !! and the true northward directions [nondim].
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid [nondim].
     OBCmaskCu, & !< 0 for boundary or OBC points and 1 for ocean points on the u grid [nondim].
     geoLatCu, &  !< The geographic latitude at u points [degrees of latitude] or [m].
@@ -99,7 +101,7 @@ type, public :: dyn_horgrid_type
     IareaCu, &   !< The masked inverse areas of u-grid cells [L-2 ~> m-2].
     areaCu       !< The areas of the u-grid cells [L2 ~> m2].
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid [nondim].
     OBCmaskCv, & !< 0 for boundary or OBC points and 1 for ocean points on the v grid [nondim].
     geoLatCv, &  !< The geographic latitude at v points [degrees of latitude] or [m].
@@ -113,17 +115,17 @@ type, public :: dyn_horgrid_type
     IareaCv, &   !< The masked inverse areas of v-grid cells [L-2 ~> m-2].
     areaCv       !< The areas of the v-grid cells [L2 ~> m2].
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     porous_DminU, & !< minimum topographic height (deepest) of U-face [Z ~> m]
     porous_DmaxU, & !< maximum topographic height (shallowest) of U-face [Z ~> m]
     porous_DavgU    !< average topographic height of U-face [Z ~> m]
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     porous_DminV, & !< minimum topographic height (deepest) of V-face [Z ~> m]
     porous_DmaxV, & !< maximum topographic height (shallowest) of V-face [Z ~> m]
     porous_DavgV    !< average topographic height of V-face [Z ~> m]
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     mask2dBu, &  !< 0 for boundary points and 1 for ocean points on the q grid [nondim].
     geoLatBu, &  !< The geographic latitude at q points [degrees of latitude] or [m].
     geoLonBu, &  !< The geographic longitude at q points [degrees of longitude] or [m].
@@ -134,19 +136,19 @@ type, public :: dyn_horgrid_type
     areaBu, &    !< areaBu is the area of a q-cell [L ~> m]
     IareaBu      !< IareaBu = 1/areaBu [L-2 ~> m-2].
 
-  real, pointer, dimension(:) :: gridLatT => NULL()
+  real(wp), pointer, dimension(:) :: gridLatT => NULL()
         !< The latitude of T points for the purpose of labeling the output axes,
         !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLatT.
-  real, pointer, dimension(:) :: gridLatB => NULL()
+  real(wp), pointer, dimension(:) :: gridLatB => NULL()
         !< The latitude of B points for the purpose of labeling the output axes,
         !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLatBu.
-  real, pointer, dimension(:) :: gridLonT => NULL()
+  real(wp), pointer, dimension(:) :: gridLonT => NULL()
         !< The longitude of T points for the purpose of labeling the output axes,
         !! often in units of [degrees_E] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLonT.
-  real, pointer, dimension(:) :: gridLonB => NULL()
+  real(wp), pointer, dimension(:) :: gridLonB => NULL()
         !< The longitude of B points for the purpose of labeling the output axes,
         !! often in units of [degrees_E] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLonBu.
@@ -158,10 +160,10 @@ type, public :: dyn_horgrid_type
     x_ax_unit_short, &  !< A short description of the x-axis units for documenting parameter units
     y_ax_unit_short     !< A short description of the y-axis units for documenting parameter units
 
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     bathyT        !< Ocean bottom depth, referenced to a zero reference height at tracer points.
                   !! bathyT is in depth units and positive *below* the reference height [Z ~> m].
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     meanSL        !< Spatially varying time mean sea level, referenced to a zero reference height
                   !! at tracer points. meanSL is in height units and positive *above* zero. It is used
                   !! a) as the height where p = p_atm or zero;
@@ -173,35 +175,35 @@ type, public :: dyn_horgrid_type
   logical :: bathymetry_at_vel  !< If true, there are separate values for the
                   !! basin depths at velocity points.  Otherwise the effects of
                   !! of topography are entirely determined from thickness points.
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     Dblock_u, &   !< Topographic depths at u-points at which the flow is blocked [Z ~> m].
     Dopen_u       !< Topographic depths at u-points at which the flow is open at width dy_Cu [Z ~> m].
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     Dblock_v, &   !< Topographic depths at v-points at which the flow is blocked [Z ~> m].
     Dopen_v       !< Topographic depths at v-points at which the flow is open at width dx_Cv [Z ~> m].
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     CoriolisBu, & !< The Coriolis parameter at corner points [T-1 ~> s-1].
     Coriolis2Bu   !< The square of the Coriolis parameter at corner points [T-2 ~> s-2].
-  real, allocatable, dimension(:,:) :: &
+  real(wp), allocatable, dimension(:,:) :: &
     df_dx, &      !< Derivative d/dx f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
     df_dy         !< Derivative d/dy f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
 
   ! These variables are global sums that are useful for 1-d diagnostics.
-  real :: areaT_global  !< Global sum of h-cell area [L2 ~> m2]
-  real :: IareaT_global !< Global sum of inverse h-cell area (1/areaT_global) [L-2 ~> m-2]
+  real(wp) :: areaT_global  !< Global sum of h-cell area [L2 ~> m2]
+  real(wp) :: IareaT_global !< Global sum of inverse h-cell area (1/areaT_global) [L-2 ~> m-2]
 
   ! These parameters are run-time parameters that are used during some
   ! initialization routines (but not all)
-  real :: grid_unit_to_L !< A factor that converts a the geoLat and geoLon variables and related
+  real(wp) :: grid_unit_to_L !< A factor that converts a the geoLat and geoLon variables and related
                         !! variables like len_lat and len_lon into rescaled horizontal distance
                         !! units on a Cartesian grid, in [L km ~> 1000] or [L m-1 ~> 1] or
                         !! is 0 for a non-Cartesian grid.
-  real :: south_lat     !< The latitude (or y-coordinate) of the first v-line [degrees_N] or [km] or [m]
-  real :: west_lon      !< The longitude (or x-coordinate) of the first u-line [degrees_E] or [km] or [m]
-  real :: len_lat       !< The latitudinal (or y-coord) extent of physical domain [degrees_N] or [km] or [m]
-  real :: len_lon       !< The longitudinal (or x-coord) extent of physical domain [degrees_E] or [km] or [m]
-  real :: Rad_Earth_L   !< The radius of the planet in rescaled units [L ~> m]
-  real :: max_depth     !< The maximum depth of the ocean [Z ~> m]
+  real(wp) :: south_lat     !< The latitude (or y-coordinate) of the first v-line [degrees_N] or [km] or [m]
+  real(wp) :: west_lon      !< The longitude (or x-coordinate) of the first u-line [degrees_E] or [km] or [m]
+  real(wp) :: len_lat       !< The latitudinal (or y-coord) extent of physical domain [degrees_N] or [km] or [m]
+  real(wp) :: len_lon       !< The longitudinal (or x-coord) extent of physical domain [degrees_E] or [km] or [m]
+  real(wp) :: Rad_Earth_L   !< The radius of the planet in rescaled units [L ~> m]
+  real(wp) :: max_depth     !< The maximum depth of the ocean [Z ~> m]
 end type dyn_horgrid_type
 
 contains
@@ -247,85 +249,85 @@ subroutine create_dyn_horgrid(G, HI, bathymetry_at_vel)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
   isg = G%isg ; ieg = G%ieg ; jsg = G%jsg ; jeg = G%jeg
 
-  allocate(G%dxT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%dxCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%dxCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%dxBu(IsdB:IedB,JsdB:JedB), source=0.0)
-  allocate(G%IdxT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%IdxCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%IdxCu_OBCmask(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%IdxCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%IdxBu(IsdB:IedB,JsdB:JedB), source=0.0)
+  allocate(G%dxT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%dxCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%dxCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%dxBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
+  allocate(G%IdxT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%IdxCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%IdxCu_OBCmask(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%IdxCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%IdxBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%dyT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%dyCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%dyCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%dyBu(IsdB:IedB,JsdB:JedB), source=0.0)
-  allocate(G%IdyT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%IdyCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%IdyCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%IdyCv_OBCmask(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%IdyBu(IsdB:IedB,JsdB:JedB), source=0.0)
+  allocate(G%dyT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%dyCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%dyCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%dyBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
+  allocate(G%IdyT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%IdyCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%IdyCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%IdyCv_OBCmask(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%IdyBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%areaT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%IareaT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%areaBu(IsdB:IedB,JsdB:JedB), source=0.0)
-  allocate(G%IareaBu(IsdB:IedB,JsdB:JedB), source=0.0)
+  allocate(G%areaT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%IareaT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%areaBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
+  allocate(G%IareaBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%mask2dT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%mask2dCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%mask2dCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%mask2dBu(IsdB:IedB,JsdB:JedB), source=0.0)
-  allocate(G%OBCmaskCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%OBCmaskCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%geoLatT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%geoLatCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%geoLatCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%geoLatBu(IsdB:IedB,JsdB:JedB), source=0.0)
-  allocate(G%geoLonT(isd:ied,jsd:jed), source=0.0)
-  allocate(G%geoLonCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%geoLonCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%geoLonBu(IsdB:IedB,JsdB:JedB), source=0.0)
+  allocate(G%mask2dT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%mask2dCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%mask2dCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%mask2dBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
+  allocate(G%OBCmaskCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%OBCmaskCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%geoLatT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%geoLatCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%geoLatCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%geoLatBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
+  allocate(G%geoLonT(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%geoLonCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%geoLonCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%geoLonBu(IsdB:IedB,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%dx_Cv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%dy_Cu(IsdB:IedB,jsd:jed), source=0.0)
+  allocate(G%dx_Cv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%dy_Cu(IsdB:IedB,jsd:jed), source=0.0_wp)
 
-  allocate(G%areaCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%areaCv(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%IareaCu(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%IareaCv(isd:ied,JsdB:JedB), source=0.0)
+  allocate(G%areaCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%areaCv(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%IareaCu(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%IareaCv(isd:ied,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%porous_DminU(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%porous_DmaxU(IsdB:IedB,jsd:jed), source=0.0)
-  allocate(G%porous_DavgU(IsdB:IedB,jsd:jed), source=0.0)
+  allocate(G%porous_DminU(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%porous_DmaxU(IsdB:IedB,jsd:jed), source=0.0_wp)
+  allocate(G%porous_DavgU(IsdB:IedB,jsd:jed), source=0.0_wp)
 
-  allocate(G%porous_DminV(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%porous_DmaxV(isd:ied,JsdB:JedB), source=0.0)
-  allocate(G%porous_DavgV(isd:ied,JsdB:JedB), source=0.0)
+  allocate(G%porous_DminV(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%porous_DmaxV(isd:ied,JsdB:JedB), source=0.0_wp)
+  allocate(G%porous_DavgV(isd:ied,JsdB:JedB), source=0.0_wp)
 
-  allocate(G%bathyT(isd:ied, jsd:jed), source=0.0)
-  allocate(G%meanSL(isd:ied, jsd:jed), source=0.0)
-  allocate(G%CoriolisBu(IsdB:IedB, JsdB:JedB), source=0.0)
-  allocate(G%Coriolis2Bu(IsdB:IedB, JsdB:JedB), source=0.0)
-  allocate(G%dF_dx(isd:ied, jsd:jed), source=0.0)
-  allocate(G%dF_dy(isd:ied, jsd:jed), source=0.0)
+  allocate(G%bathyT(isd:ied, jsd:jed), source=0.0_wp)
+  allocate(G%meanSL(isd:ied, jsd:jed), source=0.0_wp)
+  allocate(G%CoriolisBu(IsdB:IedB, JsdB:JedB), source=0.0_wp)
+  allocate(G%Coriolis2Bu(IsdB:IedB, JsdB:JedB), source=0.0_wp)
+  allocate(G%dF_dx(isd:ied, jsd:jed), source=0.0_wp)
+  allocate(G%dF_dy(isd:ied, jsd:jed), source=0.0_wp)
 
-  allocate(G%sin_rot(isd:ied,jsd:jed), source=0.0)
-  allocate(G%cos_rot(isd:ied,jsd:jed), source=1.0)
+  allocate(G%sin_rot(isd:ied,jsd:jed), source=0.0_wp)
+  allocate(G%cos_rot(isd:ied,jsd:jed), source=1.0_wp)
 
   if (G%bathymetry_at_vel) then
-    allocate(G%Dblock_u(IsdB:IedB, jsd:jed), source=0.0)
-    allocate(G%Dopen_u(IsdB:IedB, jsd:jed), source=0.0)
-    allocate(G%Dblock_v(isd:ied, JsdB:JedB), source=0.0)
-    allocate(G%Dopen_v(isd:ied, JsdB:JedB), source=0.0)
+    allocate(G%Dblock_u(IsdB:IedB, jsd:jed), source=0.0_wp)
+    allocate(G%Dopen_u(IsdB:IedB, jsd:jed), source=0.0_wp)
+    allocate(G%Dblock_v(isd:ied, JsdB:JedB), source=0.0_wp)
+    allocate(G%Dopen_v(isd:ied, JsdB:JedB), source=0.0_wp)
   endif
 
   ! gridLonB and gridLatB are used as edge values in some cases, so they
   ! always need to use symmetric memory allcoations.
-  allocate(G%gridLonT(isg:ieg), source=0.0)
-  allocate(G%gridLonB(isg-1:ieg), source=0.0)
-  allocate(G%gridLatT(jsg:jeg), source=0.0)
-  allocate(G%gridLatB(jsg-1:jeg), source=0.0)
+  allocate(G%gridLonT(isg:ieg), source=0.0_wp)
+  allocate(G%gridLonB(isg-1:ieg), source=0.0_wp)
+  allocate(G%gridLatT(jsg:jeg), source=0.0_wp)
+  allocate(G%gridLatB(jsg-1:jeg), source=0.0_wp)
 
 end subroutine create_dyn_horgrid
 
@@ -431,22 +433,22 @@ end subroutine rotate_dyn_horgrid
 !! grid, both rescaling the depths and recording the new internal depth units.
 subroutine rescale_dyn_horgrid_bathymetry(G, m_in_new_units)
   type(dyn_horgrid_type), intent(inout) :: G !< The dynamic horizontal grid type
-  real,                   intent(in)    :: m_in_new_units !< The new internal representation of 1 m depth [m Z-1 ~> 1]
+  real(wp),                   intent(in)    :: m_in_new_units !< The new internal representation of 1 m depth [m Z-1 ~> 1]
 
   ! Local variables
-  real :: rescale ! The inverse of m_in_new_units, used in rescaling bathymetry [Z m-1 ~> 1]
+  real(wp) :: rescale ! The inverse of m_in_new_units, used in rescaling bathymetry [Z m-1 ~> 1]
   integer :: i, j, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
 
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
-  if (m_in_new_units == 1.0) return
-  if (m_in_new_units < 0.0) &
+  if (m_in_new_units == 1.0_wp) return
+  if (m_in_new_units < 0.0_wp) &
     call MOM_error(FATAL, "rescale_dyn_horgrid_bathymetry: Negative depth units are not permitted.")
-  if (m_in_new_units == 0.0) &
+  if (m_in_new_units == 0.0_wp) &
     call MOM_error(FATAL, "rescale_dyn_horgrid_bathymetry: Zero depth units are not permitted.")
 
-  rescale = 1.0 / m_in_new_units
+  rescale = 1.0_wp / m_in_new_units
   do j=jsd,jed ; do i=isd,ied
     G%bathyT(i,j) = rescale*G%bathyT(i,j)
     G%meanSL(i,j) = rescale*G%meanSL(i,j)
@@ -474,37 +476,37 @@ subroutine set_derived_dyn_horgrid(G, US)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
   do j=jsd,jed ; do i=isd,ied
-    if (G%dxT(i,j) < 0.0) G%dxT(i,j) = 0.0
-    if (G%dyT(i,j) < 0.0) G%dyT(i,j) = 0.0
+    if (G%dxT(i,j) < 0.0_wp) G%dxT(i,j) = 0.0_wp
+    if (G%dyT(i,j) < 0.0_wp) G%dyT(i,j) = 0.0_wp
     G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
     G%IdyT(i,j) = Adcroft_reciprocal(G%dyT(i,j))
     G%IareaT(i,j) = Adcroft_reciprocal(G%areaT(i,j))
   enddo ; enddo
 
   do j=jsd,jed ; do I=IsdB,IedB
-    if (G%dxCu(I,j) < 0.0) G%dxCu(I,j) = 0.0
-    if (G%dyCu(I,j) < 0.0) G%dyCu(I,j) = 0.0
+    if (G%dxCu(I,j) < 0.0_wp) G%dxCu(I,j) = 0.0_wp
+    if (G%dyCu(I,j) < 0.0_wp) G%dyCu(I,j) = 0.0_wp
     G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
     G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
     G%IdxCu_OBCmask(I,j) = G%OBCmaskCu(I,j) * G%IdxCu(I,j) ! This may be reset when the masks are set.
   enddo ; enddo
 
   do J=JsdB,JedB ; do i=isd,ied
-    if (G%dxCv(i,J) < 0.0) G%dxCv(i,J) = 0.0
-    if (G%dyCv(i,J) < 0.0) G%dyCv(i,J) = 0.0
+    if (G%dxCv(i,J) < 0.0_wp) G%dxCv(i,J) = 0.0_wp
+    if (G%dyCv(i,J) < 0.0_wp) G%dyCv(i,J) = 0.0_wp
     G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
     G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
     G%IdyCv_OBCmask(i,J) = G%OBCmaskCv(i,J) * G%IdyCv(i,J) ! This may be reset when the masks are set.
   enddo ; enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB
-    if (G%dxBu(I,J) < 0.0) G%dxBu(I,J) = 0.0
-    if (G%dyBu(I,J) < 0.0) G%dyBu(I,J) = 0.0
+    if (G%dxBu(I,J) < 0.0_wp) G%dxBu(I,J) = 0.0_wp
+    if (G%dyBu(I,J) < 0.0_wp) G%dyBu(I,J) = 0.0_wp
 
     G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
     G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
     ! areaBu has usually been set to a positive area elsewhere.
-    if (G%areaBu(I,J) <= 0.0) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    if (G%areaBu(I,J) <= 0.0_wp) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
     G%IareaBu(I,J) =  Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 
@@ -512,10 +514,10 @@ end subroutine set_derived_dyn_horgrid
 
 !> Adcroft_reciprocal(x) = 1/x for |x|>0 or 0 for x=0.
 function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val  !< The value being inverted in arbitrary units [A ~> a]
-  real :: I_val            !< The Adcroft reciprocal of val [A-1 ~> a-1].
+  real(wp), intent(in) :: val  !< The value being inverted in arbitrary units [A ~> a]
+  real(wp) :: I_val            !< The Adcroft reciprocal of val [A-1 ~> a-1].
 
-  I_val = 0.0 ; if (val /= 0.0) I_val = 1.0/val
+  I_val = 0.0_wp ; if (val /= 0.0_wp) I_val = 1.0_wp/val
 end function Adcroft_reciprocal
 
 !---------------------------------------------------------------------

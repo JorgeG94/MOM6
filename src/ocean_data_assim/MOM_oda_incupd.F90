@@ -34,6 +34,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type, get_thickness_units
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -53,10 +55,10 @@ public init_oda_incupd_diags,calc_oda_increments,output_oda_incupd_inc
 type :: p3d
   integer :: id !< id for FMS external time interpolator
   integer :: nz_data !< The number of vertical levels in the input field.
-  real, dimension(:,:,:), pointer :: mask_in => NULL() !< pointer to the data mask (perhaps unused) [nondim]
-  real, dimension(:,:,:), pointer :: p => NULL() !< pointer to the data, in units that depend
+  real(wp), dimension(:,:,:), pointer :: mask_in => NULL() !< pointer to the data mask (perhaps unused) [nondim]
+  real(wp), dimension(:,:,:), pointer :: p => NULL() !< pointer to the data, in units that depend
                                                  !! on the field it refers to [various].
-  real, dimension(:,:,:), pointer :: h => NULL() !< pointer to the data grid (perhaps unused)
+  real(wp), dimension(:,:,:), pointer :: h => NULL() !< pointer to the data grid (perhaps unused)
                                                  !! in [H ~> m or kg m-2]
 end type p3d
 
@@ -74,7 +76,7 @@ type, public :: oda_incupd_CS ; private
 
 
   integer :: nstep_incupd          !< number of time step for full update
-  real    :: ncount = 0.0          !< increment time step counter [nondim].  This could be an integer
+  real(wp)    :: ncount = 0.0_wp          !< increment time step counter [nondim].  This could be an integer
                                    !! but a real variable works better with the existing restarts.
   type(remapping_cs) :: remap_cs   !< Remapping parameters and work arrays
   logical :: incupdDataOngrid  !< True if the incupd data are on the model horizontal grid
@@ -111,7 +113,7 @@ subroutine initialize_oda_incupd_fixed( G, GV, US, CS, restart_CS)
   allocate(CS)
 
   ! initialize time counter
-  CS%ncount = 0.0
+  CS%ncount = 0.0_wp
   ! register ncount in restart
   call register_restart_field(CS%ncount, "oda_incupd_ncount", .false., restart_CS,&
                               "Number of inc. update already done", "N/A")
@@ -129,7 +131,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
                                                         !! to parse for model parameter values.
   type(oda_incupd_CS),        pointer    :: CS          !< A pointer that is set to point to the control
                                                         !! structure for this module (in/out).
-  real, dimension(SZI_(G),SZJ_(G),nz_data), intent(in) :: data_h !< The ODA h
+  real(wp), dimension(SZI_(G),SZJ_(G),nz_data), intent(in) :: data_h !< The ODA h
                                                                  !! [H ~> m or kg m-2].
   type(MOM_restart_CS),       intent(in) :: restart_CS  !< MOM restart control struct
 
@@ -140,12 +142,12 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
   logical :: bndExtrapolation = .true.   ! If true, extrapolate boundaries
   logical :: reset_ncount
   integer :: i, j, k
-  real    :: incupd_timescale ! The amount of timer over which to apply the full update [T ~> s]
-  real    :: dt, dt_therm  ! Model timesteps [T ~> s]
+  real(wp)    :: incupd_timescale ! The amount of timer over which to apply the full update [T ~> s]
+  real(wp)    :: dt, dt_therm  ! Model timesteps [T ~> s]
   character(len=256) :: mesg
   character(len=64)  :: remapScheme
   logical :: om4_remap_via_sub_cells ! If true, use the OM4 remapping algorithm
-  real :: h_neglect, h_neglect_edge  ! Negligible thicknesses [H ~> m or kg m-2]
+  real(wp) :: h_neglect, h_neglect_edge  ! Negligible thicknesses [H ~> m or kg m-2]
 
   if (.not.associated(CS)) then
     call MOM_error(WARNING, "initialize_oda_incupd called without an associated "// &
@@ -163,7 +165,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
 
   call get_param(param_file, mdl, "ODA_INCUPD_NHOURS", incupd_timescale, &
                  "Number of hours for full update (0=direct insertion).", &
-                 default=3.0, units="h", scale=3600.0*US%s_to_T)
+                 default=3.0_wp, units="h", scale=3600.0_wp*US%s_to_T)
   call get_param(param_file, mdl, "ODA_INCUPD_RESET_NCOUNT", reset_ncount, &
                  "If True, reinitialize number of updates already done, ncount.", &
                  default=.true.)
@@ -219,7 +221,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
   if (incupd_timescale == 0) then
     CS%nstep_incupd = 1 !! direct insertion
   else
-    CS%nstep_incupd = floor( incupd_timescale / dt_therm + 0.001 ) - 1
+    CS%nstep_incupd = floor( incupd_timescale / dt_therm + 0.001_wp ) - 1
   endif
   write(mesg,'(i12)') CS%nstep_incupd
   if (is_root_pe()) &
@@ -231,7 +233,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
       .not.reset_ncount) then
     CS%ncount = CS%ncount
   else
-    CS%ncount = 0.0
+    CS%ncount = 0.0_wp
   endif
   write(mesg,'(f4.1)') CS%ncount
   if (is_root_pe()) &
@@ -240,7 +242,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
 
   ! get the vertical grid (h_obs) of the increments
   CS%nz_data = nz_data
-  allocate(CS%Ref_h%p(G%isd:G%ied,G%jsd:G%jed,CS%nz_data), source=0.0)
+  allocate(CS%Ref_h%p(G%isd:G%ied,G%jsd:G%jed,CS%nz_data), source=0.0_wp)
   do j=G%jsc,G%jec; do i=G%isc,G%iec ; do k=1,CS%nz_data
     CS%Ref_h%p(i,j,k) = data_h(i,j,k)
   enddo;  enddo ; enddo
@@ -249,7 +251,7 @@ subroutine initialize_oda_incupd( G, GV, US, param_file, CS, data_h, nz_data, re
   ! Call the constructor for remapping control structure
   !### Revisit this hard-coded answer_date.
   if (GV%Boussinesq) then
-    h_neglect = GV%m_to_H*1.0e-30 ; h_neglect_edge = GV%m_to_H*1.0e-10
+    h_neglect = GV%m_to_H*1.0e-30_wp ; h_neglect_edge = GV%m_to_H*1.0e-10_wp
   else
     h_neglect = GV%H_subroundoff ; h_neglect_edge = GV%H_subroundoff
   endif
@@ -266,7 +268,7 @@ subroutine set_up_oda_incupd_field(sp_val, G, GV, CS)
   type(ocean_grid_type),   intent(in) :: G      !< Grid structure
   type(verticalGrid_type), intent(in) :: GV     !< ocean vertical grid structure
   type(oda_incupd_CS),     pointer    :: CS     !< oda_incupd control structure (in/out).
-  real, dimension(SZI_(G),SZJ_(G),CS%nz_data), &
+  real(wp), dimension(SZI_(G),SZJ_(G),CS%nz_data), &
                            intent(in) :: sp_val !< increment field, it can have an arbitrary number
                                                 !! of layers, in various units depending on the
                                                 !! field it refers to [various].
@@ -286,7 +288,7 @@ subroutine set_up_oda_incupd_field(sp_val, G, GV, CS)
 
   ! store the increment/full field tracer profiles
   CS%Inc(CS%fldno)%nz_data = CS%nz_data
-  allocate(CS%Inc(CS%fldno)%p(G%isd:G%ied,G%jsd:G%jed,CS%nz_data), source=0.0)
+  allocate(CS%Inc(CS%fldno)%p(G%isd:G%ied,G%jsd:G%jed,CS%nz_data), source=0.0_wp)
   do k=1,CS%nz_data ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
     CS%Inc(CS%fldno)%p(i,j,k) = sp_val(i,j,k)
   enddo ; enddo ; enddo
@@ -301,10 +303,10 @@ subroutine set_up_oda_incupd_vel_field(u_val, v_val, G, GV, CS)
   type(verticalGrid_type), intent(in) :: GV !< ocean vertical grid structure
   type(oda_incupd_CS),     pointer    :: CS !< oda incupd structure (in/out).
 
-  real, dimension(SZIB_(G),SZJ_(G),CS%nz_data), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),CS%nz_data), &
                           intent(in) :: u_val !< u increment, it has arbritary number of layers but
                                               !! not to exceed the total number of model layers [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),CS%nz_data), &
+  real(wp), dimension(SZI_(G),SZJB_(G),CS%nz_data), &
                           intent(in) :: v_val !< v increment, it has arbritary number of layers but
                                               !! not to exceed the number of model layers [L T-1 ~> m s-1]
   integer :: i, j, k
@@ -313,7 +315,7 @@ subroutine set_up_oda_incupd_vel_field(u_val, v_val, G, GV, CS)
 
 
   ! store the increment/full field u profile
-  allocate(CS%Inc_u%p(G%isdB:G%iedB,G%jsd:G%jed,CS%nz_data), source=0.0)
+  allocate(CS%Inc_u%p(G%isdB:G%iedB,G%jsd:G%jed,CS%nz_data), source=0.0_wp)
   do j=G%jsc,G%jec ; do i=G%iscB,G%iecB
     do k=1,CS%nz_data
       CS%Inc_u%p(i,j,k) = u_val(i,j,k)
@@ -321,7 +323,7 @@ subroutine set_up_oda_incupd_vel_field(u_val, v_val, G, GV, CS)
   enddo ; enddo
 
   ! store the increment/full field v profile
-  allocate(CS%Inc_v%p(G%isd:G%ied,G%jsdB:G%jedB,CS%nz_data), source=0.0)
+  allocate(CS%Inc_v%p(G%isd:G%ied,G%jsdB:G%jedB,CS%nz_data), source=0.0_wp)
   do j=G%jscB,G%jecB ; do i=G%isc,G%iec
     do k=1,CS%nz_data
       CS%Inc_v%p(i,j,k) = v_val(i,j,k)
@@ -336,34 +338,34 @@ subroutine calc_oda_increments(h, tv, u, v, G, GV, US, CS)
   type(ocean_grid_type),     intent(in)    :: G  !< The ocean's grid structure (in).
   type(verticalGrid_type),   intent(in)    :: GV !< ocean vertical grid structure
   type(unit_scale_type),     intent(in)    :: US !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                              intent(inout) :: h  !< Layer thickness [H ~> m or kg m-2] (in)
   type(thermo_var_ptrs),     intent(in)    :: tv !< A structure pointing to various thermodynamic variables
 
-  real, target, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), target, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)      :: u    !< The zonal velocity that is being
                                                    !! initialized [L T-1 ~> m s-1]
-  real, target, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), target, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in)      :: v    !< The meridional velocity that is being
                                                    !! initialized [L T-1 ~> m s-1]
   type(oda_incupd_CS),       pointer       :: CS !< A pointer to the control structure for this module
                                                  !! that is set by a previous call to initialize_oda_incupd (in).
 
 
-  real, dimension(SZK_(GV)) :: tmp_val1        ! data values on the model grid, in rescaled units
+  real(wp), dimension(SZK_(GV)) :: tmp_val1        ! data values on the model grid, in rescaled units
                                                ! like [S ~> ppt] for salinity.
-  real, allocatable, dimension(:) :: tmp_val2  ! data values remapped to increment grid, in rescaled units
+  real(wp), allocatable, dimension(:) :: tmp_val2  ! data values remapped to increment grid, in rescaled units
                                                ! like [S ~> ppt] for salinity.
-  real, allocatable, dimension(:,:,:) :: h_obs !< Layer-thicknesses of increments [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: tmp_h     ! temporary array for corrected h_obs [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: hu_obs  ! A column of observation-grid thicknesses at u points [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: hv_obs  ! A column of observation-grid thicknesses at v points [H ~> m or kg m-2]
-  real, dimension(SZK_(GV)) :: hu, hv        ! A column of thicknesses at u or v points [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:,:,:) :: h_obs !< Layer-thicknesses of increments [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: tmp_h     ! temporary array for corrected h_obs [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: hu_obs  ! A column of observation-grid thicknesses at u points [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: hv_obs  ! A column of observation-grid thicknesses at v points [H ~> m or kg m-2]
+  real(wp), dimension(SZK_(GV)) :: hu, hv        ! A column of thicknesses at u or v points [H ~> m or kg m-2]
 
 
   integer ::  i, j, k, is, ie, js, je, nz, nz_data
   integer :: isB, ieB, jsB, jeB
-  real :: sum_h1, sum_h2 ! vertical sums of h's [H ~> m or kg m-2]
+  real(wp) :: sum_h1, sum_h2 ! vertical sums of h's [H ~> m or kg m-2]
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   isB = G%iscB ; ieB = G%iecB ; jsB = G%jscB ; jeB = G%jecB
@@ -371,12 +373,12 @@ subroutine calc_oda_increments(h, tv, u, v, G, GV, US, CS)
 
 
   ! increments calculated on if CS%ncount = 0.0
-  if (CS%ncount /= 0.0) call MOM_error(FATAL,'calc_oda_increments: '// &
+  if (CS%ncount /= 0.0_wp) call MOM_error(FATAL,'calc_oda_increments: '// &
            'CS%ncount should be 0.0 to get accurate increments.')
 
   ! get h_obs
   nz_data = CS%Inc(1)%nz_data
-  allocate(h_obs(G%isd:G%ied,G%jsd:G%jed,nz_data), source=0.0)
+  allocate(h_obs(G%isd:G%ied,G%jsd:G%jed,nz_data), source=0.0_wp)
   do k=1,nz_data  ; do j=js,je ; do i=is,ie
     h_obs(i,j,k) = CS%Ref_h%p(i,j,k)
   enddo ; enddo ; enddo
@@ -384,18 +386,18 @@ subroutine calc_oda_increments(h, tv, u, v, G, GV, US, CS)
 
 
   ! allocate 1-d arrays
-  allocate(tmp_h(nz_data), source=0.0)
-  allocate(tmp_val2(nz_data), source=0.0)
-  allocate(hu_obs(nz_data), source=0.0)
-  allocate(hv_obs(nz_data), source=0.0)
+  allocate(tmp_h(nz_data), source=0.0_wp)
+  allocate(tmp_val2(nz_data), source=0.0_wp)
+  allocate(hu_obs(nz_data), source=0.0_wp)
+  allocate(hv_obs(nz_data), source=0.0_wp)
 
   ! remap t,s (on h_init) to h_obs to get increment
-  tmp_val1(:) = 0.0
+  tmp_val1(:) = 0.0_wp
   do j=js,je ; do i=is,ie
     if (G%mask2dT(i,j) == 1) then
       ! account for the different SSH
-      sum_h1 = 0.0
-      sum_h2 = 0.0
+      sum_h1 = 0.0_wp
+      sum_h2 = 0.0_wp
       do k=1,nz
         sum_h1 = sum_h1+h(i,j,k)
       enddo
@@ -436,24 +438,24 @@ subroutine calc_oda_increments(h, tv, u, v, G, GV, US, CS)
   if (CS%uv_inc) then
     call pass_var(h, G%Domain)
 
-    hu(:) = 0.0
+    hu(:) = 0.0_wp
     do j=js,je ; do i=isB,ieB
       if (G%mask2dCu(i,j) == 1) then
         ! get u-velocity
         do k=1,nz
           tmp_val1(k) = u(i,j,k)
           ! get the h and h_obs at u points
-          hu(k) = 0.5*( h(i,j,k)+ h(i+1,j,k))
+          hu(k) = 0.5_wp*( h(i,j,k)+ h(i+1,j,k))
         enddo
         do k=1,nz_data
-          hu_obs(k) = 0.5*(h_obs(i,j,k)+h_obs(i+1,j,k))
+          hu_obs(k) = 0.5_wp*(h_obs(i,j,k)+h_obs(i+1,j,k))
         enddo
         ! account for the different SSH
-        sum_h1 = 0.0
+        sum_h1 = 0.0_wp
         do k=1,nz
           sum_h1 = sum_h1+hu(k)
         enddo
-        sum_h2 = 0.0
+        sum_h2 = 0.0_wp
         do k=1,nz_data
           sum_h2 = sum_h2+hu_obs(k)
         enddo
@@ -471,24 +473,24 @@ subroutine calc_oda_increments(h, tv, u, v, G, GV, US, CS)
     enddo ; enddo
 
     ! remap v to h_obs to get increment
-    hv(:) = 0.0;
+    hv(:) = 0.0_wp;
     do j=jsB,jeB ; do i=is,ie
       if (G%mask2dCv(i,j) == 1) then
         ! get v-velocity
         do k=1,nz
           tmp_val1(k) = v(i,j,k)
           ! get the h and h_obs at v points
-          hv(k) = 0.5*(h(i,j,k)+h(i,j+1,k))
+          hv(k) = 0.5_wp*(h(i,j,k)+h(i,j+1,k))
         enddo
         do k=1,nz_data
-          hv_obs(k) = 0.5*(h_obs(i,j,k)+h_obs(i,j+1,k))
+          hv_obs(k) = 0.5_wp*(h_obs(i,j,k)+h_obs(i,j+1,k))
         enddo
         ! account for the different SSH
-        sum_h1 = 0.0
+        sum_h1 = 0.0_wp
         do k=1,nz
           sum_h1 = sum_h1+hv(k)
         enddo
-        sum_h2 = 0.0
+        sum_h2 = 0.0_wp
         do k=1,nz_data
           sum_h2 = sum_h2+hv_obs(k)
         enddo
@@ -522,43 +524,43 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
   type(ocean_grid_type),     intent(in)    :: G  !< The ocean's grid structure (in).
   type(verticalGrid_type),   intent(in)    :: GV !< ocean vertical grid structure
   type(unit_scale_type),     intent(in)    :: US !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                              intent(inout)    :: h  !< Layer thickness [H ~> m or kg m-2] (in)
   type(thermo_var_ptrs),     intent(inout) :: tv !< A structure pointing to various thermodynamic variables
 
-  real, target, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), target, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout)   :: u    !< The zonal velocity that is being
                                                    !! initialized [L T-1 ~> m s-1]
-  real, target, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), target, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(inout)   :: v    !< The meridional velocity that is being
                                                    !! initialized [L T-1 ~> m s-1]
 
-  real,                      intent(in)    :: dt !< The amount of time covered by this call [T ~> s].
+  real(wp),                      intent(in)    :: dt !< The amount of time covered by this call [T ~> s].
   type(oda_incupd_CS),       pointer       :: CS !< A pointer to the control structure for this module
                                                  !! that is set by a previous call to initialize_oda_incupd (in).
 
   ! Local variables
-  real, allocatable, dimension(:) :: tmp_val2  ! data values remapped to increment grid, in rescaled units
+  real(wp), allocatable, dimension(:) :: tmp_val2  ! data values remapped to increment grid, in rescaled units
                                                ! like [S ~> ppt] for salinity.
-  real, dimension(SZK_(GV)) :: tmp_val1        ! data values on the model grid, in rescaled units
+  real(wp), dimension(SZK_(GV)) :: tmp_val1        ! data values on the model grid, in rescaled units
                                                ! like [S ~> ppt] for salinity.
-  real, dimension(SZK_(GV)) :: hu, hv          ! A column of thicknesses at u or v points [H ~> m or kg m-2]
+  real(wp), dimension(SZK_(GV)) :: hu, hv          ! A column of thicknesses at u or v points [H ~> m or kg m-2]
 
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV))  :: tmp_t  !< A temporary array for t increments [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV))  :: tmp_s  !< A temporary array for s increments [S ~> ppt]
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: tmp_u  !< A temporary array for u increments [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: tmp_v  !< A temporary array for v increments [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV))  :: tmp_t  !< A temporary array for t increments [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV))  :: tmp_s  !< A temporary array for s increments [S ~> ppt]
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)) :: tmp_u  !< A temporary array for u increments [L T-1 ~> m s-1]
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: tmp_v  !< A temporary array for v increments [L T-1 ~> m s-1]
 
-  real, allocatable, dimension(:,:,:) :: h_obs     !< h of increments [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: tmp_h         !< temporary array for corrected h_obs [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: hu_obs  ! A column of observation-grid thicknesses at u points [H ~> m or kg m-2]
-  real, allocatable, dimension(:) :: hv_obs  ! A column of observation-grid thicknesses at v points [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:,:,:) :: h_obs     !< h of increments [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: tmp_h         !< temporary array for corrected h_obs [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: hu_obs  ! A column of observation-grid thicknesses at u points [H ~> m or kg m-2]
+  real(wp), allocatable, dimension(:) :: hv_obs  ! A column of observation-grid thicknesses at v points [H ~> m or kg m-2]
 
   integer ::  i, j, k, is, ie, js, je, nz, nz_data
   integer :: isB, ieB, jsB, jeB
 !  integer :: ncount      ! time step counter
-  real :: inc_wt           ! weight of the update for this time-step [nondim]
-  real :: sum_h1, sum_h2 ! vertical sums of h's [H ~> m or kg m-2]
+  real(wp) :: inc_wt           ! weight of the update for this time-step [nondim]
+  real(wp) :: sum_h1, sum_h2 ! vertical sums of h's [H ~> m or kg m-2]
   character(len=256) :: mesg
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -572,8 +574,8 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
   endif !ncount>CS%nstep_incupd
 
   ! update counter
-  CS%ncount = CS%ncount+1.0
-  inc_wt = 1.0/CS%nstep_incupd
+  CS%ncount = CS%ncount+1.0_wp
+  inc_wt = 1.0_wp/CS%nstep_incupd
 
   ! print out increments
   write(mesg,'(f10.0)') CS%ncount
@@ -583,28 +585,28 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
 
   ! get h_obs
   nz_data = CS%Inc(1)%nz_data
-  allocate(h_obs(G%isd:G%ied,G%jsd:G%jed,nz_data), source=0.0)
+  allocate(h_obs(G%isd:G%ied,G%jsd:G%jed,nz_data), source=0.0_wp)
   do k=1,nz_data  ; do j=js,je ; do i=is,ie
     h_obs(i,j,k) = CS%Ref_h%p(i,j,k)
   enddo ; enddo ; enddo
   call pass_var(h_obs,G%Domain)
 
   ! allocate 1-d array
-  allocate(tmp_h(nz_data), source=0.0)
+  allocate(tmp_h(nz_data), source=0.0_wp)
   allocate(tmp_val2(nz_data))
-  allocate(hu_obs(nz_data), source=0.0)
-  allocate(hv_obs(nz_data), source=0.0)
+  allocate(hu_obs(nz_data), source=0.0_wp)
+  allocate(hv_obs(nz_data), source=0.0_wp)
 
   ! add increments to tracers
-  tmp_val1(:) = 0.0
-  tmp_t(:,:,:) = 0.0 ; tmp_s(:,:,:) = 0.0 ! diagnostics
+  tmp_val1(:) = 0.0_wp
+  tmp_t(:,:,:) = 0.0_wp ; tmp_s(:,:,:) = 0.0_wp ! diagnostics
   do j=js,je ; do i=is,ie
     ! account for the different SSH
-    sum_h1 = 0.0
+    sum_h1 = 0.0_wp
     do k=1,nz
       sum_h1 = sum_h1+h(i,j,k)
     enddo
-    sum_h2 = 0.0
+    sum_h2 = 0.0_wp
     do k=1,nz_data
       sum_h2 = sum_h2+h_obs(i,j,k)
     enddo
@@ -638,7 +640,7 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
         tmp_s(i,j,k) = tmp_val1(k) ! store S increment for diagnostics
       ! bound salinity values ! check if it is correct to do that or if it hides
       ! other problems ...
-        tv%S(i,j,k) = max(0.0 , tv%S(i,j,k))
+        tv%S(i,j,k) = max(0.0_wp , tv%S(i,j,k))
       enddo
     endif
   enddo ; enddo
@@ -650,25 +652,25 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
     call pass_var(h,G%Domain) ! to ensure reproducibility
 
     ! add increments to u
-    hu(:) = 0.0
-    tmp_u(:,:,:) = 0.0 ! diagnostics
+    hu(:) = 0.0_wp
+    tmp_u(:,:,:) = 0.0_wp ! diagnostics
     do j=js,je ; do i=isB,ieB
       if (G%mask2dCu(i,j) == 1) then
         do k=1,nz_data
           ! get u increment
           tmp_val2(k) = CS%Inc_u%p(i,j,k)
           ! get the h and h_obs at u points
-          hu_obs(k) = 0.5 * ( h_obs(i,j,k) + h_obs(i+1,j,k) )
+          hu_obs(k) = 0.5_wp * ( h_obs(i,j,k) + h_obs(i+1,j,k) )
         enddo
         do k=1,nz
-          hu(k) = 0.5 * ( h(i,j,k) + h(i+1,j,k) )
+          hu(k) = 0.5_wp * ( h(i,j,k) + h(i+1,j,k) )
         enddo
         ! account for different SSH
-        sum_h1 = 0.0
+        sum_h1 = 0.0_wp
         do k=1,nz
           sum_h1 = sum_h1 + hu(k)
         enddo
-        sum_h2 = 0.0
+        sum_h2 = 0.0_wp
         do k=1,nz_data
           sum_h2 = sum_h2 + hu_obs(k)
         enddo
@@ -688,25 +690,25 @@ subroutine apply_oda_incupd(h, tv, u, v, dt, G, GV, US, CS)
     enddo ; enddo
 
     ! add increments to v
-    hv(:) = 0.0
-    tmp_v(:,:,:) = 0.0 ! diagnostics
+    hv(:) = 0.0_wp
+    tmp_v(:,:,:) = 0.0_wp ! diagnostics
     do j=jsB,jeB ; do i=is,ie
       if (G%mask2dCv(i,j) == 1) then
         ! get v increment
         do k=1,nz_data
           tmp_val2(k) = CS%Inc_v%p(i,j,k)
           ! get the h and h_obs at v points
-          hv_obs(k) = 0.5 * ( h_obs(i,j,k) + h_obs(i,j+1,k) )
+          hv_obs(k) = 0.5_wp * ( h_obs(i,j,k) + h_obs(i,j+1,k) )
         enddo
         do k=1,nz
-          hv(k) = 0.5 * (h(i,j,k) + h(i,j+1,k) )
+          hv(k) = 0.5_wp * (h(i,j,k) + h(i,j+1,k) )
         enddo
         ! account for different SSH
-        sum_h1 = 0.0
+        sum_h1 = 0.0_wp
         do k=1,nz
           sum_h1 = sum_h1 + hv(k)
         enddo
-        sum_h2 = 0.0
+        sum_h2 = 0.0_wp
         do k=1,nz_data
           sum_h2 = sum_h2 + hv_obs(k)
         enddo

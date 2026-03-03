@@ -24,6 +24,8 @@ use MOM_error_handler, only : MOM_error, FATAL
 use MOM_io_infra, only : READONLY_FILE, WRITEONLY_FILE
 use MOM_io_infra, only : APPEND_FILE, OVERWRITE_FILE
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: netcdf_file_type
@@ -44,7 +46,7 @@ public :: read_netcdf_field
 
 
 !> Internal time value used to indicate an uninitialized time
-real, parameter :: NULLTIME = -1
+real(wp), parameter :: NULLTIME = -1
 ! NOTE: For now, we use the FMS-compatible value, but may change in the future.
 
 
@@ -59,7 +61,7 @@ type :: netcdf_file_type
     !< True if file is in define mode.
   integer :: time_id
     !< Time axis variable ID
-  real :: time
+  real(wp) :: time
     !< Current model time
   integer :: time_level
     !< Current time level for output
@@ -71,7 +73,7 @@ type :: netcdf_axis
   private
   character(len=:), allocatable, public :: label
     !< Axis label name
-  real, allocatable :: points(:)
+  real(wp), allocatable :: points(:)
     !< Grid points along the axis
   integer :: dimid
     !< netCDF dimension ID associated with axis
@@ -222,7 +224,7 @@ function register_netcdf_field(handle, label, axes, longname, units) &
 
   ! Determine the corresponding netCDF data type
   ! TODO: Support a `pack`-like argument
-  select case (kind(1.0))
+  select case (kind(1.0_wp))
     case (real32)
       xtype = NF90_FLOAT
     case (real64)
@@ -261,7 +263,7 @@ function register_netcdf_axis(handle, label, units, longname, points, &
     !< Axis units of measurement
   character(len=*), intent(in), optional :: longname
     !< Long name of the axis
-  real, intent(in), optional :: points(:)
+  real(wp), intent(in), optional :: points(:)
     !< Values of axis points (for fixed axes)
   character(len=*), intent(in), optional :: cartesian
     !< Character denoting axis direction: X, Y, Z, T, or N for none
@@ -312,7 +314,7 @@ function register_netcdf_axis(handle, label, units, longname, points, &
 
   ! Determine the corresponding netCDF data type
   ! TODO: Support a `pack`-like argument
-  select case (kind(1.0))
+  select case (kind(1.0_wp))
     case (real32)
       xtype = NF90_FLOAT
     case (real64)
@@ -382,9 +384,9 @@ subroutine write_netcdf_field_4d(handle, field, values, time)
     !< netCDF file handle
   type(netcdf_field), intent(in) :: field
     !< Field metadata
-  real, intent(in) :: values(:,:,:,:)
+  real(wp), intent(in) :: values(:,:,:,:)
     !< Field values
-  real, intent(in), optional :: time
+  real(wp), intent(in), optional :: time
     !< Timestep index to write data
 
   integer :: rc
@@ -415,9 +417,9 @@ subroutine write_netcdf_field_3d(handle, field, values, time)
     !< netCDF file handle
   type(netcdf_field), intent(in) :: field
     !< Field metadata
-  real, intent(in) :: values(:,:,:)
+  real(wp), intent(in) :: values(:,:,:)
     !< Field values
-  real, intent(in), optional :: time
+  real(wp), intent(in), optional :: time
     !< Timestep index to write data
 
   integer :: rc
@@ -448,9 +450,9 @@ subroutine write_netcdf_field_2d(handle, field, values, time)
     !< netCDF file handle
   type(netcdf_field), intent(in) :: field
     !< Field metadata
-  real, intent(in) :: values(:,:)
+  real(wp), intent(in) :: values(:,:)
     !< Field values
-  real, intent(in), optional :: time
+  real(wp), intent(in), optional :: time
     !< Timestep index to write data
 
   integer :: rc
@@ -481,9 +483,9 @@ subroutine write_netcdf_field_1d(handle, field, values, time)
     !< netCDF file handle
   type(netcdf_field), intent(in) :: field
     !< Field metadata
-  real, intent(in) :: values(:)
+  real(wp), intent(in) :: values(:)
     !< Field values
-  real, intent(in), optional :: time
+  real(wp), intent(in), optional :: time
     !< Timestep index to write data
 
   integer :: rc
@@ -514,9 +516,9 @@ subroutine write_netcdf_field_0d(handle, field, scalar, time)
     !< netCDF file handle
   type(netcdf_field), intent(in) :: field
     !< Field metadata
-  real, intent(in) :: scalar
+  real(wp), intent(in) :: scalar
     !< Field values
-  real, intent(in), optional :: time
+  real(wp), intent(in), optional :: time
     !< Timestep index to write data
 
   integer :: rc
@@ -740,7 +742,7 @@ end function
 subroutine read_netcdf_field(handle, field, values, bounds)
   type(netcdf_file_type), intent(in) :: handle
   type(netcdf_field), intent(in) :: field
-  real, intent(out) :: values(:,:)
+  real(wp), intent(out) :: values(:,:)
   integer, optional, intent(in) :: bounds(2,2)
 
   integer :: rc
@@ -766,7 +768,7 @@ end subroutine read_netcdf_field
 subroutine update_netcdf_timestep(handle, time)
   type(netcdf_file_type), intent(inout) :: handle
     !< netCDF file handle
-  real, intent(in) :: time
+  real(wp), intent(in) :: time
     !< New model time
 
   integer :: start(1)

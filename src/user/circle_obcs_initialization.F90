@@ -14,6 +14,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -32,25 +34,25 @@ subroutine circle_obcs_initialize_thickness(h, depth_tot, G, GV, US, param_file,
   type(ocean_grid_type),   intent(in)  :: G           !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(out) :: h           !< The thickness that is being initialized [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                            intent(in)  :: depth_tot   !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   logical,                 intent(in)  :: just_read   !< If true, this call will only read
                                                       !! parameters without changing h.
 
-  real :: e0(SZK_(GV)+1)   ! The resting interface heights, in depth units [Z ~> m], usually
+  real(wp) :: e0(SZK_(GV)+1)   ! The resting interface heights, in depth units [Z ~> m], usually
                            ! negative because it is positive upward.
-  real :: eta1D(SZK_(GV)+1)! Interface height relative to the sea surface
+  real(wp) :: eta1D(SZK_(GV)+1)! Interface height relative to the sea surface
                            ! positive upward, in depth units [Z ~> m].
-  real :: IC_amp           ! The amplitude of the initial height displacement [Z ~> m].
-  real :: diskrad          ! Radius of the elevated disk [km] or [degrees] or [m]
-  real :: rad              ! Distance from the center of the elevated disk [km] or [degrees] or [m]
-  real :: lonC             ! The x-position of a point [km] or [degrees] or [m]
-  real :: latC             ! The y-position of a point [km] or [degrees] or [m]
-  real :: xOffset          ! The x-offset of the elevated disc center relative to the domain
+  real(wp) :: IC_amp           ! The amplitude of the initial height displacement [Z ~> m].
+  real(wp) :: diskrad          ! Radius of the elevated disk [km] or [degrees] or [m]
+  real(wp) :: rad              ! Distance from the center of the elevated disk [km] or [degrees] or [m]
+  real(wp) :: lonC             ! The x-position of a point [km] or [degrees] or [m]
+  real(wp) :: latC             ! The y-position of a point [km] or [degrees] or [m]
+  real(wp) :: xOffset          ! The x-offset of the elevated disc center relative to the domain
                            ! center [km] or [degrees] or [m]
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
@@ -71,16 +73,16 @@ subroutine circle_obcs_initialize_thickness(h, depth_tot, G, GV, US, param_file,
   call get_param(param_file, mdl, "DISK_X_OFFSET", xOffset, &
                  "The x-offset of the initially elevated disk in the "//&
                  "circle_obcs test case.", units=G%x_ax_unit_short, &
-                 default=0.0, do_not_log=just_read)
+                 default=0.0_wp, do_not_log=just_read)
   call get_param(param_file, mdl, "DISK_IC_AMPLITUDE", IC_amp, &
                  "Initial amplitude of interface height displacements "//&
                  "in the circle_obcs test case.", &
-                 units='m', default=5.0, scale=US%m_to_Z, do_not_log=just_read)
+                 units='m', default=5.0_wp, scale=US%m_to_Z, do_not_log=just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
   do k=1,nz
-    e0(K) = -G%max_depth * real(k-1) / real(nz)
+    e0(K) = -G%max_depth * real(k-1, wp) / real(nz, wp)
   enddo
 
   ! Uniform thicknesses for base state
@@ -99,20 +101,20 @@ subroutine circle_obcs_initialize_thickness(h, depth_tot, G, GV, US, param_file,
 
   ! Perturb base state by circular anomaly in center
   k=nz
-  latC = G%south_lat + 0.5*G%len_lat
-  lonC = G%west_lon + 0.5*G%len_lon + xOffset
+  latC = G%south_lat + 0.5_wp*G%len_lat
+  lonC = G%west_lon + 0.5_wp*G%len_lon + xOffset
   do j=js,je ; do i=is,ie
     rad = sqrt(((G%geoLonT(i,j)-lonC)**2) + ((G%geoLatT(i,j)-latC)**2)) / diskrad
     ! if (rad <= 6.*diskrad) h(i,j,k) = h(i,j,k)+10.0*exp( -0.5*( rad**2 ) )
-    rad = min( rad, 1. ) ! Flatten outside radius of diskrad
-    rad = rad*(2.*asin(1.)) ! Map 0-1 to 0-pi
+    rad = min( rad, 1._wp ) ! Flatten outside radius of diskrad
+    rad = rad*(2._wp*asin(1._wp)) ! Map 0-1 to 0-pi
     if (nz==1) then
       ! The model is barotropic
-      h(i,j,k) = h(i,j,k) + IC_amp * 0.5*(1.+cos(rad)) ! cosine bell
+      h(i,j,k) = h(i,j,k) + IC_amp * 0.5_wp*(1._wp+cos(rad)) ! cosine bell
     else
       ! The model is baroclinic
       do k = 1, nz
-        h(i,j,k) = h(i,j,k) - 0.5*(1.+cos(rad)) * IC_amp * real( 2*k-nz )
+        h(i,j,k) = h(i,j,k) - 0.5_wp*(1._wp+cos(rad)) * IC_amp * real( 2*k-nz , wp)
       enddo
     endif
   enddo ; enddo

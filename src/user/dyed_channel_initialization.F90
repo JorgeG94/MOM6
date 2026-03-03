@@ -19,6 +19,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -28,9 +30,9 @@ public register_dyed_channel_OBC, dyed_channel_update_flow
 
 !> Control structure for dyed-channel open boundaries.
 type, public :: dyed_channel_OBC_CS ; private
-  real :: zonal_flow = 8.57         !< Mean inflow [L T-1 ~> m s-1]
-  real :: tidal_amp = 0.0           !< Sloshing amplitude [L T-1 ~> m s-1]
-  real :: frequency  = 0.0          !< Sloshing frequency [T-1 ~> s-1]
+  real(wp) :: zonal_flow = 8.57_wp         !< Mean inflow [L T-1 ~> m s-1]
+  real(wp) :: tidal_amp = 0.0_wp           !< Sloshing amplitude [L T-1 ~> m s-1]
+  real(wp) :: frequency  = 0.0_wp          !< Sloshing frequency [T-1 ~> s-1]
   logical :: OBC_transport_bug      !< If true and specified open boundary conditions are being
                                     !! used, use a 1 m (if Boussienesq) or 1 kg m-2 layer thickness
                                     !! instead of the actual thickness.
@@ -63,13 +65,13 @@ logical function register_dyed_channel_OBC(param_file, CS, US, OBC_Reg)
 
   call get_param(param_file, mdl, "CHANNEL_MEAN_FLOW", CS%zonal_flow, &
                  "Mean zonal flow imposed at upstream open boundary.", &
-                 units="m/s", default=8.57, scale=US%m_s_to_L_T)
+                 units="m/s", default=8.57_wp, scale=US%m_s_to_L_T)
   call get_param(param_file, mdl, "CHANNEL_TIDAL_AMP", CS%tidal_amp, &
                  "Sloshing amplitude imposed at upstream open boundary.", &
-                 units="m/s", default=0.0, scale=US%m_s_to_L_T)
+                 units="m/s", default=0.0_wp, scale=US%m_s_to_L_T)
   call get_param(param_file, mdl, "CHANNEL_FLOW_FREQUENCY", CS%frequency, &
                  "Frequency of oscillating zonal flow.", &
-                 units="s-1", default=0.0, scale=US%T_to_s)
+                 units="s-1", default=0.0_wp, scale=US%T_to_s)
   call get_param(param_file, mdl, "ENABLE_BUGS_BY_DEFAULT", enable_bugs, &
                  default=.true., do_not_log=.true.)  ! This is logged from MOM.F90.
   call get_param(param_file, mdl, "CHANNEL_FLOW_OBC_TRANSPORT_BUG", CS%OBC_transport_bug, &
@@ -106,7 +108,7 @@ subroutine dyed_channel_set_OBC_tracer_data(OBC, G, GV, param_file, tr_Reg)
   character(len=40)  :: mdl = "dyed_channel_set_OBC_tracer_data" ! This subroutine's name.
   character(len=80)  :: name, longname
   integer :: m, n, ntr_id
-  real :: dye  ! Inflow dye concentrations [arbitrary]
+  real(wp) :: dye  ! Inflow dye concentrations [arbitrary]
   type(tracer_type), pointer      :: tr_ptr => NULL()
 
   if (.not.associated(OBC)) call MOM_error(FATAL, 'dyed_channel_initialization.F90: '// &
@@ -131,9 +133,9 @@ subroutine dyed_channel_set_OBC_tracer_data(OBC, G, GV, param_file, tr_Reg)
 
     do n=1,OBC%number_of_segments
       if (n == m) then
-        dye = 1.0
+        dye = 1.0_wp
       else
-        dye = 0.0
+        dye = 0.0_wp
       endif
       call register_segment_tracer(tr_ptr, ntr_id, param_file, GV, &
                                    OBC%segment(n), OBC_scalar=dye)
@@ -151,14 +153,14 @@ subroutine dyed_channel_update_flow(OBC, CS, G, GV, US, h, Time)
   type(ocean_grid_type),      intent(in) :: G   !< The ocean's grid structure.
   type(verticalGrid_type),    intent(in) :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),      intent(in) :: US  !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2]
   type(time_type),            intent(in) :: Time !< model time.
 
   ! Local variables
-  real :: flow      ! The OBC velocity [L T-1 ~> m s-1]
-  real :: PI        ! 3.1415926535... [nondim]
-  real :: time_sec  ! The elapsed time since the start of the calendar [T ~> s]
-  real :: fixed_thickness ! A fixed layer thickness, hard-coded to 1 mks unit, that is used to
+  real(wp) :: flow      ! The OBC velocity [L T-1 ~> m s-1]
+  real(wp) :: PI        ! 3.1415926535... [nondim]
+  real(wp) :: time_sec  ! The elapsed time since the start of the calendar [T ~> s]
+  real(wp) :: fixed_thickness ! A fixed layer thickness, hard-coded to 1 mks unit, that is used to
                     ! reproduce a bug with the older versions of this code [H ~> m or kg m-2]
   logical :: cross_channel  ! True if the segment runs across the channel
   integer :: turns    ! Number of index quarter turns
@@ -170,7 +172,7 @@ subroutine dyed_channel_update_flow(OBC, CS, G, GV, US, h, Time)
         'dyed_channel_update_flow() was called but OBC type was not initialized!')
 
   time_sec = US%s_to_T * time_type_to_real(Time)
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
 
   turns = modulo(G%HI%turns, 4)
 
@@ -180,12 +182,12 @@ subroutine dyed_channel_update_flow(OBC, CS, G, GV, US, h, Time)
     if (segment%gradient) cycle
     if (segment%oblique .and. (.not. segment%nudged) .and. (.not. segment%Flather)) cycle
 
-    if (CS%frequency == 0.0) then
+    if (CS%frequency == 0.0_wp) then
       flow = CS%zonal_flow
     else
       flow = CS%zonal_flow + CS%tidal_amp * cos(2 * PI * CS%frequency * time_sec)
     endif
-    if ((turns==2) .or. (turns==3)) flow = -1.0 * flow
+    if ((turns==2) .or. (turns==3)) flow = -1.0_wp * flow
 
     isd = segment%HI%isd ; ied = segment%HI%ied
     jsd = segment%HI%jsd ; jed = segment%HI%jed
@@ -207,7 +209,7 @@ subroutine dyed_channel_update_flow(OBC, CS, G, GV, US, h, Time)
 
     if (segment%specified .and. cross_channel) then
       if (CS%OBC_transport_bug) then
-        fixed_thickness = 1.0 / GV%H_to_mks  ! This replicates the prevoius answers without rescaling.
+        fixed_thickness = 1.0_wp / GV%H_to_mks  ! This replicates the prevoius answers without rescaling.
         if ((segment%direction == OBC_DIRECTION_W) .or. (segment%direction == OBC_DIRECTION_E)) then
           do k=1,GV%ke ; do j=jsd,jed ; do I=IsdB,IedB
             segment%normal_trans(I,j,k) = flow * G%dyCu(I,j) * fixed_thickness
@@ -244,7 +246,7 @@ subroutine dyed_channel_update_flow(OBC, CS, G, GV, US, h, Time)
       enddo ; enddo
     else
       do J=js,je ; do i=is,ie
-        segment%normal_vel_bt(i,J) = 0.0
+        segment%normal_vel_bt(i,J) = 0.0_wp
       enddo ; enddo
     endif
 

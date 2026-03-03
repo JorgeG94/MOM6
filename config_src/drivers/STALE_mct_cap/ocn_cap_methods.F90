@@ -9,6 +9,8 @@ module ocn_cap_methods
   use mpp_domains_mod,         only: mpp_get_compute_domain
   use ocn_cpl_indices,         only: cpl_indices_type
 
+use MOM_datatypes, only : wp
+
   implicit none
   private
 
@@ -157,17 +159,17 @@ subroutine ocn_export(ind, ocn_public, grid, o2x, dt_int, ncouple_per_day)
   integer, intent(in)                    :: ncouple_per_day !< Number of ocean coupling calls per day
 
   ! Local variables
-  real, dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: ssh !< Local copy of sea_lev with updated halo
-  real, dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: sshx!< Zonal SSH gradient, local coordinate.
-  real, dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: sshy!< Meridional SSH gradient, local coordinate.
+  real(wp), dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: ssh !< Local copy of sea_lev with updated halo
+  real(wp), dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: sshx!< Zonal SSH gradient, local coordinate.
+  real(wp), dimension(grid%isd:grid%ied,grid%jsd:grid%jed) :: sshy!< Meridional SSH gradient, local coordinate.
   integer :: i, j, n, ig, jg  !< Grid indices
-  real    :: slp_L, slp_R, slp_C, slope, u_min, u_max
-  real :: I_time_int  !< The inverse of coupling time interval [s-1].
+  real(wp)    :: slp_L, slp_R, slp_C, slope, u_min, u_max
+  real(wp) :: I_time_int  !< The inverse of coupling time interval [s-1].
 
   !-----------------------------------------------------------------------
 
   ! Use Adcroft's rule of reciprocals; it does the right thing here.
-  I_time_int = 0.0 ; if (dt_int > 0.0) I_time_int = 1.0 / dt_int
+  I_time_int = 0.0_wp ; if (dt_int > 0.0_wp) I_time_int = 1.0_wp / dt_int
 
   ! Copy from ocn_public to o2x. ocn_public uses global indexing with no halos.
   ! The mask comes from "grid" that uses the usual MOM domain that has halos
@@ -191,14 +193,14 @@ subroutine ocn_export(ind, ocn_public, grid, o2x, dt_int, ncouple_per_day)
       ! boundary layer depth (m)
       o2x(ind%o2x_So_bldepth, n) = ocn_public%OBLD(ig,jg) * grid%mask2dT(i,j)
       ! ocean melt and freeze potential (o2x_Fioo_q), W m-2
-      if (ocn_public%frazil(ig,jg) > 0.0) then
+      if (ocn_public%frazil(ig,jg) > 0.0_wp) then
         ! Frazil: change from J/m^2 to W/m^2
         o2x(ind%o2x_Fioo_q, n) = ocn_public%frazil(ig,jg) * grid%mask2dT(i,j) * I_time_int
       else
         ! Melt_potential: change from J/m^2 to W/m^2
         o2x(ind%o2x_Fioo_q, n) = -ocn_public%melt_potential(ig,jg) * grid%mask2dT(i,j) * I_time_int !* ncouple_per_day
         ! make sure Melt_potential is always <= 0
-        if (o2x(ind%o2x_Fioo_q, n) > 0.0) o2x(ind%o2x_Fioo_q, n) = 0.0
+        if (o2x(ind%o2x_Fioo_q, n) > 0.0_wp) o2x(ind%o2x_Fioo_q, n) = 0.0_wp
       endif
       ! Make a copy of ssh in order to do a halo update. We use the usual MOM domain
       ! in order to update halos. i.e. does not use global indexing.
@@ -215,23 +217,23 @@ subroutine ocn_export(ind, ocn_public, grid, o2x, dt_int, ncouple_per_day)
     ! o2x(ind%o2x_So_dhdx, n) = 0.5 * (ssh(i+1,j) - ssh(i-1,j)) * grid%US%m_to_L*grid%IdxT(i,j) * grid%mask2dT(i,j)
     ! This is a PLM slope which might be less prone to the A-grid null mode
     slp_L = (ssh(I,j) - ssh(I-1,j)) * grid%mask2dCu(I-1,j)
-    if (grid%mask2dCu(I-1,j)==0.) slp_L = 0.
+    if (grid%mask2dCu(I-1,j)==0._wp) slp_L = 0._wp
     slp_R = (ssh(I+1,j) - ssh(I,j)) * grid%mask2dCu(I,j)
-    if (grid%mask2dCu(I+1,j)==0.) slp_R = 0.
-    slp_C = 0.5 * (slp_L + slp_R)
-    if ( (slp_L * slp_R) > 0.0 ) then
+    if (grid%mask2dCu(I+1,j)==0._wp) slp_R = 0._wp
+    slp_C = 0.5_wp * (slp_L + slp_R)
+    if ( (slp_L * slp_R) > 0.0_wp ) then
       ! This limits the slope so that the edge values are bounded by the
       ! two cell averages spanning the edge.
       u_min = min( ssh(i-1,j), ssh(i,j), ssh(i+1,j) )
       u_max = max( ssh(i-1,j), ssh(i,j), ssh(i+1,j) )
-      slope = sign( min( abs(slp_C), 2.*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
+      slope = sign( min( abs(slp_C), 2._wp*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
     else
       ! Extrema in the mean values require a PCM reconstruction avoid generating
       ! larger extreme values.
-      slope = 0.0
+      slope = 0.0_wp
     endif
     sshx(i,j) = slope * grid%US%m_to_L*grid%IdxT(i,j) * grid%mask2dT(i,j)
-    if (grid%mask2dT(i,j)==0.) sshx(i,j) = 0.0
+    if (grid%mask2dT(i,j)==0._wp) sshx(i,j) = 0.0_wp
   enddo; enddo
 
   ! d/dy ssh
@@ -240,25 +242,25 @@ subroutine ocn_export(ind, ocn_public, grid, o2x, dt_int, ncouple_per_day)
     ! o2x(ind%o2x_So_dhdy, n) = 0.5 * (ssh(i,j+1) - ssh(i,j-1)) * grid%US%m_to_L*grid%IdyT(i,j) * grid%mask2dT(i,j)
     ! This is a PLM slope which might be less prone to the A-grid null mode
     slp_L = ssh(i,J) - ssh(i,J-1) * grid%mask2dCv(i,J-1)
-    if (grid%mask2dCv(i,J-1)==0.) slp_L = 0.
+    if (grid%mask2dCv(i,J-1)==0._wp) slp_L = 0._wp
 
     slp_R = ssh(i,J+1) - ssh(i,J) * grid%mask2dCv(i,J)
-    if (grid%mask2dCv(i,J+1)==0.) slp_R = 0.
+    if (grid%mask2dCv(i,J+1)==0._wp) slp_R = 0._wp
 
-    slp_C = 0.5 * (slp_L + slp_R)
-    if ((slp_L * slp_R) > 0.0) then
+    slp_C = 0.5_wp * (slp_L + slp_R)
+    if ((slp_L * slp_R) > 0.0_wp) then
       ! This limits the slope so that the edge values are bounded by the
       ! two cell averages spanning the edge.
       u_min = min( ssh(i,j-1), ssh(i,j), ssh(i,j+1) )
       u_max = max( ssh(i,j-1), ssh(i,j), ssh(i,j+1) )
-      slope = sign( min( abs(slp_C), 2.*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
+      slope = sign( min( abs(slp_C), 2._wp*min( ssh(i,j) - u_min, u_max - ssh(i,j) ) ), slp_C )
     else
       ! Extrema in the mean values require a PCM reconstruction avoid generating
       ! larger extreme values.
-      slope = 0.0
+      slope = 0.0_wp
     endif
     sshy(i,j) = slope * grid%US%m_to_L*grid%IdyT(i,j) * grid%mask2dT(i,j)
-    if (grid%mask2dT(i,j)==0.) sshy(i,j) = 0.0
+    if (grid%mask2dT(i,j)==0._wp) sshy(i,j) = 0.0_wp
   enddo; enddo
 
   ! rotate ssh gradients from local coordinates to true zonal/meridional (inverse transformation)

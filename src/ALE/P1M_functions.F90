@@ -5,6 +5,8 @@ module P1M_functions
 
 use regrid_edge_values, only : bound_edge_values, average_discontinuous_edge_values
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 ! The following routines are visible to the outside world
@@ -26,17 +28,17 @@ contains
 !! defining 'grid' and 'ppoly'. No consistency check is performed here.
 subroutine P1M_interpolation( N, h, u, edge_values, ppoly_coef, h_neglect, answer_date )
   integer,              intent(in)    :: N !< Number of cells
-  real, dimension(:),   intent(in)    :: h !< cell widths (size N) [H]
-  real, dimension(:),   intent(in)    :: u !< cell average properties (size N) [A]
-  real, dimension(:,:), intent(inout) :: edge_values !< Potentially modified edge values [A]
-  real, dimension(:,:), intent(inout) :: ppoly_coef !< Potentially modified
+  real(wp), dimension(:),   intent(in)    :: h !< cell widths (size N) [H]
+  real(wp), dimension(:),   intent(in)    :: u !< cell average properties (size N) [A]
+  real(wp), dimension(:,:), intent(inout) :: edge_values !< Potentially modified edge values [A]
+  real(wp), dimension(:,:), intent(inout) :: ppoly_coef !< Potentially modified
                                            !! piecewise polynomial coefficients, mainly [A]
-  real,                 intent(in)    :: h_neglect !< A negligibly small width [H]
+  real(wp),                 intent(in)    :: h_neglect !< A negligibly small width [H]
   integer,    optional, intent(in)    :: answer_date  !< The vintage of the expressions to use
 
   ! Local variables
   integer   :: k            ! loop index
-  real      :: u0_l, u0_r   ! edge values (left and right) [A]
+  real(wp)      :: u0_l, u0_r   ! edge values (left and right) [A]
 
   ! Bound edge values (routine found in 'edge_values.F90')
   call bound_edge_values( N, h, u, edge_values, h_neglect, answer_date=answer_date )
@@ -68,16 +70,16 @@ end subroutine P1M_interpolation
 subroutine P1M_boundary_extrapolation( N, h, u, edge_values, ppoly_coef )
   ! Arguments
   integer,              intent(in)    :: N !< Number of cells
-  real, dimension(:),   intent(in)    :: h !< cell widths (size N) [H]
-  real, dimension(:),   intent(in)    :: u !< cell averages (size N) [A]
-  real, dimension(:,:), intent(inout) :: edge_values !< edge values of piecewise polynomials [A]
-  real, dimension(:,:), intent(inout) :: ppoly_coef !< coefficients of piecewise polynomials, mainly [A]
+  real(wp), dimension(:),   intent(in)    :: h !< cell widths (size N) [H]
+  real(wp), dimension(:),   intent(in)    :: u !< cell averages (size N) [A]
+  real(wp), dimension(:,:), intent(inout) :: edge_values !< edge values of piecewise polynomials [A]
+  real(wp), dimension(:,:), intent(inout) :: ppoly_coef !< coefficients of piecewise polynomials, mainly [A]
 
   ! Local variables
-  real          :: u0, u1               ! cell averages [A]
-  real          :: h0, h1               ! corresponding cell widths [H]
-  real          :: slope                ! retained PLM slope [A]
-  real          :: u0_l, u0_r           ! edge values [A]
+  real(wp)          :: u0, u1               ! cell averages [A]
+  real(wp)          :: h0, h1               ! corresponding cell widths [H]
+  real(wp)          :: slope                ! retained PLM slope [A]
+  real(wp)          :: u0_l, u0_r           ! edge values [A]
 
   ! -----------------------------------------
   ! Left edge value in the left boundary cell
@@ -90,23 +92,23 @@ subroutine P1M_boundary_extrapolation( N, h, u, edge_values, ppoly_coef )
 
   ! The standard PLM slope is computed as a first estimate for the
   ! interpolation within the cell
-  slope = 2.0 * ( u1 - u0 )
+  slope = 2.0_wp * ( u1 - u0 )
 
   ! The right edge value is then computed and we check whether this
   ! right edge value is consistent: it cannot be larger than the edge
   ! value in the neighboring cell if the data set is increasing.
   ! If the right value is found to too large, the slope is further limited
   ! by using the edge value in the neighboring cell.
-  u0_r = u0 + 0.5 * slope
+  u0_r = u0 + 0.5_wp * slope
 
-  if ( (u1 - u0) * (edge_values(2,1) - u0_r) < 0.0 ) then
-    slope = 2.0 * ( edge_values(2,1) - u0 )
+  if ( (u1 - u0) * (edge_values(2,1) - u0_r) < 0.0_wp ) then
+    slope = 2.0_wp * ( edge_values(2,1) - u0 )
   endif
 
   ! Using the limited slope, the left edge value is reevaluated and
   ! the interpolant coefficients recomputed
-  if ( h0 /= 0.0 ) then
-    edge_values(1,1) = u0 - 0.5 * slope
+  if ( h0 /= 0.0_wp ) then
+    edge_values(1,1) = u0 - 0.5_wp * slope
   else
     edge_values(1,1) = u0
   endif
@@ -123,16 +125,16 @@ subroutine P1M_boundary_extrapolation( N, h, u, edge_values, ppoly_coef )
   u0 = u(N-1)
   u1 = u(N)
 
-  slope = 2.0 * ( u1 - u0 )
+  slope = 2.0_wp * ( u1 - u0 )
 
-  u0_l = u1 - 0.5 * slope
+  u0_l = u1 - 0.5_wp * slope
 
-  if ( (u1 - u0) * (u0_l - edge_values(N-1,2)) < 0.0 ) then
-    slope = 2.0 * ( u1 - edge_values(N-1,2) )
+  if ( (u1 - u0) * (u0_l - edge_values(N-1,2)) < 0.0_wp ) then
+    slope = 2.0_wp * ( u1 - edge_values(N-1,2) )
   endif
 
-  if ( h1 /= 0.0 ) then
-    edge_values(N,2) = u1 + 0.5 * slope
+  if ( h1 /= 0.0_wp ) then
+    edge_values(N,2) = u1 + 0.5_wp * slope
   else
     edge_values(N,2) = u1
   endif

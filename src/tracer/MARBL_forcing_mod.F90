@@ -17,6 +17,8 @@ use MOM_io,                   only : slasher
 use marbl_constants_mod,      only : molw_Fe
 use MOM_forcing_type,         only : forcing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -39,18 +41,18 @@ type, public :: marbl_forcing_CS ; private
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
                                              !! regulate the timing of diagnostic output.
 
-  real    :: dust_ratio_thres               !< coarse/fine dust ratio threshold [1]
-  real    :: dust_ratio_to_fe_bioavail_frac !< ratio of dust to iron bioavailability fraction [1]
-  real    :: fe_bioavail_frac_offset        !< offset for iron bioavailability fraction [1]
-  real    :: atm_fe_to_bc_ratio             !< atmospheric iron to black carbon ratio [1]
-  real    :: atm_bc_fe_bioavail_frac        !< atmospheric black carbon to iron bioavailablity fraction ratio [1]
-  real    :: seaice_fe_to_bc_ratio          !< sea-ice iron to black carbon ratio [1]
-  real    :: seaice_bc_fe_bioavail_frac     !< sea-ice black carbon to iron bioavailablity fraction ratio [1]
-  real    :: iron_frac_in_atm_fine_dust     !< Fraction of fine dust from the atmosphere that is iron [1]
-  real    :: iron_frac_in_atm_coarse_dust   !< Fraction of coarse dust from the atmosphere that is iron [1]
-  real    :: iron_frac_in_seaice_dust       !< Fraction of dust from the sea ice that is iron [1]
-  real    :: atm_co2_const                  !< atmospheric CO2 (if specifying a constant value) [ppm]
-  real    :: atm_alt_co2_const              !< alternate atmospheric CO2 for _ALT_CO2 tracers
+  real(wp)    :: dust_ratio_thres               !< coarse/fine dust ratio threshold [1]
+  real(wp)    :: dust_ratio_to_fe_bioavail_frac !< ratio of dust to iron bioavailability fraction [1]
+  real(wp)    :: fe_bioavail_frac_offset        !< offset for iron bioavailability fraction [1]
+  real(wp)    :: atm_fe_to_bc_ratio             !< atmospheric iron to black carbon ratio [1]
+  real(wp)    :: atm_bc_fe_bioavail_frac        !< atmospheric black carbon to iron bioavailablity fraction ratio [1]
+  real(wp)    :: seaice_fe_to_bc_ratio          !< sea-ice iron to black carbon ratio [1]
+  real(wp)    :: seaice_bc_fe_bioavail_frac     !< sea-ice black carbon to iron bioavailablity fraction ratio [1]
+  real(wp)    :: iron_frac_in_atm_fine_dust     !< Fraction of fine dust from the atmosphere that is iron [1]
+  real(wp)    :: iron_frac_in_atm_coarse_dust   !< Fraction of coarse dust from the atmosphere that is iron [1]
+  real(wp)    :: iron_frac_in_seaice_dust       !< Fraction of dust from the sea ice that is iron [1]
+  real(wp)    :: atm_co2_const                  !< atmospheric CO2 (if specifying a constant value) [ppm]
+  real(wp)    :: atm_alt_co2_const              !< alternate atmospheric CO2 for _ALT_CO2 tracers
                                             !! (if specifying a constant value) [ppm]
 
   type(marbl_forcing_diag_ids) :: diag_ids  !< used for registering and posting some MARBL forcing fields as diagnostics
@@ -99,25 +101,25 @@ contains
     endif
 
     call get_param(param_file, mdl, "DUST_RATIO_THRES", CS%dust_ratio_thres, &
-        "coarse/fine dust ratio threshold", units="1", default=69.00594)
+        "coarse/fine dust ratio threshold", units="1", default=69.00594_wp)
     call get_param(param_file, mdl, "DUST_RATIO_TO_FE_BIOAVAIL_FRAC", CS%dust_ratio_to_fe_bioavail_frac, &
-        "ratio of dust to iron bioavailability fraction", units="1", default=1./366.314)
+        "ratio of dust to iron bioavailability fraction", units="1", default=1._wp/366.314_wp)
     call get_param(param_file, mdl, "FE_BIOAVAIL_FRAC_OFFSET", CS%fe_bioavail_frac_offset, &
-        "offset for iron bioavailability fraction", units="1", default=0.0146756)
+        "offset for iron bioavailability fraction", units="1", default=0.0146756_wp)
     call get_param(param_file, mdl, "ATM_FE_TO_BC_RATIO", CS%atm_fe_to_bc_ratio, &
-        "atmospheric iron to black carbon ratio", units="1", default=1.)
+        "atmospheric iron to black carbon ratio", units="1", default=1._wp)
     call get_param(param_file, mdl, "ATM_BC_FE_BIOAVAIL_FRAC", CS%atm_bc_fe_bioavail_frac, &
-        "atmospheric black carbon to iron bioavailablity fraction ratio", units="1", default=0.06)
+        "atmospheric black carbon to iron bioavailablity fraction ratio", units="1", default=0.06_wp)
     call get_param(param_file, mdl, "SEAICE_FE_TO_BC_RATIO", CS%seaice_fe_to_bc_ratio, &
-        "sea-ice iron to black carbon ratio", units="1", default=1.)
+        "sea-ice iron to black carbon ratio", units="1", default=1._wp)
     call get_param(param_file, mdl, "SEAICE_BC_FE_BIOAVAIL_FRAC", CS%seaice_bc_fe_bioavail_frac, &
-        "sea-ice black carbon to iron bioavailablity fraction ratio", units="1", default=0.06)
+        "sea-ice black carbon to iron bioavailablity fraction ratio", units="1", default=0.06_wp)
     call get_param(param_file, mdl, "IRON_FRAC_IN_ATM_FINE_DUST", CS%iron_frac_in_atm_fine_dust, &
-        "Fraction of fine dust from the atmosphere that is iron", units="1", default=0.035)
+        "Fraction of fine dust from the atmosphere that is iron", units="1", default=0.035_wp)
     call get_param(param_file, mdl, "IRON_FRAC_IN_ATM_COARSE_DUST", CS%iron_frac_in_atm_coarse_dust, &
-        "Fraction of coarse dust from the atmosphere that is iron", units="1", default=0.035)
+        "Fraction of coarse dust from the atmosphere that is iron", units="1", default=0.035_wp)
     call get_param(param_file, mdl, "IRON_FRAC_IN_SEAICE_DUST", CS%iron_frac_in_seaice_dust, &
-        "Fraction of dust from sea ice that is iron", units="1", default=0.035)
+        "Fraction of dust from sea ice that is iron", units="1", default=0.035_wp)
     call get_param(param_file, mdl, "ATM_CO2_OPT", atm_co2_opt, &
         "Source of atmospheric CO2 [constant, diagnostic, or prognostic]", &
         default="constant")
@@ -135,7 +137,7 @@ contains
     if (CS%atm_co2_iopt == atm_co2_constant_iopt) then
       call get_param(param_file, mdl, "ATM_CO2_CONST", CS%atm_co2_const, &
           "Value to send to MARBL as xco2", &
-          default=284.317, units="ppm")
+          default=284.317_wp, units="ppm")
     endif
     call get_param(param_file, mdl, "ATM_ALT_CO2_OPT", atm_co2_opt, &
         "Source of alternate atmospheric CO2 [constant, diagnostic, or prognostic]", &
@@ -154,7 +156,7 @@ contains
     if (CS%atm_alt_co2_iopt == atm_co2_constant_iopt) then
       call get_param(param_file, mdl, "ATM_ALT_CO2_CONST", CS%atm_alt_co2_const, &
           "Value to send to MARBL as xco2_alt_co2", &
-          default=284.317, units="ppm")
+          default=284.317_wp, units="ppm")
     endif
 
     ! Register diagnostic fields for outputing forcing values
@@ -186,26 +188,26 @@ contains
                                                afracr, swnet_afracr, ifrac_n, &
                                                swpen_ifrac_n, Time, G, US, i0, j0, fluxes, CS)
 
-    real, dimension(:,:),   pointer, intent(in)    :: atm_fine_dust_flux   !< atmosphere fine dust flux from IOB
+    real(wp), dimension(:,:),   pointer, intent(in)    :: atm_fine_dust_flux   !< atmosphere fine dust flux from IOB
                                                                            !! [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: atm_coarse_dust_flux !< atmosphere coarse dust flux from IOB
+    real(wp), dimension(:,:),   pointer, intent(in)    :: atm_coarse_dust_flux !< atmosphere coarse dust flux from IOB
                                                                            !! [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: seaice_dust_flux     !< sea ice dust flux from IOB [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: atm_bc_flux          !< atmosphere black carbon flux from IOB
+    real(wp), dimension(:,:),   pointer, intent(in)    :: seaice_dust_flux     !< sea ice dust flux from IOB [kg m-2 s-1]
+    real(wp), dimension(:,:),   pointer, intent(in)    :: atm_bc_flux          !< atmosphere black carbon flux from IOB
                                                                            !! [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: seaice_bc_flux       !< sea ice black carbon flux from IOB
+    real(wp), dimension(:,:),   pointer, intent(in)    :: seaice_bc_flux       !< sea ice black carbon flux from IOB
                                                                            !! [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: afracr               !< open ocean fraction [1]
-    real, dimension(:,:),   pointer, intent(in)    :: nhx_dep              !< NHx flux from atmosphere [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: noy_dep              !< NOy flux from atmosphere [kg m-2 s-1]
-    real, dimension(:,:),   pointer, intent(in)    :: atm_co2_prog         !< Prognostic atmospheric CO2 concentration
+    real(wp), dimension(:,:),   pointer, intent(in)    :: afracr               !< open ocean fraction [1]
+    real(wp), dimension(:,:),   pointer, intent(in)    :: nhx_dep              !< NHx flux from atmosphere [kg m-2 s-1]
+    real(wp), dimension(:,:),   pointer, intent(in)    :: noy_dep              !< NOy flux from atmosphere [kg m-2 s-1]
+    real(wp), dimension(:,:),   pointer, intent(in)    :: atm_co2_prog         !< Prognostic atmospheric CO2 concentration
                                                                            !! [ppm]
-    real, dimension(:,:),   pointer, intent(in)    :: atm_co2_diag         !< Diagnostic atmospheric CO2 concentration
+    real(wp), dimension(:,:),   pointer, intent(in)    :: atm_co2_diag         !< Diagnostic atmospheric CO2 concentration
                                                                            !! [ppm]
-    real, dimension(:,:),   pointer, intent(in)    :: swnet_afracr         !< shortwave flux * open ocean fraction
+    real(wp), dimension(:,:),   pointer, intent(in)    :: swnet_afracr         !< shortwave flux * open ocean fraction
                                                                            !! [W m-2]
-    real, dimension(:,:,:), pointer, intent(in)    :: ifrac_n              !< per-category ice fraction [1]
-    real, dimension(:,:,:), pointer, intent(in)    :: swpen_ifrac_n        !< per-category shortwave flux * ice fraction
+    real(wp), dimension(:,:,:), pointer, intent(in)    :: ifrac_n              !< per-category ice fraction [1]
+    real(wp), dimension(:,:,:), pointer, intent(in)    :: swpen_ifrac_n        !< per-category shortwave flux * ice fraction
                                                                            !! [W m-2]
     type(time_type),                 intent(in)    :: Time                 !< The time of the fluxes, used for
                                                                            !! interpolating the salinity to the
@@ -220,20 +222,20 @@ contains
                                                                            !! control structure for MARBL forcing
 
     integer :: i, j, is, ie, js, je, m
-    real :: atm_fe_bioavail_frac     !< Fraction of iron from the atmosphere available for biological uptake [1]
-    real :: seaice_fe_bioavail_frac  !< Fraction of iron from sea ice available for biological uptake [1]
+    real(wp) :: atm_fe_bioavail_frac     !< Fraction of iron from the atmosphere available for biological uptake [1]
+    real(wp) :: seaice_fe_bioavail_frac  !< Fraction of iron from sea ice available for biological uptake [1]
     ! Note: following two conversion factors are used to both convert from km m-2 s-1 -> mmol m-2 s-1
     !!      AND cast in MOM6's unique dimensional consistency scaling system [conc Z T-1]
-    real :: iron_flux_conversion     !< Factor to convert iron flux from kg m-2 s-1 -> mmol m-3 (m s-1)
+    real(wp) :: iron_flux_conversion     !< Factor to convert iron flux from kg m-2 s-1 -> mmol m-3 (m s-1)
                                      !! [s m2 kg-1 conc Z T-1 ~> mmol kg-1]
-    real :: ndep_conversion          !< Factor to convert nitrogen deposition from kg m-2 s-1 -> mmol m-3 (m s-1)
+    real(wp) :: ndep_conversion          !< Factor to convert nitrogen deposition from kg m-2 s-1 -> mmol m-3 (m s-1)
                                      !! [s m2 kg-1 conc Z T-1 ~> mmol kg-1]
 
     if (.not. CS%use_marbl_tracers) return
 
     is   = G%isc   ; ie   = G%iec    ; js   = G%jsc   ; je   = G%jec
-    ndep_conversion = (1.e6/14.) * (US%m_to_Z * US%T_to_s)
-    iron_flux_conversion = (1.e6 / molw_Fe) * (US%m_to_Z * US%T_to_s)
+    ndep_conversion = (1.e6_wp/14._wp) * (US%m_to_Z * US%T_to_s)
+    iron_flux_conversion = (1.e6_wp / molw_Fe) * (US%m_to_Z * US%T_to_s)
 
     ! Post fields from coupler to diagnostics
     ! TODO: units from diag register are incorrect; we should be converting these in the cap, I think
@@ -360,17 +362,17 @@ contains
       ! If the cap receives per-category fields, memory should be allocated in fluxes
     if (associated(ifrac_n)) then
       do j=js,je ; do i=is,ie
-        fluxes%fracr_cat(i,j,1) = min(1., afracr(i-i0,j-j0))
+        fluxes%fracr_cat(i,j,1) = min(1._wp, afracr(i-i0,j-j0))
         fluxes%qsw_cat(i,j,1) = swnet_afracr(i-i0,j-j0)
         do m=1,size(ifrac_n, 3)
-          fluxes%fracr_cat(i,j,m+1) = min(1., ifrac_n(i-i0,j-j0,m))
+          fluxes%fracr_cat(i,j,m+1) = min(1._wp, ifrac_n(i-i0,j-j0,m))
           fluxes%qsw_cat(i,j,m+1)   = swpen_ifrac_n(i-i0,j-j0,m)
         enddo
-        where (fluxes%fracr_cat(i,j,:) > 0.)
+        where (fluxes%fracr_cat(i,j,:) > 0._wp)
           fluxes%qsw_cat(i,j,:) = fluxes%qsw_cat(i,j,:) / fluxes%fracr_cat(i,j,:)
         elsewhere
-          fluxes%fracr_cat(i,j,:) = 0.
-          fluxes%qsw_cat(i,j,:) = 0.
+          fluxes%fracr_cat(i,j,:) = 0._wp
+          fluxes%qsw_cat(i,j,:) = 0._wp
         endwhere
         fluxes%fracr_cat(i,j,:) = G%mask2dT(i,j) * fluxes%fracr_cat(i,j,:)
         fluxes%qsw_cat(i,j,:)   = (US%W_m2_to_QRZ_T * G%mask2dT(i,j)) * fluxes%qsw_cat(i,j,:)

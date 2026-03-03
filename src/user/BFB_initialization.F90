@@ -12,6 +12,7 @@ use MOM_tracer_registry, only : tracer_registry_type
 use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
+use MOM_datatypes, only : wp
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -32,18 +33,18 @@ contains
 !! and linearly interpolated for the intermediate layers.
 subroutine BFB_set_coord(Rlay, g_prime, GV, US, param_file)
   type(verticalGrid_type),  intent(in)  :: GV      !< The ocean's vertical grid structure
-  real, dimension(GV%ke),   intent(out) :: Rlay    !< Layer potential density [R ~> kg m-3].
-  real, dimension(GV%ke+1), intent(out) :: g_prime !< The reduced gravity at each
+  real(wp), dimension(GV%ke),   intent(out) :: Rlay    !< Layer potential density [R ~> kg m-3].
+  real(wp), dimension(GV%ke+1), intent(out) :: g_prime !< The reduced gravity at each
                                                    !! interface [L2 Z-1 T-2 ~> m s-2].
   type(unit_scale_type),    intent(in)  :: US      !< A dimensional unit scaling type
   type(param_file_type),    intent(in)  :: param_file !< A structure to parse for run-time parameters
 
-  real :: Rho_T0_S0  ! The density at T=0, S=0 [R ~> kg m-3]
-  real :: dRho_dT    ! The partial derivative of density with temperature [R C-1 ~> kg m-3 degC-1]
-  real :: dRho_dS    ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1]
-  real :: SST_s, T_bot     ! Temperatures at the surface and seafloor [C ~> degC]
-  real :: S_ref      ! Reference salinity [S ~> ppt]
-  real :: rho_top, rho_bot ! Densities at the surface and seafloor [R ~> kg m-3]
+  real(wp) :: Rho_T0_S0  ! The density at T=0, S=0 [R ~> kg m-3]
+  real(wp) :: dRho_dT    ! The partial derivative of density with temperature [R C-1 ~> kg m-3 degC-1]
+  real(wp) :: dRho_dS    ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1]
+  real(wp) :: SST_s, T_bot     ! Temperatures at the surface and seafloor [C ~> degC]
+  real(wp) :: S_ref      ! Reference salinity [S ~> ppt]
+  real(wp) :: rho_top, rho_bot ! Densities at the surface and seafloor [R ~> kg m-3]
   integer :: k, nz
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
@@ -52,31 +53,31 @@ subroutine BFB_set_coord(Rlay, g_prime, GV, US, param_file)
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "DRHO_DT", dRho_dT, &
                  "The partial derivative of density with temperature.", &
-                 units="kg m-3 K-1", default=-0.2, scale=US%kg_m3_to_R*US%C_to_degC)
+                 units="kg m-3 K-1", default=-0.2_wp, scale=US%kg_m3_to_R*US%C_to_degC)
   call get_param(param_file, mdl, "DRHO_DS", dRho_dS, &
                  "The partial derivative of density with salinity.", &
-                 units="kg m-3 PSU-1", default=0.8, scale=US%kg_m3_to_R*US%S_to_ppt)
+                 units="kg m-3 PSU-1", default=0.8_wp, scale=US%kg_m3_to_R*US%S_to_ppt)
   call get_param(param_file, mdl, "RHO_T0_S0", Rho_T0_S0, &
-                 "The density at T=0, S=0.", units="kg m-3", default=1000.0, scale=US%kg_m3_to_R)
+                 "The density at T=0, S=0.", units="kg m-3", default=1000.0_wp, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "SST_S", SST_s, &
                  "SST at the southern edge of the domain.", &
-                 units="degC", default=20.0, scale=US%degC_to_C)
+                 units="degC", default=20.0_wp, scale=US%degC_to_C)
   call get_param(param_file, mdl, "T_BOT", T_bot, &
-                 "Bottom temperature", units="degC", default=5.0, scale=US%degC_to_C)
+                 "Bottom temperature", units="degC", default=5.0_wp, scale=US%degC_to_C)
   call get_param(param_file, mdl, "S_REF", S_ref, &
-                 "The initial salinities.", units="PSU", default=35.0, scale=US%ppt_to_S)
+                 "The initial salinities.", units="PSU", default=35.0_wp, scale=US%ppt_to_S)
   rho_top = (Rho_T0_S0 + dRho_dS*S_ref) + dRho_dT*SST_s
   rho_bot = (Rho_T0_S0 + dRho_dS*S_ref) + dRho_dT*T_bot
   nz = GV%ke
 
   do k = 1,nz
-    Rlay(k) = (rho_bot - rho_top)/(nz-1)*real(k-1) + rho_top
+    Rlay(k) = (rho_bot - rho_top)/(nz-1)*real(k-1, wp) + rho_top
     if (k==1) then
       g_prime(k) = GV%g_Earth
     elseif (GV%Boussinesq) then
       g_prime(k) = (Rlay(k) - Rlay(k-1)) * GV%g_Earth / GV%Rho0
     else
-      g_prime(k) = (Rlay(k) - Rlay(k-1)) * GV%g_Earth / (0.5*(Rlay(k) + Rlay(k-1)))
+      g_prime(k) = (Rlay(k) - Rlay(k-1)) * GV%g_Earth / (0.5_wp*(Rlay(k) + Rlay(k-1)))
     endif
   enddo
 
@@ -91,23 +92,23 @@ subroutine BFB_initialize_sponges_southonly(G, GV, US, use_temperature, tv, dept
   logical,                 intent(in) :: use_temperature !< If true, temperature and salinity are used as
                                             !! state variables.
   type(thermo_var_ptrs),   intent(in) :: tv   !< A structure pointing to various thermodynamic variables
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                            intent(in) :: depth_tot !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(sponge_CS),         pointer    :: CSp  !< A pointer to the sponge control structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
 
   ! Local variables
-  real :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! A temporary array for eta, in depth units [Z ~> m].
-  real :: Idamp(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1]
-  real :: H0(SZK_(GV))              ! Resting layer thicknesses in depth units [Z ~> m].
-  real :: slat                      ! The southern latitude of the domain [degrees_N]
-  real :: wlon                      ! The western longitude of the domain [degrees_E]
-  real :: lenlat                    ! The latitudinal length of the domain [degrees_N]
-  real :: lenlon                    ! The longitudinal length of the domain [degrees_E]
-  real :: nlat                      ! The northern latitude of the domain [degrees_N]
-  real :: max_damping               ! The maximum damping rate [T-1 ~> s-1]
+  real(wp) :: eta(SZI_(G),SZJ_(G),SZK_(GV)+1) ! A temporary array for eta, in depth units [Z ~> m].
+  real(wp) :: Idamp(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1]
+  real(wp) :: H0(SZK_(GV))              ! Resting layer thicknesses in depth units [Z ~> m].
+  real(wp) :: slat                      ! The southern latitude of the domain [degrees_N]
+  real(wp) :: wlon                      ! The western longitude of the domain [degrees_E]
+  real(wp) :: lenlat                    ! The latitudinal length of the domain [degrees_N]
+  real(wp) :: lenlon                    ! The longitudinal length of the domain [degrees_E]
+  real(wp) :: nlat                      ! The northern latitude of the domain [degrees_N]
+  real(wp) :: max_damping               ! The maximum damping rate [T-1 ~> s-1]
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=40)  :: mdl = "BFB_initialize_sponges_southonly" ! This subroutine's name.
@@ -129,21 +130,21 @@ subroutine BFB_initialize_sponges_southonly(G, GV, US, use_temperature, tv, dept
   wlon = G%west_lon
   lenlon = G%len_lon
   nlat = slat + lenlat
-  do k=1,nz ; H0(k) = -G%max_depth * real(k-1) / real(nz) ; enddo
+  do k=1,nz ; H0(k) = -G%max_depth * real(k-1, wp) / real(nz, wp) ; enddo
 
   ! Use for meridional thickness profile initialization
   ! do k=1,nz ; H0(k) = -G%max_depth * real(k-1) / real(nz-1) ; enddo
 
-  max_damping = 1.0  / (86400.0*US%s_to_T)
+  max_damping = 1.0_wp  / (86400.0_wp*US%s_to_T)
 
-  eta(:,:,:) = 0.0 ; Idamp(:,:) = 0.0
+  eta(:,:,:) = 0.0_wp ; Idamp(:,:) = 0.0_wp
 
   do j=js,je ; do i=is,ie
-    if (G%mask2dT(i,j) <= 0.0) then ; Idamp(i,j) = 0.0
-    elseif (G%geoLatT(i,j) < slat+2.0) then ; Idamp(i,j) = max_damping
-    elseif (G%geoLatT(i,j) < slat+4.0) then
-      Idamp(i,j) = max_damping * (slat+4.0-G%geoLatT(i,j))/2.0
-    else ; Idamp(i,j) = 0.0
+    if (G%mask2dT(i,j) <= 0.0_wp) then ; Idamp(i,j) = 0.0_wp
+    elseif (G%geoLatT(i,j) < slat+2.0_wp) then ; Idamp(i,j) = max_damping
+    elseif (G%geoLatT(i,j) < slat+4.0_wp) then
+      Idamp(i,j) = max_damping * (slat+4.0_wp-G%geoLatT(i,j))/2.0_wp
+    else ; Idamp(i,j) = 0.0_wp
     endif
 
     ! These will be streched inside of apply_sponge, so they can be in

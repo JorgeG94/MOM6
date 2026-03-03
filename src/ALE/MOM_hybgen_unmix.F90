@@ -15,6 +15,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : ocean_grid_type, thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -23,27 +25,27 @@ implicit none ; private
 type, public :: hybgen_unmix_CS ; private
 
   integer :: nsigma  !< Number of sigma levels used by HYBGEN
-  real :: hybiso     !< Hybgen uses PCM if layer is within hybiso of target density [R ~> kg m-3]
+  real(wp) :: hybiso     !< Hybgen uses PCM if layer is within hybiso of target density [R ~> kg m-3]
 
-  real :: dp00i   !< Deep isopycnal spacing minimum thickness [H ~> m or kg m-2]
-  real :: qhybrlx !< Hybgen relaxation amount per thermodynamic time steps [nondim]
+  real(wp) :: dp00i   !< Deep isopycnal spacing minimum thickness [H ~> m or kg m-2]
+  real(wp) :: qhybrlx !< Hybgen relaxation amount per thermodynamic time steps [nondim]
 
-  real, allocatable, dimension(:) ::  &
+  real(wp), allocatable, dimension(:) ::  &
     dp0k, &     !< minimum deep    z-layer separation [H ~> m or kg m-2]
     ds0k        !< minimum shallow z-layer separation [H ~> m or kg m-2]
 
-  real :: dpns  !< depth to start terrain following [H ~> m or kg m-2]
-  real :: dsns  !< depth to stop terrain following [H ~> m or kg m-2]
-  real :: min_dilate !< The minimum amount of dilation that is permitted when converting target
+  real(wp) :: dpns  !< depth to start terrain following [H ~> m or kg m-2]
+  real(wp) :: dsns  !< depth to stop terrain following [H ~> m or kg m-2]
+  real(wp) :: min_dilate !< The minimum amount of dilation that is permitted when converting target
                      !! coordinates from z to z* [nondim].  This limit applies when wetting occurs.
-  real :: max_dilate !< The maximum amount of dilation that is permitted when converting target
+  real(wp) :: max_dilate !< The maximum amount of dilation that is permitted when converting target
                      !! coordinates from z to z* [nondim].  This limit applies when drying occurs.
 
-  real :: topiso_const !< Shallowest depth for isopycnal layers [H ~> m or kg m-2]
+  real(wp) :: topiso_const !< Shallowest depth for isopycnal layers [H ~> m or kg m-2]
   ! real, dimension(:,:), allocatable :: topiso
 
-  real :: ref_pressure !< Reference pressure for density calculations [R L2 T-2 ~> Pa]
-  real, allocatable, dimension(:) :: target_density !< Nominal density of interfaces [R ~> kg m-3]
+  real(wp) :: ref_pressure !< Reference pressure for density calculations [R L2 T-2 ~> Pa]
+  real(wp), allocatable, dimension(:) :: target_density !< Nominal density of interfaces [R ~> kg m-3]
 
 end type hybgen_unmix_CS
 
@@ -66,8 +68,8 @@ subroutine init_hybgen_unmix(CS, GV, US, param_file, hybgen_regridCS)
   allocate(CS)
   allocate(CS%target_density(GV%ke))
 
-  allocate(CS%dp0k(GV%ke), source=0.0) ! minimum deep z-layer separation
-  allocate(CS%ds0k(GV%ke), source=0.0) ! minimum shallow z-layer separation
+  allocate(CS%dp0k(GV%ke), source=0.0_wp) ! minimum deep z-layer separation
+  allocate(CS%ds0k(GV%ke), source=0.0_wp) ! minimum shallow z-layer separation
 
   ! Set the parameters for the hybgen unmixing from a hybgen regridding control structure.
   call get_hybgen_regrid_params(hybgen_regridCS, ref_pressure=CS%ref_pressure, &
@@ -80,10 +82,10 @@ subroutine init_hybgen_unmix(CS, GV, US, param_file, hybgen_regridCS)
   ! --- terrain following starts at depth dpns and ends at depth dsns
   if (CS%nsigma == 0) then
     CS%dpns = CS%dp0k(1)
-    CS%dsns = 0.0
+    CS%dsns = 0.0_wp
   else
-    CS%dpns = 0.0
-    CS%dsns = 0.0
+    CS%dpns = 0.0_wp
+    CS%dsns = 0.0_wp
     do k=1,CS%nsigma
       CS%dpns = CS%dpns + CS%dp0k(k)
       CS%dsns = CS%dsns + CS%ds0k(k)
@@ -107,7 +109,7 @@ end subroutine end_hybgen_unmix
 !> This subroutine can be used to set the parameters for the hybgen module
 subroutine set_hybgen_unmix_params(CS, min_thickness)
   type(hybgen_unmix_CS),  pointer    :: CS !< Coordinate unmixing control structure
-  real,    optional, intent(in) :: min_thickness !< Minimum allowed thickness [H ~> m or kg m-2]
+  real(wp),    optional, intent(in) :: min_thickness !< Minimum allowed thickness [H ~> m or kg m-2]
 
   if (.not. associated(CS)) call MOM_error(FATAL, "set_hybgen_params: CS not associated")
 
@@ -126,7 +128,7 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
   type(tracer_registry_type), pointer    :: Reg !< Tracer registry structure
   integer,                 intent(in)    :: ntr !< The number of tracers in the registry, or
                                                 !! 0 if the registry is not in use.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(inout) :: h   !< Layer thicknesses [H ~> m or kg m-2]
 
 ! --- --------------------------------------------
@@ -135,28 +137,28 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
 
   character(len=256) :: mesg  ! A string for output messages
   integer :: fixlay         ! deepest fixed coordinate layer
-  real :: qhrlx( GV%ke+1)   ! relaxation coefficient per timestep [nondim]
-  real :: dp0ij( GV%ke)     ! minimum layer thickness [H ~> m or kg m-2]
-  real :: dp0cum(GV%ke+1)   ! minimum interface depth [H ~> m or kg m-2]
+  real(wp) :: qhrlx( GV%ke+1)   ! relaxation coefficient per timestep [nondim]
+  real(wp) :: dp0ij( GV%ke)     ! minimum layer thickness [H ~> m or kg m-2]
+  real(wp) :: dp0cum(GV%ke+1)   ! minimum interface depth [H ~> m or kg m-2]
 
-  real :: Rcv_tgt(GV%ke)    ! Target potential density [R ~> kg m-3]
-  real :: temp(GV%ke)       ! A column of potential temperature [C ~> degC]
-  real :: saln(GV%ke)       ! A column of salinity [S ~> ppt]
-  real :: Rcv(GV%ke)        ! A column of coordinate potential density [R ~> kg m-3]
-  real :: h_col(GV%ke)      ! A column of layer thicknesses [H ~> m or kg m-2]
-  real :: p_col(GV%ke)      ! A column of reference pressures [R L2 T-2 ~> Pa]
-  real :: tracer(GV%ke,max(ntr,1)) ! Columns of each tracer [Conc]
-  real :: h_tot             ! Total thickness of the water column [H ~> m or kg m-2]
-  real :: dz_tot            ! Vertical distance between the top and bottom of the water column [Z ~> m]
-  real :: nominalDepth      ! Depth of ocean bottom in thickness units (positive downward) [H ~> m or kg m-2]
-  real :: h_thin            ! A negligibly small thickness to identify essentially
+  real(wp) :: Rcv_tgt(GV%ke)    ! Target potential density [R ~> kg m-3]
+  real(wp) :: temp(GV%ke)       ! A column of potential temperature [C ~> degC]
+  real(wp) :: saln(GV%ke)       ! A column of salinity [S ~> ppt]
+  real(wp) :: Rcv(GV%ke)        ! A column of coordinate potential density [R ~> kg m-3]
+  real(wp) :: h_col(GV%ke)      ! A column of layer thicknesses [H ~> m or kg m-2]
+  real(wp) :: p_col(GV%ke)      ! A column of reference pressures [R L2 T-2 ~> Pa]
+  real(wp) :: tracer(GV%ke,max(ntr,1)) ! Columns of each tracer [Conc]
+  real(wp) :: h_tot             ! Total thickness of the water column [H ~> m or kg m-2]
+  real(wp) :: dz_tot            ! Vertical distance between the top and bottom of the water column [Z ~> m]
+  real(wp) :: nominalDepth      ! Depth of ocean bottom in thickness units (positive downward) [H ~> m or kg m-2]
+  real(wp) :: h_thin            ! A negligibly small thickness to identify essentially
                             ! vanished layers [H ~> m or kg m-2]
-  real :: dilate            ! A factor by which to dilate the target positions from z to z* [nondim]
+  real(wp) :: dilate            ! A factor by which to dilate the target positions from z to z* [nondim]
 
-  real :: Th_tot_in, Th_tot_out ! Column integrated temperature [C H ~> degC m or degC kg m-2]
-  real :: Sh_tot_in, Sh_tot_out ! Column integrated salinity [S H ~> ppt m or ppt kg m-2]
-  real :: Trh_tot_in(max(ntr,1))  ! Initial column integrated tracer amounts [conc H ~> conc m or conc kg m-2]
-  real :: Trh_tot_out(max(ntr,1)) ! Final column integrated tracer amounts [conc H ~> conc m or conc kg m-2]
+  real(wp) :: Th_tot_in, Th_tot_out ! Column integrated temperature [C H ~> degC m or degC kg m-2]
+  real(wp) :: Sh_tot_in, Sh_tot_out ! Column integrated salinity [S H ~> ppt m or ppt kg m-2]
+  real(wp) :: Trh_tot_in(max(ntr,1))  ! Initial column integrated tracer amounts [conc H ~> conc m or conc kg m-2]
+  real(wp) :: Trh_tot_out(max(ntr,1)) ! Final column integrated tracer amounts [conc H ~> conc m or conc kg m-2]
 
   logical :: debug_conservation ! If true, test for non-conservation.
   logical :: terrain_following  ! True if this column is terrain following.
@@ -168,7 +170,7 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
   ! Set all tracers to be passive.  Setting this to 2 treats a tracer like temperature.
   trcflg(:) = 3
 
-  h_thin = 1e-6*GV%m_to_H
+  h_thin = 1e-6_wp*GV%m_to_H
   debug_conservation = .false. !  Set this to true for debugging
 
   if ((allocated(tv%SpV_avg)) .and. (tv%valid_SpV_halo < 1)) then
@@ -182,9 +184,9 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
 
   p_col(:) = CS%ref_pressure
 
-  do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1 ; if (G%mask2dT(i,j)>0.) then
+  do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1 ; if (G%mask2dT(i,j)>0._wp) then
 
-    h_tot = 0.0
+    h_tot = 0.0_wp
     do k=1,nk
       ! Rcv_tgt(k) = theta(i,j,k)  ! If a 3-d target density were set up in theta, use that here.
       Rcv_tgt(k) = CS%target_density(k)  ! MOM6 does not yet support 3-d target densities.
@@ -203,7 +205,7 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
 
     ! Store original amounts to test for conservation of temperature, salinity, and tracers.
     if (debug_conservation) then
-      Th_tot_in = 0.0 ; Sh_tot_in = 0.0 ; Trh_tot_in(:) = 0.0
+      Th_tot_in = 0.0_wp ; Sh_tot_in = 0.0_wp ; Trh_tot_in(:) = 0.0_wp
       do k=1,nk
         Sh_tot_in = Sh_tot_in + h_col(k)*saln(k)
         Th_tot_in = Th_tot_in + h_col(k)*temp(k)
@@ -215,7 +217,7 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
 
     ! The following block of code is used to trigger z* stretching of the targets heights.
     if (allocated(tv%SpV_avg)) then  ! This is the fully non-Boussinesq version
-      dz_tot = 0.0
+      dz_tot = 0.0_wp
       do k=1,nk
         dz_tot = dz_tot + GV%H_to_RZ * tv%SpV_avg(i,j,k) * h_col(k)
       enddo
@@ -265,7 +267,7 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
 
     ! Test for conservation of temperature, salinity, and tracers.
     if (debug_conservation) then
-      Th_tot_out = 0.0 ; Sh_tot_out = 0.0 ; Trh_tot_out(:) = 0.0
+      Th_tot_out = 0.0_wp ; Sh_tot_out = 0.0_wp ; Trh_tot_out(:) = 0.0_wp
       do k=1,nk
         Sh_tot_out = Sh_tot_out + h_col(k)*saln(k)
         Th_tot_out = Th_tot_out + h_col(k)*temp(k)
@@ -273,18 +275,18 @@ subroutine hybgen_unmix(G, GV, US, CS, tv, Reg, ntr, h)
       do m=1,ntr ; do k=1,nk
         Trh_tot_out(m) = Trh_tot_out(m) + h_col(k)*tracer(k,m)
       enddo ; enddo
-      if (abs(Sh_tot_in - Sh_tot_out) > 1.e-15*(abs(Sh_tot_in) + abs(Sh_tot_out))) then
+      if (abs(Sh_tot_in - Sh_tot_out) > 1.e-15_wp*(abs(Sh_tot_in) + abs(Sh_tot_out))) then
         write(mesg, '("i,j=",I0,",",I0," Sh_tot = ",2es17.8," err = ",es13.4)') &
               i, j, Sh_tot_in, Sh_tot_out, (Sh_tot_in - Sh_tot_out)
         call MOM_error(FATAL, "Mismatched column salinity in hybgen_unmix: "//trim(mesg))
       endif
-      if (abs(Th_tot_in - Th_tot_out) > 1.e-10*(abs(Th_tot_in) + abs(Th_tot_out))) then
+      if (abs(Th_tot_in - Th_tot_out) > 1.e-10_wp*(abs(Th_tot_in) + abs(Th_tot_out))) then
         write(mesg, '("i,j=",I0,",",I0," Th_tot = ",2es17.8," err = ",es13.4)') &
               i, j, Th_tot_in, Th_tot_out, (Th_tot_in - Th_tot_out)
         call MOM_error(FATAL, "Mismatched column temperature in hybgen_unmix: "//trim(mesg))
       endif
       do m=1,ntr
-        if (abs(Trh_tot_in(m) - Trh_tot_out(m)) > 1.e-10*(abs(Trh_tot_in(m)) + abs(Trh_tot_out(m)))) then
+        if (abs(Trh_tot_in(m) - Trh_tot_out(m)) > 1.e-10_wp*(abs(Trh_tot_in(m)) + abs(Trh_tot_out(m)))) then
           write(mesg, '("i,j=",I0,",",I0," Trh_tot(",i0,") = ",2es17.8," err = ",es13.4)') &
                 i, j, m, Trh_tot_in(m), Trh_tot_out(m), (Trh_tot_in(m) - Trh_tot_out(m))
           call MOM_error(FATAL, "Mismatched column tracer in hybgen_unmix: "//trim(mesg))
@@ -306,18 +308,18 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
   type(hybgen_unmix_CS), intent(in) :: CS  !< hybgen unmixing control structure
   integer,        intent(in)    :: nk           !< The number of layers
   integer,        intent(in)    :: fixlay       !< deepest fixed coordinate layer
-  real,           intent(in)    :: qhrlx(nk+1)  !< Relaxation fraction per timestep [nondim], < 1.
-  real,           intent(in)    :: Rcv_tgt(nk)  !< Target potential density [R ~> kg m-3]
-  real,           intent(inout) :: temp(nk)     !< A column of potential temperature [C ~> degC]
-  real,           intent(inout) :: saln(nk)     !< A column of salinity [S ~> ppt]
-  real,           intent(inout) :: Rcv(nk)      !< Coordinate potential density [R ~> kg m-3]
+  real(wp),           intent(in)    :: qhrlx(nk+1)  !< Relaxation fraction per timestep [nondim], < 1.
+  real(wp),           intent(in)    :: Rcv_tgt(nk)  !< Target potential density [R ~> kg m-3]
+  real(wp),           intent(inout) :: temp(nk)     !< A column of potential temperature [C ~> degC]
+  real(wp),           intent(inout) :: saln(nk)     !< A column of salinity [S ~> ppt]
+  real(wp),           intent(inout) :: Rcv(nk)      !< Coordinate potential density [R ~> kg m-3]
   type(EOS_type), intent(in)    :: eqn_of_state !< Equation of state structure
   integer,        intent(in)    :: ntr          !< The number of registered passive tracers
-  real,           intent(inout) :: tracer(nk, max(ntr,1)) !< Columns of the passive tracers [Conc]
+  real(wp),           intent(inout) :: tracer(nk, max(ntr,1)) !< Columns of the passive tracers [Conc]
   integer,        intent(in)    :: trcflg(max(ntr,1)) !< Hycom tracer type flag for each tracer
-  real,           intent(inout) :: h_col(nk+1)  !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp),           intent(inout) :: h_col(nk+1)  !< Layer thicknesses [H ~> m or kg m-2]
   logical,        intent(in)    :: terrain_following !< True if this column is terrain following
-  real,           intent(in)    :: h_thin       !< A negligibly small thickness to identify
+  real(wp),           intent(in)    :: h_thin       !< A negligibly small thickness to identify
                                                 !! essentially vanished layers [H ~> m or kg m-2]
 
 !
@@ -326,22 +328,22 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
 ! --- ------------------------------------------------------------------
 !
   ! Local variables
-  real :: h_hat       ! A portion of a layer to move across an interface [H ~> m or kg m-2]
-  real :: delt, deltm ! Temperature differences between successive layers [C ~> degC]
-  real :: dels, delsm ! Salinity differences between successive layers [S ~> ppt]
-  real :: abs_dRdT    ! The absolute value of the derivative of the coordinate density
+  real(wp) :: h_hat       ! A portion of a layer to move across an interface [H ~> m or kg m-2]
+  real(wp) :: delt, deltm ! Temperature differences between successive layers [C ~> degC]
+  real(wp) :: dels, delsm ! Salinity differences between successive layers [S ~> ppt]
+  real(wp) :: abs_dRdT    ! The absolute value of the derivative of the coordinate density
                       ! with temperature [R C-1 ~> kg m-3 degC-1]
-  real :: abs_dRdS    ! The absolute value of the derivative of the coordinate density
+  real(wp) :: abs_dRdS    ! The absolute value of the derivative of the coordinate density
                       ! with salinity [R S-1 ~> kg m-3 ppt-1]
-  real :: q, qts      ! Nondimensional fractions in the range of 0 to 1 [nondim]
-  real :: frac_dts    ! The fraction of the temperature or salinity difference between successive
+  real(wp) :: q, qts      ! Nondimensional fractions in the range of 0 to 1 [nondim]
+  real(wp) :: frac_dts    ! The fraction of the temperature or salinity difference between successive
                       ! layers by which the source layer's property changes by the loss of water
                       ! that matches the destination layers properties via unmixing [nondim].
-  real :: qtr         ! The fraction of the water that will come from the layer below,
+  real(wp) :: qtr         ! The fraction of the water that will come from the layer below,
                       ! used for updating the concentration of passive tracers [nondim]
-  real :: swap_T      ! A swap variable for temperature [C ~> degC]
-  real :: swap_S      ! A swap variable for salinity [S ~> ppt]
-  real :: swap_tr     ! A temporary swap variable for the tracers [conc]
+  real(wp) :: swap_T      ! A swap variable for temperature [C ~> degC]
+  real(wp) :: swap_S      ! A swap variable for salinity [S ~> ppt]
+  real(wp) :: swap_tr     ! A temporary swap variable for the tracers [conc]
   logical, parameter :: lunmix=.true.     ! unmix a too light deepest layer
   integer :: k, ka, kp, kt, m
 
@@ -380,7 +382,7 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
     enddo !m
 ! ---   entrained the entire layer into the one above, so now kp=kp-1
     h_col(k-1) = h_col(k-1) + h_col(k)
-    h_col(k) = 0.0
+    h_col(k) = 0.0_wp
     kp = k-1
   elseif ( ((k > fixlay+1) .and. (.not.terrain_following)) .and. & ! layer not fixed depth
            (h_col(k-1) >= h_thin) .and. & ! layer above not too thin
@@ -442,7 +444,7 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
        (Rcv(k) < Rcv_tgt(k))   .and. & ! layer is lighter than its target
        (Rcv(k) > Rcv_tgt(k-1)) .and. & ! layer is denser than the target above
        (abs(Rcv_tgt(k-1) - Rcv(k-1)) < CS%hybiso) .and. & ! layer above is near its target
-       (Rcv(k) - Rcv(k-1) > 0.001*(Rcv_tgt(k) - Rcv_tgt(k-1))) ) then
+       (Rcv(k) - Rcv(k-1) > 0.001_wp*(Rcv_tgt(k) - Rcv_tgt(k-1))) ) then
 !
 ! ---   water in the deepest inflated layer with significant thickness (kp) is too
 ! ---   light but denser than the layer above, with the layer above near-isopycnal
@@ -474,19 +476,19 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
     if (abs_dRdT * deltm > Rcv_tgt(k)-Rcv_tgt(k-1)) deltm = (Rcv_tgt(k)-Rcv_tgt(k-1)) / abs_dRdT
     if (abs_dRdS * delsm > Rcv_tgt(k)-Rcv_tgt(k-1)) delsm = (Rcv_tgt(k)-Rcv_tgt(k-1)) / abs_dRdS
 
-    qts = 0.0
+    qts = 0.0_wp
     if (qts*dels < min(delsm-dels, dels)) qts = min(delsm-dels, dels) / dels
     if (qts*delt < min(deltm-delt, delt)) qts = min(deltm-delt, delt) / delt
 
     ! Note that Rcv_tgt(k) > Rcv(k) > Rcv(k-1), and 0 <= qts <= 1.
     ! qhrlx is relaxation coefficient (inverse baroclinic time steps), 0 <= qhrlx <= 1.
     ! This takes the minimum of the two estimates.
-    if ((1.0+qts) * (Rcv_tgt(k)-Rcv(k)) < qts * (Rcv_tgt(k)-Rcv(k-1))) then
+    if ((1.0_wp+qts) * (Rcv_tgt(k)-Rcv(k)) < qts * (Rcv_tgt(k)-Rcv(k-1))) then
       q = qhrlx(k) * ((Rcv_tgt(k)-Rcv(k)) / (Rcv_tgt(k)-Rcv(k-1)))
     else
-      q = qhrlx(k) * (qts / (1.0+qts)) ! upper sublayer <= 50% of total
+      q = qhrlx(k) * (qts / (1.0_wp+qts)) ! upper sublayer <= 50% of total
     endif
-    frac_dts = q / (1.0-q)     ! 0 <= q <= 0.5, so 0 <= frac_dts <= 1
+    frac_dts = q / (1.0_wp-q)     ! 0 <= q <= 0.5, so 0 <= frac_dts <= 1
 
     h_hat = q * h_col(k)
     h_col(k-1) = h_col(k-1) + h_hat
@@ -496,7 +498,7 @@ subroutine hybgen_column_unmix(CS, nk, Rcv_tgt, temp, saln, Rcv, eqn_of_state, &
     saln(k) = saln(k) + frac_dts * (saln(k) - saln(k-1))
     call calculate_density(temp(k), saln(k), CS%ref_pressure, Rcv(k), eqn_of_state)
 
-    if ((ntr > 0) .and. (h_hat /= 0.0)) then
+    if ((ntr > 0) .and. (h_hat /= 0.0_wp)) then
       ! qtr is the fraction of the new upper layer from the old lower layer.
       ! The nonconservative original from Hycom: qtr = h_hat / max(h_hat, h_col(k))  !between 0 and 1
       qtr = h_hat / h_col(k-1) ! Between 0 and 1, noting the h_col(k-1) = h_col(k-1) + h_hat above.

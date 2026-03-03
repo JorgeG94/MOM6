@@ -13,6 +13,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : thermo_var_ptrs
 use MOM_verticalGrid,  only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -25,30 +27,30 @@ public absorbRemainingSW, sumSWoverBands
 type, public :: optics_type
   integer :: nbands     !< The number of penetrating bands of SW radiation
 
-  real, allocatable :: opacity_band(:,:,:,:) !< SW optical depth per unit thickness [Z-1 ~> m-1]
+  real(wp), allocatable :: opacity_band(:,:,:,:) !< SW optical depth per unit thickness [Z-1 ~> m-1]
                         !! The number of radiation bands is most rapidly varying (first) index.
 
-  real, allocatable :: sw_pen_band(:,:,:) !< shortwave radiation [Q R Z T-1 ~> W m-2]
+  real(wp), allocatable :: sw_pen_band(:,:,:) !< shortwave radiation [Q R Z T-1 ~> W m-2]
                         !! at the surface in each of the nbands bands that penetrates beyond the surface.
                         !! The most rapidly varying dimension is the band.
 
-  real, allocatable :: min_wavelength_band(:)
+  real(wp), allocatable :: min_wavelength_band(:)
       !< The minimum wavelength in each band of penetrating shortwave radiation [nm]
-  real, allocatable :: max_wavelength_band(:)
+  real(wp), allocatable :: max_wavelength_band(:)
       !< The maximum wavelength in each band of penetrating shortwave radiation [nm]
 
-  real :: PenSW_flux_absorb !< A heat flux that is small enough to be completely absorbed in the next
+  real(wp) :: PenSW_flux_absorb !< A heat flux that is small enough to be completely absorbed in the next
                         !! sufficiently thick layer [C H T-1 ~> degC m s-1 or degC kg m-2 s-1].
-  real :: PenSW_absorb_Invlen !< The inverse of the thickness that is used to absorb the remaining
+  real(wp) :: PenSW_absorb_Invlen !< The inverse of the thickness that is used to absorb the remaining
   !! shortwave heat flux when it drops below PEN_SW_FLUX_ABSORB [H ~> m or kg m-2].
 
   !! Lookup tables for Ohlmann solar penetration scheme
   !! These would naturally exist as private module variables but that is prohibited in MOM6
-  real :: dlog10chl           !< Chl increment within lookup table  [log10 of Chl in mg m-3]
-  real :: chl_min             !< Lower bound of Chl in lookup table [mg m-3]
-  real :: log10chl_min        !< Lower bound of Chl in lookup table [log10 of Chl in mg m-3]
-  real :: log10chl_max        !< Upper bound of Chl in lookup table [log10 of Chl in mg m-3]
-  real, allocatable, dimension(:) :: a1_lut,&       !< Coefficient for band 1 [nondim]
+  real(wp) :: dlog10chl           !< Chl increment within lookup table  [log10 of Chl in mg m-3]
+  real(wp) :: chl_min             !< Lower bound of Chl in lookup table [mg m-3]
+  real(wp) :: log10chl_min        !< Lower bound of Chl in lookup table [log10 of Chl in mg m-3]
+  real(wp) :: log10chl_max        !< Upper bound of Chl in lookup table [log10 of Chl in mg m-3]
+  real(wp), allocatable, dimension(:) :: a1_lut,&       !< Coefficient for band 1 [nondim]
        &                             a2_lut,&       !< Coefficient for band 2 [nondim]
        &                             b1_lut,&       !< Exponential decay scale for band 1 [Z-1 ~> m-1]
        &                             b2_lut         !< Exponential decay scale for band 2 [Z-1 ~> m-1]
@@ -67,27 +69,27 @@ type, public :: opacity_CS ; private
   integer :: opacity_scheme  !<   An integer indicating which scheme should be used to translate
                              !! water properties into the opacity (i.e., the e-folding depth) and
                              !! (perhaps) the number of bands of penetrating shortwave radiation to use.
-  real :: pen_sw_scale       !<   The vertical absorption e-folding depth of the
+  real(wp) :: pen_sw_scale       !<   The vertical absorption e-folding depth of the
                              !! penetrating shortwave radiation [Z ~> m].
-  real :: pen_sw_scale_2nd   !<   The vertical absorption e-folding depth of the
+  real(wp) :: pen_sw_scale_2nd   !<   The vertical absorption e-folding depth of the
                              !! (2nd) penetrating shortwave radiation [Z ~> m].
-  real :: SW_1ST_EXP_RATIO   !< Ratio for 1st exp decay in Two Exp decay opacity [nondim]
-  real :: pen_sw_frac        !<   The fraction of shortwave radiation that is
+  real(wp) :: SW_1ST_EXP_RATIO   !< Ratio for 1st exp decay in Two Exp decay opacity [nondim]
+  real(wp) :: pen_sw_frac        !<   The fraction of shortwave radiation that is
                              !! penetrating with a constant e-folding approach [nondim]
-  real :: blue_frac          !<   The fraction of the penetrating shortwave
+  real(wp) :: blue_frac          !<   The fraction of the penetrating shortwave
                              !! radiation that is in the blue band [nondim].
-  real :: opacity_land_value !< The value to use for opacity over land [Z-1 ~> m-1].
+  real(wp) :: opacity_land_value !< The value to use for opacity over land [Z-1 ~> m-1].
                              !! The default is 10 m-1 - a value for muddy water.
-  real, allocatable, dimension(:,:) &
+  real(wp), allocatable, dimension(:,:) &
        :: opacity_coef       !< Groups of coefficients, in [Z-1 ~> m-1] or [Z ~> m] depending on the
                              !! scheme, in expressions for opacity, with the second index being the
                              !! wavelength band.  For example, when OPACITY_SCHEME = MANIZZA_05,
                              !! these are coef_1 and coef_2 in the
                              !! expression opacity = coef_1 + coef_2 * chl**pow.
-  real, allocatable, dimension(:) &
+  real(wp), allocatable, dimension(:) &
        :: sw_pen_frac_coef   !< Coefficients in the expression for the penetrating shortwave
                              !! fracetion [nondim]
-  real, allocatable, dimension(:) &
+  real(wp), allocatable, dimension(:) &
        :: chl_power          !< Powers of chlorophyll [nondim] for each band for expressions for
                              !! opacity of the form opacity = coef_1 + coef_2 * chl**pow.
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
@@ -119,29 +121,29 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
                        G, GV, US, CS, chl_2d, chl_3d)
   type(optics_type),       intent(inout) :: optics !< An optics structure that has values
                                                    !! set based on the opacities.
-  real, dimension(:,:),    pointer       :: sw_total !< Total shortwave flux into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_vis_dir !< Visible, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_vis_dif !< Visible, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_nir_dir !< Near-IR, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_nir_dif !< Near-IR, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_total !< Total shortwave flux into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_vis_dir !< Visible, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_vis_dif !< Visible, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_nir_dir !< Near-IR, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_nir_dif !< Near-IR, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
   type(ocean_grid_type),   intent(in)    :: G      !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)    :: GV     !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)    :: US     !< A dimensional unit scaling type
   type(opacity_CS)                       :: CS     !< The control structure earlier set up by opacity_init.
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                  optional, intent(in)    :: chl_2d !< Vertically uniform chlorophyll-A concentrations [mg m-3]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                  optional, intent(in)    :: chl_3d !< The chlorophyll-A concentrations of each layer [mg m-3]
 
   ! Local variables
   integer :: i, j, k, n, is, ie, js, je, nz
-  real :: inv_sw_pen_scale  ! The inverse of the e-folding scale [Z-1 ~> m-1].
-  real :: Inv_nbands        ! The inverse of the number of bands of penetrating
+  real(wp) :: inv_sw_pen_scale  ! The inverse of the e-folding scale [Z-1 ~> m-1].
+  real(wp) :: Inv_nbands        ! The inverse of the number of bands of penetrating
                             ! shortwave radiation [nondim]
-  real :: tmp(SZI_(G),SZJ_(G),SZK_(GV)) ! A 3-d temporary array for diagnosing opacity [Z-1 ~> m-1]
-  real :: Pen_SW_tot(SZI_(G),SZJ_(G))   ! The penetrating shortwave radiation
+  real(wp) :: tmp(SZI_(G),SZJ_(G),SZK_(GV)) ! A 3-d temporary array for diagnosing opacity [Z-1 ~> m-1]
+  real(wp) :: Pen_SW_tot(SZI_(G),SZJ_(G))   ! The penetrating shortwave radiation
                                         ! summed across all bands [Q R Z T-1 ~> W m-2].
-  real :: op_diag_len       ! A tiny lengthscale [Z ~> m] used to remap diagnostics of opacity
+  real(wp) :: op_diag_len       ! A tiny lengthscale [Z ~> m] used to remap diagnostics of opacity
                             ! from op to 1/op_diag_len * tanh(op * op_diag_len)
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -150,39 +152,39 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
     call opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_nir_dif, &
                           G, GV, US, CS, chl_2d, chl_3d)
   else ! Use sw e-folding scale set by MOM_input
-    if (optics%nbands <= 1) then ; Inv_nbands = 1.0
-    else ; Inv_nbands = 1.0 / real(optics%nbands) ; endif
+    if (optics%nbands <= 1) then ; Inv_nbands = 1.0_wp
+    else ; Inv_nbands = 1.0_wp / real(optics%nbands, wp) ; endif
 
     ! Make sure there is no division by 0.
-    inv_sw_pen_scale = 1.0 / max(CS%pen_sw_scale, 0.1*GV%Angstrom_Z, &
+    inv_sw_pen_scale = 1.0_wp / max(CS%pen_sw_scale, 0.1_wp*GV%Angstrom_Z, &
                                  GV%dZ_subroundoff)
     if ( CS%Opacity_scheme == DOUBLE_EXP ) then
       !$OMP parallel do default(shared)
       do k=1,nz ; do j=js,je ; do i=is,ie
         optics%opacity_band(1,i,j,k) = inv_sw_pen_scale
-        optics%opacity_band(2,i,j,k) = 1.0 / max(CS%pen_sw_scale_2nd, &
-             0.1*GV%Angstrom_Z, GV%dZ_subroundoff)
+        optics%opacity_band(2,i,j,k) = 1.0_wp / max(CS%pen_sw_scale_2nd, &
+             0.1_wp*GV%Angstrom_Z, GV%dZ_subroundoff)
       enddo ; enddo ; enddo
-      if (.not.associated(sw_total) .or. (CS%pen_SW_scale <= 0.0)) then
+      if (.not.associated(sw_total) .or. (CS%pen_SW_scale <= 0.0_wp)) then
         !$OMP parallel do default(shared)
         do j=js,je ; do i=is,ie ; do n=1,optics%nbands
-          optics%sw_pen_band(n,i,j) = 0.0
+          optics%sw_pen_band(n,i,j) = 0.0_wp
         enddo ; enddo ; enddo
       else
         !$OMP parallel do default(shared)
         do j=js,je ; do i=is,ie
           optics%sw_pen_band(1,i,j) = (CS%SW_1st_EXP_RATIO) * sw_total(i,j)
-          optics%sw_pen_band(2,i,j) = (1.-CS%SW_1st_EXP_RATIO) * sw_total(i,j)
+          optics%sw_pen_band(2,i,j) = (1._wp-CS%SW_1st_EXP_RATIO) * sw_total(i,j)
         enddo ; enddo
       endif
     else
       do k=1,nz ; do j=js,je ; do i=is,ie  ; do n=1,optics%nbands
         optics%opacity_band(n,i,j,k) = inv_sw_pen_scale
       enddo ; enddo ; enddo ; enddo
-      if (.not.associated(sw_total) .or. (CS%pen_SW_scale <= 0.0)) then
+      if (.not.associated(sw_total) .or. (CS%pen_SW_scale <= 0.0_wp)) then
         !$OMP parallel do default(shared)
         do j=js,je ; do i=is,ie ; do n=1,optics%nbands
-          optics%sw_pen_band(n,i,j) = 0.0
+          optics%sw_pen_band(n,i,j) = 0.0_wp
         enddo ; enddo ; enddo
       else
         !$OMP parallel do default(shared)
@@ -197,7 +199,7 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
     if (CS%id_sw_pen > 0) then
       !$OMP parallel do default(shared)
       do j=js,je ; do i=is,ie
-        Pen_SW_tot(i,j) = 0.0
+        Pen_SW_tot(i,j) = 0.0_wp
         do n=1,optics%nbands
           Pen_SW_tot(i,j) = Pen_SW_tot(i,j) + optics%sw_pen_band(n,i,j)
         enddo
@@ -208,7 +210,7 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
       if (CS%opacity_scheme == MANIZZA_05) then
         !$OMP parallel do default(shared)
         do j=js,je ; do i=is,ie
-          Pen_SW_tot(i,j) = 0.0
+          Pen_SW_tot(i,j) = 0.0_wp
           do n=1,min(optics%nbands,2)
             Pen_SW_tot(i,j) = Pen_SW_tot(i,j) + optics%sw_pen_band(n,i,j)
           enddo
@@ -216,7 +218,7 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
       else
         !$OMP parallel do default(shared)
         do j=js,je ; do i=is,ie
-          Pen_SW_tot(i,j) = 0.0
+          Pen_SW_tot(i,j) = 0.0_wp
           do n=1,optics%nbands
             Pen_SW_tot(i,j) = Pen_SW_tot(i,j) + optics%sw_pen_band(n,i,j)
           enddo
@@ -225,7 +227,7 @@ subroutine set_opacity(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir, sw_
       call post_data(CS%id_sw_vis_pen, Pen_SW_tot, CS%diag)
     endif
     do n=1,optics%nbands ; if (CS%id_opacity(n) > 0) then
-      op_diag_len = 1.0e-10*US%m_to_Z ! A minimal extinction depth to constrain the range of opacity [Z ~> m]
+      op_diag_len = 1.0e-10_wp*US%m_to_Z ! A minimal extinction depth to constrain the range of opacity [Z ~> m]
       !$OMP parallel do default(shared)
       do k=1,nz ; do j=js,je ; do i=is,ie
         ! Remap opacity (op) to 1/L * tanh(op * L) where L is one Angstrom.
@@ -246,30 +248,30 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
                             G, GV, US, CS, chl_2d, chl_3d)
   type(optics_type),       intent(inout) :: optics !< An optics structure that has values
                                                    !! set based on the opacities.
-  real, dimension(:,:),    pointer       :: sw_total !< Total shortwave flux into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_vis_dir !< Visible, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_vis_dif !< Visible, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_nir_dir !< Near-IR, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
-  real, dimension(:,:),    pointer       :: sw_nir_dif !< Near-IR, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_total !< Total shortwave flux into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_vis_dir !< Visible, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_vis_dif !< Visible, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_nir_dir !< Near-IR, direct shortwave into the ocean [Q R Z T-1 ~> W m-2]
+  real(wp), dimension(:,:),    pointer       :: sw_nir_dif !< Near-IR, diffuse shortwave into the ocean [Q R Z T-1 ~> W m-2]
   type(ocean_grid_type),   intent(in)    :: G      !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)    :: GV     !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)    :: US     !< A dimensional unit scaling type
   type(opacity_CS)                       :: CS     !< The control structure.
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                  optional, intent(in)    :: chl_2d !< Vertically uniform chlorophyll-A concentrations [mg m-3]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                  optional, intent(in)    :: chl_3d !< A 3-d field of chlorophyll-A concentrations [mg m-3]
 
-  real :: chl_data(SZI_(G),SZJ_(G)) ! The chlorophyll A concentrations in a layer [mg m-3].
-  real :: Inv_nbands        ! The inverse of the number of bands of penetrating
+  real(wp) :: chl_data(SZI_(G),SZJ_(G)) ! The chlorophyll A concentrations in a layer [mg m-3].
+  real(wp) :: Inv_nbands        ! The inverse of the number of bands of penetrating
                             ! shortwave radiation [nondim]
-  real :: Inv_nbands_nir    ! The inverse of the number of bands of penetrating
+  real(wp) :: Inv_nbands_nir    ! The inverse of the number of bands of penetrating
                             ! near-infrared radiation [nondim]
-  real :: SW_pen_tot        ! The sum across the bands of the penetrating
+  real(wp) :: SW_pen_tot        ! The sum across the bands of the penetrating
                             ! shortwave radiation [Q R Z T-1 ~> W m-2].
-  real :: SW_vis_tot        ! The sum across the visible bands of shortwave
+  real(wp) :: SW_vis_tot        ! The sum across the visible bands of shortwave
                             ! radiation [Q R Z T-1 ~> W m-2].
-  real :: SW_nir_tot        ! The sum across the near infrared bands of shortwave
+  real(wp) :: SW_nir_tot        ! The sum across the near infrared bands of shortwave
                             ! radiation [Q R Z T-1 ~> W m-2].
   character(len=128) :: mesg
   integer :: i, j, k, n, is, ie, js, je, nz, nbands
@@ -301,11 +303,11 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
 
   nbands = optics%nbands
 
-  if (nbands <= 1) then ; Inv_nbands = 1.0
-  else ; Inv_nbands = 1.0 / real(nbands) ; endif
+  if (nbands <= 1) then ; Inv_nbands = 1.0_wp
+  else ; Inv_nbands = 1.0_wp / real(nbands, wp) ; endif
 
-  if (nbands <= 2) then ; Inv_nbands_nir = 0.0
-  else ; Inv_nbands_nir = 1.0 / real(nbands - 2.0) ; endif
+  if (nbands <= 2) then ; Inv_nbands_nir = 0.0_wp
+  else ; Inv_nbands_nir = 1.0_wp / real(nbands - 2.0_wp, wp) ; endif
 
   if (.not.(associated(sw_total) .or. (associated(sw_vis_dir) .and. associated(sw_vis_dif) .and. &
                                        associated(sw_nir_dir) .and. associated(sw_nir_dif)) )) then
@@ -321,11 +323,11 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
   multiband_nir_input = (associated(sw_nir_dir) .and. associated(sw_nir_dif))
   total_sw_input = associated(sw_total)
 
-  chl_data(:,:) = 0.0
+  chl_data(:,:) = 0.0_wp
   if (present(chl_3d)) then
     do j=js,je ; do i=is,ie ; chl_data(i,j) = chl_3d(i,j,1) ; enddo ; enddo
     do k=1,nz ; do j=js,je ; do i=is,ie
-      if ((G%mask2dT(i,j) > 0.0) .and. (chl_3d(i,j,k) < 0.0)) then
+      if ((G%mask2dT(i,j) > 0.0_wp) .and. (chl_3d(i,j,k) < 0.0_wp)) then
         write(mesg,'(" Negative chl_3d of ",(1pe12.4)," found at i,j,k = ", &
                   & 3(1x,I0), " lon/lat = ",(1pe12.4)," E ", (1pe12.4), " N.")') &
                    chl_3d(i,j,k), i, j, k, G%geoLonT(i,j), G%geoLatT(i,j)
@@ -335,7 +337,7 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
   elseif (present(chl_2d)) then
     do j=js,je ; do i=is,ie ; chl_data(i,j) = chl_2d(i,j) ; enddo ; enddo
     do j=js,je ; do i=is,ie
-      if ((G%mask2dT(i,j) > 0.0) .and. (chl_2d(i,j) < 0.0)) then
+      if ((G%mask2dT(i,j) > 0.0_wp) .and. (chl_2d(i,j) < 0.0_wp)) then
         write(mesg,'(" Negative chl_2d of ",(1pe12.4)," at i,j = ", &
                   & I0,", ",I0," lon/lat = ",(1pe12.4)," E ", (1pe12.4), " N.")') &
                    chl_data(i,j), i, j, G%geoLonT(i,j), G%geoLatT(i,j)
@@ -350,13 +352,13 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
     case (MANIZZA_05)
       !$OMP parallel do default(shared) private(SW_vis_tot,SW_nir_tot)
       do j=js,je ; do i=is,ie
-        SW_vis_tot = 0.0 ; SW_nir_tot = 0.0
-        if (G%mask2dT(i,j) > 0.0) then
+        SW_vis_tot = 0.0_wp ; SW_nir_tot = 0.0_wp
+        if (G%mask2dT(i,j) > 0.0_wp) then
           if (multiband_vis_input) then
             SW_vis_tot = sw_vis_dir(i,j) + sw_vis_dif(i,j)
           elseif (total_sw_input) then
             ! Follow Manizza 05 in assuming that 42% of SW is visible.
-            SW_vis_tot = 0.42 * sw_total(i,j)
+            SW_vis_tot = 0.42_wp * sw_total(i,j)
           endif
           if (multiband_nir_input) then
             SW_nir_tot = sw_nir_dir(i,j) + sw_nir_dif(i,j)
@@ -369,7 +371,7 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
         optics%sw_pen_band(1,i,j) = CS%blue_frac*sw_vis_tot
         ! Band 2 (if used) is Manizza red.
         if (nbands > 1) &
-          optics%sw_pen_band(2,i,j) = (1.0-CS%blue_frac)*sw_vis_tot
+          optics%sw_pen_band(2,i,j) = (1.0_wp-CS%blue_frac)*sw_vis_tot
         ! All remaining bands are NIR, for lack of something better to do.
         do n=3,nbands
           optics%sw_pen_band(n,i,j) = Inv_nbands_nir * sw_nir_tot
@@ -378,12 +380,12 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
     case (MOREL_88)
       !$OMP parallel do default(shared) private(SW_pen_tot)
       do j=js,je ; do i=is,ie
-        SW_pen_tot = 0.0
-        if (G%mask2dT(i,j) > 0.0) then
+        SW_pen_tot = 0.0_wp
+        if (G%mask2dT(i,j) > 0.0_wp) then
           if (multiband_vis_input) then
             SW_pen_tot = SW_pen_frac_morel(chl_data(i,j), CS) * (sw_vis_dir(i,j) + sw_vis_dif(i,j))
           elseif (total_sw_input) then
-            SW_pen_tot = SW_pen_frac_morel(chl_data(i,j), CS) * 0.5*sw_total(i,j)
+            SW_pen_tot = SW_pen_frac_morel(chl_data(i,j), CS) * 0.5_wp*sw_total(i,j)
           endif
         endif
 
@@ -398,9 +400,9 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
       endif
       !$OMP parallel do default(shared) private(SW_vis_tot)
       do j=js,je ; do i=is,ie
-        SW_vis_tot = 0.0  ! Ohlmann does not classify as vis/nir. Using vis to add up total
-        if (G%mask2dT(i,j) < 0.5) then
-          optics%sw_pen_band(1:2,i,j) = 0.  ! Make sure there is a valid value for land points
+        SW_vis_tot = 0.0_wp  ! Ohlmann does not classify as vis/nir. Using vis to add up total
+        if (G%mask2dT(i,j) < 0.5_wp) then
+          optics%sw_pen_band(1:2,i,j) = 0._wp  ! Make sure there is a valid value for land points
         else
           if (multiband_vis_input ) then ! If multiband_vis_input is true then so is multiband_nir_input
             SW_vis_tot = ((sw_vis_dir(i,j) + sw_vis_dif(i,j)) + sw_nir_dir(i,j)) + sw_nir_dif(i,j)
@@ -434,7 +436,7 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
     select case (CS%opacity_scheme)
       case (MANIZZA_05)
         do j=js,je ; do i=is,ie
-          if (G%mask2dT(i,j) <= 0.5) then
+          if (G%mask2dT(i,j) <= 0.5_wp) then
             do n=1,optics%nbands
               optics%opacity_band(n,i,j,k) = CS%opacity_land_value
             enddo
@@ -452,7 +454,7 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
       case (MOREL_88)
         do j=js,je ; do i=is,ie
           optics%opacity_band(1,i,j,k) = CS%opacity_land_value
-          if (G%mask2dT(i,j) > 0.0) &
+          if (G%mask2dT(i,j) > 0.0_wp) &
             optics%opacity_band(1,i,j,k) = opacity_morel(chl_data(i,j), CS)
 
           do n=2,optics%nbands
@@ -462,7 +464,7 @@ subroutine opacity_from_chl(optics, sw_total, sw_vis_dir, sw_vis_dif, sw_nir_dir
       case (OHLMANN_03)
         !! not testing for 2 bands since we did it above
         do j=js,je ; do i=is,ie
-          if (G%mask2dT(i,j) <= 0.5) then
+          if (G%mask2dT(i,j) <= 0.5_wp) then
             optics%opacity_band(1:2,i,j,k) = CS%opacity_land_value
           else
             ! Bands 1-2 (Ohlmann factors B with coefficients for Table 1a
@@ -479,15 +481,15 @@ end subroutine opacity_from_chl
 !> This sets the blue-wavelength opacity according to the scheme proposed by
 !! Morel and Antoine (1994).
 function opacity_morel(chl_data, CS)
-  real, intent(in)  :: chl_data !< The chlorophyll-A concentration in [mg m-3]
+  real(wp), intent(in)  :: chl_data !< The chlorophyll-A concentration in [mg m-3]
   type(opacity_CS)  :: CS       !< Opacity control structure
-  real :: opacity_morel !< The returned opacity [Z-1 ~> m-1]
+  real(wp) :: opacity_morel !< The returned opacity [Z-1 ~> m-1]
 
-  real :: Chl, Chl2 ! The log10 of chl_data (in mg m-3), and Chl^2 [nondim]
+  real(wp) :: Chl, Chl2 ! The log10 of chl_data (in mg m-3), and Chl^2 [nondim]
 
-  Chl = log10(min(max(chl_data,0.02),60.0)) ; Chl2 = Chl*Chl
+  Chl = log10(min(max(chl_data,0.02_wp),60.0_wp)) ; Chl2 = Chl*Chl
   ! All frequency bands currently use the same opacities.
-  opacity_morel = 1.0 / ( (CS%opacity_coef(1,1) + CS%opacity_coef(2,1)*Chl) + Chl2 * &
+  opacity_morel = 1.0_wp / ( (CS%opacity_coef(1,1) + CS%opacity_coef(2,1)*Chl) + Chl2 * &
                           ((CS%opacity_coef(3,1) + Chl*CS%opacity_coef(4,1)) + &
                             Chl2*(CS%opacity_coef(5,1) + Chl*CS%opacity_coef(6,1))) )
 end function opacity_morel
@@ -495,19 +497,19 @@ end function opacity_morel
 !> This sets the penetrating shortwave fraction according to the scheme proposed by
 !! Morel and Antoine (1994).
 function SW_pen_frac_morel(chl_data, CS)
-  real, intent(in)  :: chl_data !< The chlorophyll-A concentration [mg m-3]
+  real(wp), intent(in)  :: chl_data !< The chlorophyll-A concentration [mg m-3]
   type(opacity_CS)  :: CS       !< Opacity control structure
-  real :: SW_pen_frac_morel     !< The returned penetrating shortwave fraction [nondim]
+  real(wp) :: SW_pen_frac_morel     !< The returned penetrating shortwave fraction [nondim]
 
   !   The following are coefficients for the optical model taken from Morel and
   ! Antoine (1994). These coefficients represent a non uniform distribution of
   ! chlorophyll-a through the water column.  Other approaches may be more
   ! appropriate when using an interactive ecosystem model that predicts
   ! three-dimensional chl-a values.
-  real :: Chl, Chl2         ! The log10 of chl_data in mg m-3, and Chl^2 [nondim]
+  real(wp) :: Chl, Chl2         ! The log10 of chl_data in mg m-3, and Chl^2 [nondim]
 
-  Chl = log10(min(max(chl_data,0.02),60.0)) ; Chl2 = Chl*Chl
-  SW_pen_frac_morel = 1.0 - ( (CS%SW_pen_frac_coef(1) + CS%SW_pen_frac_coef(2)*Chl) + Chl2 * &
+  Chl = log10(min(max(chl_data,0.02_wp),60.0_wp)) ; Chl2 = Chl*Chl
+  SW_pen_frac_morel = 1.0_wp - ( (CS%SW_pen_frac_coef(1) + CS%SW_pen_frac_coef(2)*Chl) + Chl2 * &
                               ((CS%SW_pen_frac_coef(3) + Chl*CS%SW_pen_frac_coef(4)) + &
                                Chl2*(CS%SW_pen_frac_coef(5) + Chl*CS%SW_pen_frac_coef(6))) )
 end function SW_pen_frac_morel
@@ -520,34 +522,34 @@ subroutine extract_optics_slice(optics, j, G, GV, opacity, opacity_scale, penSW_
   integer,                 intent(in)  :: j      !< j-index to extract
   type(ocean_grid_type),   intent(in)  :: G      !< The ocean's grid structure.
   type(verticalGrid_type), intent(in)  :: GV     !< The ocean's vertical grid structure.
-  real, dimension(max(optics%nbands,1),SZI_(G),SZK_(GV)), &
+  real(wp), dimension(max(optics%nbands,1),SZI_(G),SZK_(GV)), &
                  optional, intent(out) :: opacity   !< The opacity in each band, i-point, and layer [Z-1 ~> m-1],
                                                     !! but with units that can be altered by opacity_scale
                                                     !! and the presence of SpV_avg to change this to other
                                                     !! units like [H-1 ~> m-1 or m2 kg-1]
-  real,          optional, intent(in)  :: opacity_scale !< A factor by which to rescale the opacity [nondim] or
+  real(wp),          optional, intent(in)  :: opacity_scale !< A factor by which to rescale the opacity [nondim] or
                                                     !! [Z H-1 ~> 1 or m3 kg-1]
-  real, dimension(max(optics%nbands,1),SZI_(G)), &
+  real(wp), dimension(max(optics%nbands,1),SZI_(G)), &
                  optional, intent(out) :: penSW_top !< The shortwave radiation [Q R Z T-1 ~> W m-2]
                                                     !! at the surface in each of the nbands bands
                                                     !! that penetrates beyond the surface skin layer.
-  real,          optional, intent(in)  :: penSW_scale !< A factor by which to rescale the shortwave flux [nondim]
+  real(wp),          optional, intent(in)  :: penSW_scale !< A factor by which to rescale the shortwave flux [nondim]
                                                     !! or other units.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                  optional, intent(in)  :: SpV_avg   !< The layer-averaged specific volume [R-1 ~> m3 kg-1]
                                                     !! that is used along with opacity_scale in non-Boussinesq
                                                     !! cases to change the opacity from distance based units to
                                                     !! mass-based units
 
   ! Local variables
-  real :: scale_opacity ! A rescaling factor for opacity [nondim], or the same units as opacity_scale.
-  real :: scale_penSW   ! A rescaling factor for the penetrating shortwave radiation [nondim] or the
+  real(wp) :: scale_opacity ! A rescaling factor for opacity [nondim], or the same units as opacity_scale.
+  real(wp) :: scale_penSW   ! A rescaling factor for the penetrating shortwave radiation [nondim] or the
                         ! same units as penSW_scale
   integer :: i, is, ie, k, nz, n
   is = G%isc ; ie = G%iec ; nz = GV%ke
 
-  scale_opacity = 1.0 ; if (present(opacity_scale)) scale_opacity = opacity_scale
-  scale_penSW = 1.0 ; if (present(penSW_scale)) scale_penSW = penSW_scale
+  scale_opacity = 1.0_wp ; if (present(opacity_scale)) scale_opacity = opacity_scale
+  scale_penSW = 1.0_wp ; if (present(penSW_scale)) scale_penSW = penSW_scale
 
   if (present(opacity)) then
     if (present(SpV_avg)) then
@@ -606,15 +608,15 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
   type(unit_scale_type),             intent(in)    :: US   !< A dimensional unit scaling type
   integer,                           intent(in)    :: nsw  !< Number of bands of penetrating
                                                            !! shortwave radiation.
-  real, dimension(SZI_(G),SZK_(GV)), intent(in)    :: h    !< Layer thicknesses [H ~> m or kg m-2].
-  real, dimension(max(1,nsw),SZI_(G),SZK_(GV)), intent(in) :: opacity_band !< Opacity in each band of penetrating
+  real(wp), dimension(SZI_(G),SZK_(GV)), intent(in)    :: h    !< Layer thicknesses [H ~> m or kg m-2].
+  real(wp), dimension(max(1,nsw),SZI_(G),SZK_(GV)), intent(in) :: opacity_band !< Opacity in each band of penetrating
                                                            !! shortwave radiation [H-1 ~> m-1 or m2 kg-1].
                                                            !! The indices are band, i, k.
   type(optics_type),                 intent(in)    :: optics !< An optics structure that has values of
                                                            !! opacities and shortwave fluxes.
   integer,                           intent(in)    :: j    !< j-index to work on.
-  real,                              intent(in)    :: dt   !< Time step [T ~> s].
-  real,                              intent(in)    :: H_limit_fluxes !< If the total ocean depth is
+  real(wp),                              intent(in)    :: dt   !< Time step [T ~> s].
+  real(wp),                              intent(in)    :: H_limit_fluxes !< If the total ocean depth is
                                                            !! less than this, they are scaled away
                                                            !! to avoid numerical instabilities
                                                            !! [H ~> m or kg m-2]. This would
@@ -632,27 +634,27 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
                                                            !! potential energy change) of the
                                                            !! shortwave that should be absorbed by
                                                            !! each layer.
-  real, dimension(SZI_(G),SZK_(GV)), intent(inout) :: T    !< Layer potential/conservative
+  real(wp), dimension(SZI_(G),SZK_(GV)), intent(inout) :: T    !< Layer potential/conservative
                                                            !! temperatures [C ~> degC]
-  real, dimension(max(1,nsw),SZI_(G)), intent(inout) :: Pen_SW_bnd !< Penetrating shortwave heating in
+  real(wp), dimension(max(1,nsw),SZI_(G)), intent(inout) :: Pen_SW_bnd !< Penetrating shortwave heating in
                                                            !! each band that hits the bottom and will
                                                            !! will be redistributed through the water
                                                            !! column [C H ~> degC m or degC kg m-2],
                                                            !! size nsw x SZI_(G).
-  real, dimension(SZI_(G),SZK_(GV)), optional, intent(in) :: eps !< Small thickness that must remain in
+  real(wp), dimension(SZI_(G),SZK_(GV)), optional, intent(in) :: eps !< Small thickness that must remain in
                                                            !! each layer, and which will not be
                                                            !! subject to heating [H ~> m or kg m-2]
   integer, dimension(SZI_(G),SZK_(GV)), optional, intent(in) :: ksort !< Density-sorted k-indices.
-  real, dimension(SZI_(G)), optional, intent(in)    :: htot !< Total mixed layer thickness [H ~> m or kg m-2].
-  real, dimension(SZI_(G)), optional, intent(inout) :: Ttot !< Depth integrated mixed layer
+  real(wp), dimension(SZI_(G)), optional, intent(in)    :: htot !< Total mixed layer thickness [H ~> m or kg m-2].
+  real(wp), dimension(SZI_(G)), optional, intent(inout) :: Ttot !< Depth integrated mixed layer
                                                            !! temperature [C H ~> degC m or degC kg m-2]
-  real, dimension(SZI_(G),SZK_(GV)), optional, intent(in) :: dSV_dT !< The partial derivative of specific volume
+  real(wp), dimension(SZI_(G),SZK_(GV)), optional, intent(in) :: dSV_dT !< The partial derivative of specific volume
                                                            !! with temperature [R-1 C-1 ~> m3 kg-1 degC-1]
-  real, dimension(SZI_(G),SZK_(GV)), optional, intent(inout) :: TKE !< The TKE sink from mixing the heating
+  real(wp), dimension(SZI_(G),SZK_(GV)), optional, intent(inout) :: TKE !< The TKE sink from mixing the heating
                                                            !! throughout a layer [R Z3 T-2 ~> J m-2].
 
   ! Local variables
-  real, dimension(SZI_(G),SZK_(GV)) :: &
+  real(wp), dimension(SZI_(G),SZK_(GV)) :: &
     T_chg_above    ! A temperature change that will be applied to all the thick
                    ! layers above a given layer [C ~> degC].  This is only nonzero if
                    ! adjustAbsorptionProfile is true, in which case the net
@@ -660,7 +662,7 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
                    ! direct heating of that layer plus T_chg_above from all of
                    ! the layers below, plus any contribution from absorbing
                    ! radiation that hits the bottom.
-  real, dimension(SZI_(G)) :: &
+  real(wp), dimension(SZI_(G)) :: &
     h_heat, &      ! The thickness of the water column that will be heated by
                    ! any remaining shortwave radiation [H ~> m or kg m-2].
     T_chg, &       ! The temperature change of thick layers due to the remaining
@@ -668,34 +670,34 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
     Pen_SW_rem     ! The sum across all wavelength bands of the penetrating shortwave
                    ! heating that hits the bottom and will be redistributed through
                    ! the water column [C H ~> degC m or degC kg m-2]
-  real :: SW_trans          ! fraction of shortwave radiation that is not
+  real(wp) :: SW_trans          ! fraction of shortwave radiation that is not
                             ! absorbed in a layer [nondim]
-  real :: unabsorbed        ! fraction of the shortwave radiation that
+  real(wp) :: unabsorbed        ! fraction of the shortwave radiation that
                             ! is not absorbed because the layers are too thin [nondim]
-  real :: Ih_limit          ! inverse of the total depth at which the
+  real(wp) :: Ih_limit          ! inverse of the total depth at which the
                             ! surface fluxes start to be limited [H-1 ~> m-1 or m2 kg-1]
-  real :: h_min_heat        ! minimum thickness layer that should get heated [H ~> m or kg m-2]
-  real :: opt_depth         ! optical depth of a layer [nondim]
-  real :: exp_OD            ! exp(-opt_depth) [nondim]
-  real :: heat_bnd          ! heating due to absorption in the current
+  real(wp) :: h_min_heat        ! minimum thickness layer that should get heated [H ~> m or kg m-2]
+  real(wp) :: opt_depth         ! optical depth of a layer [nondim]
+  real(wp) :: exp_OD            ! exp(-opt_depth) [nondim]
+  real(wp) :: heat_bnd          ! heating due to absorption in the current
                             ! layer by the current band, including any piece that
                             ! is moved upward [C H ~> degC m or degC kg m-2]
-  real :: SWa               ! fraction of the absorbed shortwave that is
+  real(wp) :: SWa               ! fraction of the absorbed shortwave that is
                             ! moved to layers above with adjustAbsorptionProfile [nondim]
-  real :: coSWa_frac        ! The fraction of SWa that is actually moved upward [nondim]
-  real :: min_SW_heat       ! A minimum remaining shortwave heating within a timestep that will be simply
+  real(wp) :: coSWa_frac        ! The fraction of SWa that is actually moved upward [nondim]
+  real(wp) :: min_SW_heat       ! A minimum remaining shortwave heating within a timestep that will be simply
                             ! absorbed in the next layer for computational efficiency, instead of
                             ! continuing to penetrate [C H ~> degC m or degC kg m-2].
-  real :: I_Habs            ! The inverse of the absorption length for a minimal flux [H-1 ~> m-1 or m2 kg-1]
-  real :: epsilon           ! A small thickness that must remain in each
+  real(wp) :: I_Habs            ! The inverse of the absorption length for a minimal flux [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: epsilon           ! A small thickness that must remain in each
                             ! layer, and which will not be subject to heating [H ~> m or kg m-2]
-  real :: g_Hconv2          ! A conversion factor for use in the TKE calculation
+  real(wp) :: g_Hconv2          ! A conversion factor for use in the TKE calculation
                             ! in units of [Z3 R2 T-2 H-2 ~> kg2 m-5 s-2 or m s-2].
   logical :: SW_Remains     ! If true, some column has shortwave radiation that
                             ! was not entirely absorbed.
   logical :: TKE_calc       ! If true, calculate the implications to the
                             ! TKE budget of the shortwave heating.
-  real :: C1_6, C1_60       ! Rational fractions [nondim]
+  real(wp) :: C1_6, C1_60       ! Rational fractions [nondim]
   integer :: is, ie, nz, i, k, ks, n
 
   if (nsw < 1) return
@@ -704,9 +706,9 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
   min_SW_heat = optics%PenSW_flux_absorb * dt
   I_Habs = optics%PenSW_absorb_Invlen
 
-  h_min_heat = 2.0*GV%Angstrom_H + GV%H_subroundoff
+  h_min_heat = 2.0_wp*GV%Angstrom_H + GV%H_subroundoff
   is = G%isc ; ie = G%iec ; nz = GV%ke
-  C1_6 = 1.0 / 6.0 ; C1_60 = 1.0 / 60.0
+  C1_6 = 1.0_wp / 6.0_wp ; C1_60 = 1.0_wp / 60.0_wp
 
   TKE_calc = (present(TKE) .and. present(dSV_dT))
 
@@ -716,7 +718,7 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
     g_Hconv2 = GV%g_Earth_Z_T2 * GV%H_to_RZ**2
   endif
 
-  h_heat(:) = 0.0
+  h_heat(:) = 0.0_wp
   if (present(htot)) then ; do i=is,ie ; h_heat(i) = htot(i) ; enddo ; endif
 
   ! Apply penetrating SW radiation to remaining parts of layers.
@@ -727,12 +729,12 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
       if (ksort(i,ks) <= 0) cycle
       k = ksort(i,ks)
     endif
-    epsilon = 0.0 ; if (present(eps)) epsilon = eps(i,k)
+    epsilon = 0.0_wp ; if (present(eps)) epsilon = eps(i,k)
 
-    T_chg_above(i,k) = 0.0
+    T_chg_above(i,k) = 0.0_wp
 
-    if (h(i,k) > 1.5*epsilon) then
-      do n=1,nsw ; if (Pen_SW_bnd(n,i) > 0.0) then
+    if (h(i,k) > 1.5_wp*epsilon) then
+      do n=1,nsw ; if (Pen_SW_bnd(n,i) > 0.0_wp) then
         ! SW_trans is the SW that is transmitted THROUGH the layer
         opt_depth = h(i,k) * opacity_band(n,i,k)
         exp_OD = exp(-opt_depth)
@@ -741,18 +743,18 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
         ! Heating at a very small rate can be absorbed by a sufficiently thick layer or several
         ! thin layers without further penetration.
         if (optics%answer_date < 20190101) then
-          if (nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat*min(1.0, I_Habs*h(i,k)) ) SW_trans = 0.0
+          if (nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat*min(1.0_wp, I_Habs*h(i,k)) ) SW_trans = 0.0_wp
         elseif ((nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat) .and. (h(i,k) > h_min_heat)) then
           if (nsw*Pen_SW_bnd(n,i) <= min_SW_heat * (I_Habs*(h(i,k) - h_min_heat))) then
-            SW_trans = 0.0
+            SW_trans = 0.0_wp
           else
             SW_trans = min(SW_trans, &
-                           1.0 - (min_SW_heat*(I_Habs*(h(i,k) - h_min_heat))) / (nsw*Pen_SW_bnd(n,i)))
+                           1.0_wp - (min_SW_heat*(I_Habs*(h(i,k) - h_min_heat))) / (nsw*Pen_SW_bnd(n,i)))
           endif
         endif
 
-        Heat_bnd = Pen_SW_bnd(n,i) * (1.0 - SW_trans)
-        if (adjustAbsorptionProfile .and. (h_heat(i) > 0.0)) then
+        Heat_bnd = Pen_SW_bnd(n,i) * (1.0_wp - SW_trans)
+        if (adjustAbsorptionProfile .and. (h_heat(i) > 0.0_wp)) then
           !   In this case, a fraction of the heating is applied to the
           ! overlying water so that the mean pressure at which the shortwave
           ! heating occurs is exactly what it would have been with a careful
@@ -763,17 +765,17 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
           ! actually being heated, i.e., SWA <= h_heat / (h_heat + h(i,k))
           ! and takes the energetics of the rest of the heating into account.
           ! (-RWH, ~7 years later.)
-          if (opt_depth > 1e-5) then
-            SWa = ((opt_depth + (opt_depth + 2.0)*exp_OD) - 2.0) / &
+          if (opt_depth > 1e-5_wp) then
+            SWa = ((opt_depth + (opt_depth + 2.0_wp)*exp_OD) - 2.0_wp) / &
               ((opt_depth + opacity_band(n,i,k) * h_heat(i)) * &
-               (1.0 - exp_OD))
+               (1.0_wp - exp_OD))
           else
             ! Use Taylor series expansion of the expression above for a
             ! more accurate form with very small layer optical depths.
-            SWa = h(i,k) * (opt_depth * (1.0 - opt_depth)) / &
-              ((h_heat(i) + h(i,k)) * (6.0 - 3.0*opt_depth))
+            SWa = h(i,k) * (opt_depth * (1.0_wp - opt_depth)) / &
+              ((h_heat(i) + h(i,k)) * (6.0_wp - 3.0_wp*opt_depth))
           endif
-          coSWa_frac = 0.0
+          coSWa_frac = 0.0_wp
           if (SWa*(h_heat(i) + h(i,k)) > h_heat(i)) then
             coSWa_frac = (SWa*(h_heat(i) + h(i,k)) - h_heat(i) ) / &
                          (SWa*(h_heat(i) + h(i,k)))
@@ -781,23 +783,23 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
           endif
 
           T_chg_above(i,k) = T_chg_above(i,k) + (SWa * Heat_bnd) / h_heat(i)
-          T(i,k) = T(i,k) + ((1.0 - SWa) * Heat_bnd) / h(i,k)
+          T(i,k) = T(i,k) + ((1.0_wp - SWa) * Heat_bnd) / h(i,k)
         else
-          coSWa_frac = 1.0
-          T(i,k) = T(i,k) + Pen_SW_bnd(n,i) * (1.0 - SW_trans) / h(i,k)
+          coSWa_frac = 1.0_wp
+          T(i,k) = T(i,k) + Pen_SW_bnd(n,i) * (1.0_wp - SW_trans) / h(i,k)
         endif
 
         if (TKE_calc) then
-          if (opt_depth > 1e-2) then
+          if (opt_depth > 1e-2_wp) then
             TKE(i,k) = TKE(i,k) - coSWa_frac*Heat_bnd*dSV_dT(i,k)* &
-               (0.5*h(i,k)*g_Hconv2) * &
-               (opt_depth*(1.0+exp_OD) - 2.0*(1.0-exp_OD)) / (opt_depth*(1.0-exp_OD))
+               (0.5_wp*h(i,k)*g_Hconv2) * &
+               (opt_depth*(1.0_wp+exp_OD) - 2.0_wp*(1.0_wp-exp_OD)) / (opt_depth*(1.0_wp-exp_OD))
           else
             ! Use Taylor series-derived approximation to the above expression
             ! that is well behaved and more accurate when opt_depth is small.
             TKE(i,k) = TKE(i,k) - coSWa_frac*Heat_bnd*dSV_dT(i,k)* &
-               (0.5*h(i,k)*g_Hconv2) * &
-               (C1_6*opt_depth * (1.0 - C1_60*opt_depth**2))
+               (0.5_wp*h(i,k)*g_Hconv2) * &
+               (C1_6*opt_depth * (1.0_wp - C1_60*opt_depth**2))
           endif
         endif
 
@@ -807,17 +809,17 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
 
     ! Add to the accumulated thickness above that could be heated.
     ! Only layers greater than h_min_heat thick should get heated.
-    if (h(i,k) >= 2.0*h_min_heat) then
+    if (h(i,k) >= 2.0_wp*h_min_heat) then
       h_heat(i) = h_heat(i) + h(i,k)
     elseif (h(i,k) > h_min_heat) then
-      h_heat(i) = h_heat(i) + (2.0*h(i,k) - 2.0*h_min_heat)
+      h_heat(i) = h_heat(i) + (2.0_wp*h(i,k) - 2.0_wp*h_min_heat)
     endif
   enddo ; enddo ! i & k loops
 
 ! if (.not.absorbAllSW .and. .not.adjustAbsorptionProfile) return
 
   ! Unless modified, there is no temperature change due to fluxes from the bottom.
-  do i=is,ie ; T_chg(i) = 0.0 ; enddo
+  do i=is,ie ; T_chg(i) = 0.0_wp ; enddo
 
   if (absorbAllSW) then
     ! If there is still shortwave radiation at this point, it could go into
@@ -827,15 +829,15 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
       Pen_SW_rem(i) = Pen_SW_bnd(1,i)
       do n=2,nsw ; Pen_SW_rem(i) = Pen_SW_rem(i) + Pen_SW_bnd(n,i) ; enddo
     enddo
-    do i=is,ie ; if (Pen_SW_rem(i) > 0.0) SW_Remains = .true. ; enddo
+    do i=is,ie ; if (Pen_SW_rem(i) > 0.0_wp) SW_Remains = .true. ; enddo
 
-    Ih_limit = 1.0 / H_limit_fluxes
-    do i=is,ie ; if ((Pen_SW_rem(i) > 0.0) .and. (h_heat(i) > 0.0)) then
-      if (h_heat(i)*Ih_limit >= 1.0) then
-        T_chg(i) = Pen_SW_rem(i) / h_heat(i) ; unabsorbed = 0.0
+    Ih_limit = 1.0_wp / H_limit_fluxes
+    do i=is,ie ; if ((Pen_SW_rem(i) > 0.0_wp) .and. (h_heat(i) > 0.0_wp)) then
+      if (h_heat(i)*Ih_limit >= 1.0_wp) then
+        T_chg(i) = Pen_SW_rem(i) / h_heat(i) ; unabsorbed = 0.0_wp
       else
         T_chg(i) = Pen_SW_rem(i) * Ih_limit
-        unabsorbed = 1.0 - h_heat(i)*Ih_limit
+        unabsorbed = 1.0_wp - h_heat(i)*Ih_limit
       endif
       do n=1,nsw ; Pen_SW_bnd(n,i) = unabsorbed * Pen_SW_bnd(n,i) ; enddo
     endif ; enddo
@@ -849,11 +851,11 @@ subroutine absorbRemainingSW(G, GV, US, h, opacity_band, nsw, optics, j, dt, H_l
         k = ksort(i,ks)
       endif
 
-      if (T_chg(i) > 0.0) then
+      if (T_chg(i) > 0.0_wp) then
         ! Only layers greater than h_min_heat thick should get heated.
-        if (h(i,k) >= 2.0*h_min_heat) then ; T(i,k) = T(i,k) + T_chg(i)
+        if (h(i,k) >= 2.0_wp*h_min_heat) then ; T(i,k) = T(i,k) + T_chg(i)
         elseif (h(i,k) > h_min_heat) then
-          T(i,k) = T(i,k) + T_chg(i) * (2.0 - 2.0*h_min_heat/h(i,k))
+          T(i,k) = T(i,k) + T_chg(i) * (2.0_wp - 2.0_wp*h_min_heat/h(i,k))
         endif
       endif
       ! Increase the heating for layers above.
@@ -875,71 +877,71 @@ subroutine sumSWoverBands(G, GV, US, h, dz, nsw, optics, j, dt, &
   type(ocean_grid_type),    intent(in)    :: G   !< The ocean's grid structure.
   type(verticalGrid_type),  intent(in)    :: GV  !< The ocean's vertical grid structure.
   type(unit_scale_type),    intent(in)    :: US    !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZK_(GV)), &
                             intent(in)    :: h   !< Layer thicknesses [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZK_(GV)), &
                             intent(in)    :: dz  !< Layer vertical extent [Z ~> m].
   integer,                  intent(in)    :: nsw !< The number of bands of penetrating shortwave
                                                  !! radiation, perhaps from optics_nbands(optics),
   type(optics_type),        intent(in)    :: optics !< An optics structure that has values
                                                    !! set based on the opacities.
   integer,                  intent(in)    :: j   !< j-index to work on.
-  real,                     intent(in)    :: dt  !< Time step [T ~> s].
-  real,                     intent(in)    :: H_limit_fluxes !< the total depth at which the
+  real(wp),                     intent(in)    :: dt  !< Time step [T ~> s].
+  real(wp),                     intent(in)    :: H_limit_fluxes !< the total depth at which the
                                                  !! surface fluxes start to be limited to avoid
                                                  !! excessive heating of a thin ocean [H ~> m or kg m-2]
   logical,                  intent(in)    :: absorbAllSW !< If true, ensure that all shortwave
                                                  !! radiation is absorbed in the ocean water column.
-  real, dimension(max(nsw,1),SZI_(G)), intent(in) :: iPen_SW_bnd !< The incident penetrating shortwave
+  real(wp), dimension(max(nsw,1),SZI_(G)), intent(in) :: iPen_SW_bnd !< The incident penetrating shortwave
                                                  !! in each band at the sea surface; size nsw x SZI_(G)
                                                  !! [C H ~> degC m or degC kg m-2].
-  real, dimension(SZI_(G),SZK_(GV)+1), &
+  real(wp), dimension(SZI_(G),SZK_(GV)+1), &
                              intent(inout) :: netPen !< Net penetrating shortwave heat flux at each
                                                  !! interface, summed across all bands
                                                  !! [C H ~> degC m or degC kg m-2].
   ! Local variables
-  real :: h_heat(SZI_(G))     ! thickness of the water column that receives
+  real(wp) :: h_heat(SZI_(G))     ! thickness of the water column that receives
                               ! remaining shortwave radiation [H ~> m or kg m-2].
-  real :: Pen_SW_rem(SZI_(G)) ! sum across all wavelength bands of the
+  real(wp) :: Pen_SW_rem(SZI_(G)) ! sum across all wavelength bands of the
                               ! penetrating shortwave heating that hits the bottom
                               ! and will be redistributed through the water column
                               ! [C H ~> degC m or degC kg m-2]
 
-  real, dimension(max(nsw,1),SZI_(G)) :: Pen_SW_bnd ! The remaining penetrating shortwave radiation
+  real(wp), dimension(max(nsw,1),SZI_(G)) :: Pen_SW_bnd ! The remaining penetrating shortwave radiation
                           ! in each band, initially iPen_SW_bnd [C H ~> degC m or degC kg m-2]
-  real :: SW_trans        ! fraction of shortwave radiation not
+  real(wp) :: SW_trans        ! fraction of shortwave radiation not
                           ! absorbed in a layer [nondim]
-  real :: unabsorbed      ! fraction of the shortwave radiation
+  real(wp) :: unabsorbed      ! fraction of the shortwave radiation
                           ! not absorbed because the layers are too thin [nondim].
-  real :: Ih_limit        ! inverse of the total depth at which the
+  real(wp) :: Ih_limit        ! inverse of the total depth at which the
                           ! surface fluxes start to be limited [H-1 ~> m-1 or m2 kg-1]
-  real :: min_SW_heat     ! A minimum remaining shortwave heating within a timestep that will be simply
+  real(wp) :: min_SW_heat     ! A minimum remaining shortwave heating within a timestep that will be simply
                           ! absorbed in the next layer for computational efficiency, instead of
                           ! continuing to penetrate [C H ~> degC m or degC kg m-2].
-  real :: I_Habs            ! The inverse of the absorption length for a minimal flux [H-1 ~> m-1 or m2 kg-1]
-  real :: h_min_heat      ! minimum thickness layer that should get heated [H ~> m or kg m-2]
-  real :: opt_depth       ! optical depth of a layer [nondim]
-  real :: exp_OD          ! exp(-opt_depth) [nondim]
+  real(wp) :: I_Habs            ! The inverse of the absorption length for a minimal flux [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: h_min_heat      ! minimum thickness layer that should get heated [H ~> m or kg m-2]
+  real(wp) :: opt_depth       ! optical depth of a layer [nondim]
+  real(wp) :: exp_OD          ! exp(-opt_depth) [nondim]
   logical :: SW_Remains   ! If true, some column has shortwave radiation that
                           ! was not entirely absorbed.
 
   integer :: is, ie, nz, i, k, n
   SW_Remains = .false.
 
-  I_Habs = 1e3*GV%H_to_m ! optics%PenSW_absorb_Invlen
+  I_Habs = 1e3_wp*GV%H_to_m ! optics%PenSW_absorb_Invlen
 
-  h_min_heat = 2.0*GV%Angstrom_H + GV%H_subroundoff
+  h_min_heat = 2.0_wp*GV%Angstrom_H + GV%H_subroundoff
   is = G%isc ; ie = G%iec ; nz = GV%ke
 
   if (nsw < 1) then
-    netPen(:,:) = 0.0
+    netPen(:,:) = 0.0_wp
     return
   endif
 
   pen_SW_bnd(:,:) = iPen_SW_bnd(:,:)
-  do i=is,ie ; h_heat(i) = 0.0 ; enddo
+  do i=is,ie ; h_heat(i) = 0.0_wp ; enddo
   do i=is,ie
-    netPen(i,1) = 0.
+    netPen(i,1) = 0._wp
     do n=1,max(nsw,1)
       netPen(i,1) = netPen(i,1) + pen_SW_bnd(n,i)   ! Surface interface
     enddo
@@ -951,10 +953,10 @@ subroutine sumSWoverBands(G, GV, US, h, dz, nsw, optics, j, dt, &
   do k=1,nz
 
     do i=is,ie
-      netPen(i,k+1) = 0.
+      netPen(i,k+1) = 0._wp
 
-      if (h(i,k) > 0.0) then
-        do n=1,nsw ; if (Pen_SW_bnd(n,i) > 0.0) then
+      if (h(i,k) > 0.0_wp) then
+        do n=1,nsw ; if (Pen_SW_bnd(n,i) > 0.0_wp) then
           ! SW_trans is the SW that is transmitted THROUGH the layer
           opt_depth = dz(i,k) * optics%opacity_band(n,i,j,k)
           exp_OD = exp(-opt_depth)
@@ -963,13 +965,13 @@ subroutine sumSWoverBands(G, GV, US, h, dz, nsw, optics, j, dt, &
           ! Heating at a very small rate can be absorbed by a sufficiently thick layer or several
           ! thin layers without further penetration.
           if (optics%answer_date < 20190101) then
-            if (nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat*min(1.0, I_Habs*h(i,k)) ) SW_trans = 0.0
+            if (nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat*min(1.0_wp, I_Habs*h(i,k)) ) SW_trans = 0.0_wp
           elseif ((nsw*Pen_SW_bnd(n,i)*SW_trans < min_SW_heat) .and. (h(i,k) > h_min_heat)) then
             if (nsw*Pen_SW_bnd(n,i) <= min_SW_heat * (I_Habs*(h(i,k) - h_min_heat))) then
-              SW_trans = 0.0
+              SW_trans = 0.0_wp
             else
               SW_trans = min(SW_trans, &
-                             1.0 - (min_SW_heat*(I_Habs*(h(i,k) - h_min_heat))) / (nsw*Pen_SW_bnd(n,i)))
+                             1.0_wp - (min_SW_heat*(I_Habs*(h(i,k) - h_min_heat))) / (nsw*Pen_SW_bnd(n,i)))
             endif
           endif
 
@@ -980,10 +982,10 @@ subroutine sumSWoverBands(G, GV, US, h, dz, nsw, optics, j, dt, &
 
       ! Add to the accumulated thickness above that could be heated.
       ! Only layers greater than h_min_heat thick should get heated.
-      if (h(i,k) >= 2.0*h_min_heat) then
+      if (h(i,k) >= 2.0_wp*h_min_heat) then
         h_heat(i) = h_heat(i) + h(i,k)
       elseif (h(i,k) > h_min_heat) then
-        h_heat(i) = h_heat(i) + (2.0*h(i,k) - 2.0*h_min_heat)
+        h_heat(i) = h_heat(i) + (2.0_wp*h(i,k) - 2.0_wp*h_min_heat)
       endif
     enddo ! i loop
   enddo ! k loop
@@ -997,14 +999,14 @@ subroutine sumSWoverBands(G, GV, US, h, dz, nsw, optics, j, dt, &
       Pen_SW_rem(i) = Pen_SW_bnd(1,i)
       do n=2,nsw ; Pen_SW_rem(i) = Pen_SW_rem(i) + Pen_SW_bnd(n,i) ; enddo
     enddo
-    do i=is,ie ; if (Pen_SW_rem(i) > 0.0) SW_Remains = .true. ; enddo
+    do i=is,ie ; if (Pen_SW_rem(i) > 0.0_wp) SW_Remains = .true. ; enddo
 
-    Ih_limit = 1.0 / H_limit_fluxes
-    do i=is,ie ; if ((Pen_SW_rem(i) > 0.0) .and. (h_heat(i) > 0.0)) then
-      if (h_heat(i)*Ih_limit < 1.0) then
-        unabsorbed = 1.0 - h_heat(i)*Ih_limit
+    Ih_limit = 1.0_wp / H_limit_fluxes
+    do i=is,ie ; if ((Pen_SW_rem(i) > 0.0_wp) .and. (h_heat(i) > 0.0_wp)) then
+      if (h_heat(i)*Ih_limit < 1.0_wp) then
+        unabsorbed = 1.0_wp - h_heat(i)*Ih_limit
       else
-        unabsorbed = 0.0
+        unabsorbed = 0.0_wp
       endif
       do n=1,nsw ; Pen_SW_bnd(n,i) = unabsorbed * Pen_SW_bnd(n,i) ; enddo
     endif ; enddo
@@ -1036,25 +1038,25 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
   character(len=40)  :: scheme_string
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
-  real :: opacity_coefs(6)      ! Pairs of opacity coefficients [Z-1 ~> m-1] for blue, red and
+  real(wp) :: opacity_coefs(6)      ! Pairs of opacity coefficients [Z-1 ~> m-1] for blue, red and
                                 ! near-infrared radiation with parameterizations following the
                                 ! functional form from Manizza et al., GRL 2005, namely in the form
                                 ! opacity = coef_1 + coef_2 * chl**pow for each band.
-  real :: opacity_powers(3)     ! Powers of chlorophyll [nondim] for blue, red and near-infrared
+  real(wp) :: opacity_powers(3)     ! Powers of chlorophyll [nondim] for blue, red and near-infrared
                                 ! radiation bands, in expressions for opacity of the form
                                 ! opacity = coef_1 + coef_2 * chl**pow.
-  real :: extinction_coefs(6)   ! Extinction length coefficients [Z ~> m] for penetrating shortwave
+  real(wp) :: extinction_coefs(6)   ! Extinction length coefficients [Z ~> m] for penetrating shortwave
                                 ! radiation in the form proposed by Morel and Antoine (1994), namely
                                 ! opacity = 1 / (sum(n=1:6, Coef(n) * log10(Chl)**(n-1)))
-  real :: sw_pen_frac_coefs(6)  ! Coefficients for the shortwave radiation fraction [nondim] in a
+  real(wp) :: sw_pen_frac_coefs(6)  ! Coefficients for the shortwave radiation fraction [nondim] in a
                                 ! fifth order polynomial fit as a funciton of log10(Chlorophyll).
-  real :: PenSW_absorb_minthick ! A thickness that is used to absorb the remaining shortwave heat
+  real(wp) :: PenSW_absorb_minthick ! A thickness that is used to absorb the remaining shortwave heat
                                 ! flux when that flux drops below PEN_SW_FLUX_ABSORB [H ~> m or kg m-2]
-  real :: PenSW_minthick_dflt   ! The default for PenSW_absorb_minthick [m]
-  real :: I_NIR_bands           ! The inverse of the number of near-infrared bands being used [nondim]
-  real, allocatable :: band_wavelengths(:) ! The bounding wavelengths for the penetrating shortwave
+  real(wp) :: PenSW_minthick_dflt   ! The default for PenSW_absorb_minthick [m]
+  real(wp) :: I_NIR_bands           ! The inverse of the number of near-infrared bands being used [nondim]
+  real(wp), allocatable :: band_wavelengths(:) ! The bounding wavelengths for the penetrating shortwave
                                 ! radiation bands [nm]
-  real, allocatable :: band_wavelen_default(:) ! The defaults for band_wavelengths [nm]
+  real(wp), allocatable :: band_wavelen_default(:) ! The defaults for band_wavelengths [nm]
   integer :: default_answer_date  ! The default setting for the various ANSWER_DATE flags
   integer :: isd, ied, jsd, jed, nz, n
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; nz = GV%ke
@@ -1103,7 +1105,7 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
 
     call get_param(param_file, mdl, "BLUE_FRAC_SW", CS%blue_frac, &
                  "The fraction of the penetrating shortwave radiation "//&
-                 "that is in the blue band.", default=0.5, units="nondim")
+                 "that is in the blue band.", default=0.5_wp, units="nondim")
   else
     call get_param(param_file, mdl, "EXP_OPACITY_SCHEME", tmpstr, &
                  "This character string specifies which exponential "//&
@@ -1124,25 +1126,25 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
     endif
     call get_param(param_file, mdl, "PEN_SW_SCALE", CS%pen_sw_scale, &
                  "The vertical absorption e-folding depth of the penetrating shortwave radiation.", &
-                 units="m", default=0.0, scale=US%m_to_Z)
+                 units="m", default=0.0_wp, scale=US%m_to_Z)
     !BGR/ Added for opacity_scheme==double_exp read in 2nd exp-decay and fraction
     if (CS%Opacity_scheme == DOUBLE_EXP ) then
       call get_param(param_file, mdl, "PEN_SW_SCALE_2ND", CS%pen_sw_scale_2nd, &
                  "The (2nd) vertical absorption e-folding depth of the "//&
                  "penetrating shortwave radiation (use if SW_EXP_MODE==double.)", &
-                 units="m", default=0.0, scale=US%m_to_Z)
+                 units="m", default=0.0_wp, scale=US%m_to_Z)
       call get_param(param_file, mdl, "SW_1ST_EXP_RATIO", CS%sw_1st_exp_ratio, &
                  "The fraction of 1st vertical absorption e-folding depth "//&
                  "penetrating shortwave radiation if SW_EXP_MODE==double.",&
-                  units="nondim", default=0.0)
+                  units="nondim", default=0.0_wp)
     elseif (CS%OPACITY_SCHEME == Single_Exp) then
       !/Else disable 2nd_exp scheme
-      CS%pen_sw_scale_2nd = 0.0
-      CS%sw_1st_exp_ratio = 1.0
+      CS%pen_sw_scale_2nd = 0.0_wp
+      CS%sw_1st_exp_ratio = 1.0_wp
     endif
     call get_param(param_file, mdl, "PEN_SW_FRAC", CS%pen_sw_frac, &
                  "The fraction of the shortwave radiation that penetrates "//&
-                 "below the surface.", units="nondim", default=0.0)
+                 "below the surface.", units="nondim", default=0.0_wp)
 
   endif
   call get_param(param_file, mdl, "PEN_SW_NBANDS", optics%nbands, &
@@ -1174,14 +1176,14 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
                  "the next sufficiently thick layers for computational efficiency, instead of "//&
                  "continuing to penetrate.  The default, 2.5e-11 degC m s-1, is about 1e-4 W m-2 "//&
                  "or 0.08 degC m century-1, but 0 is also a valid value.", &
-                 default=2.5e-11, units="degC m s-1", scale=US%degC_to_C*GV%m_to_H*US%T_to_s)
+                 default=2.5e-11_wp, units="degC m s-1", scale=US%degC_to_C*GV%m_to_H*US%T_to_s)
 
-  if (optics%answer_date < 20190101) then ; PenSW_minthick_dflt = 0.001 ; else ; PenSW_minthick_dflt = 1.0 ; endif
+  if (optics%answer_date < 20190101) then ; PenSW_minthick_dflt = 0.001_wp ; else ; PenSW_minthick_dflt = 1.0_wp ; endif
   call get_param(param_file, mdl, "PEN_SW_ABSORB_MINTHICK", PenSW_absorb_minthick, &
                  "A thickness that is used to absorb the remaining penetrating shortwave heat "//&
                  "flux when it drops below PEN_SW_FLUX_ABSORB.", &
                  default=PenSW_minthick_dflt, units="m", scale=GV%m_to_H)
-  optics%PenSW_absorb_Invlen = 1.0 / (PenSW_absorb_minthick + GV%H_subroundoff)
+  optics%PenSW_absorb_Invlen = 1.0_wp / (PenSW_absorb_minthick + GV%H_subroundoff)
 
   ! The defaults for the following coefficients are taken from Manizza et al., GRL, 2005.
   call get_param(param_file, mdl, "OPACITY_VALUES_MANIZZA", opacity_coefs, &
@@ -1190,24 +1192,24 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
                  "namely in the form opacity = coef_1 + coef_2 * chl**pow for each band.  Although "//&
                  "coefficients are set for 3 bands, more or less bands may actually be used, with "//&
                  "extra bands following the same properties as band 3.", &
-                 units="m-1", scale=US%Z_to_m, defaults=(/0.0232, 0.074, 0.225, 0.037, 2.86, 0.0/), &
+                 units="m-1", scale=US%Z_to_m, defaults=(/0.0232_wp, 0.074_wp, 0.225_wp, 0.037_wp, 2.86_wp, 0.0_wp/), &
                  do_not_log=(CS%opacity_scheme/=MANIZZA_05))
   call get_param(param_file, mdl, "CHOROPHYLL_POWER_MANIZZA", opacity_powers, &
                  "Powers of chlorophyll for blue, red and near-infrared radiation bands in "//&
                  "expressions for opacity of the form opacity = coef_1 + coef_2 * chl**pow.", &
-                 units="nondim", defaults=(/0.674, 0.629, 0.0/), &
+                 units="nondim", defaults=(/0.674_wp, 0.629_wp, 0.0_wp/), &
                  do_not_log=(CS%opacity_scheme/=MANIZZA_05))
 
   ! The defaults for the following coefficients are taken from Morel and Antoine (1994).
   call get_param(param_file, mdl, "OPACITY_VALUES_MOREL", extinction_coefs, &
                  "Shortwave extinction length coefficients for shortwave radiation in the form "//&
                  "proposed by Morel (1988), opacity = 1 / (sum(Coef(n) * log10(Chl)**(n-1))).", &
-                 units="m", scale=US%m_to_Z, defaults=(/7.925, -6.644, 3.662, -1.815, -0.218, 0.502/), &
+                 units="m", scale=US%m_to_Z, defaults=(/7.925_wp, -6.644_wp, 3.662_wp, -1.815_wp, -0.218_wp, 0.502_wp/), &
                  do_not_log=(CS%opacity_scheme/=MOREL_88))
   call get_param(param_file, mdl, "SW_PEN_FRAC_COEFS_MOREL", sw_pen_frac_coefs, &
                  "Coefficients for the shortwave radiation fraction in a fifth order polynomial "//&
                  "fit as a function of log10(Chlorophyll).", &
-                 units="nondim", defaults=(/0.321,  0.008, 0.132,  0.038, -0.017, -0.007/), &
+                 units="nondim", defaults=(/0.321_wp,  0.008_wp, 0.132_wp,  0.038_wp, -0.017_wp, -0.007_wp/), &
                  do_not_log=(CS%opacity_scheme/=MOREL_88))
 
   if (.not.allocated(optics%min_wavelength_band)) &
@@ -1216,15 +1218,15 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
     allocate(optics%max_wavelength_band(optics%nbands))
 
   ! Set the wavelengths of the opacity bands
-  allocate(band_wavelengths(optics%nbands+1), source=0.0)
-  allocate(band_wavelen_default(optics%nbands+1), source=0.0)
+  allocate(band_wavelengths(optics%nbands+1), source=0.0_wp)
+  allocate(band_wavelen_default(optics%nbands+1), source=0.0_wp)
   if (CS%opacity_scheme == MANIZZA_05) then
-    if (optics%nbands >= 1) band_wavelen_default(2) = 550.0
-    if (optics%nbands >= 2) band_wavelen_default(3) = 700.0
+    if (optics%nbands >= 1) band_wavelen_default(2) = 550.0_wp
+    if (optics%nbands >= 2) band_wavelen_default(3) = 700.0_wp
     if (optics%nbands >= 3) then
-      I_NIR_bands = 1.0 / real(optics%nbands - 2)
+      I_NIR_bands = 1.0_wp / real(optics%nbands - 2, wp)
       do n=3,optics%nbands
-        band_wavelen_default(n+1) = 2800. - (optics%nbands-n)*2100.0*I_NIR_bands
+        band_wavelen_default(n+1) = 2800._wp - (optics%nbands-n)*2100.0_wp*I_NIR_bands
       enddo
     endif
   endif
@@ -1255,16 +1257,16 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
     ! Determine the last band that is dependent on chlorophyll.
     CS%chl_dep_bands = optics%nbands
     do n=optics%nbands,1,-1
-      if (CS%chl_power(n) /= 0.0) exit
+      if (CS%chl_power(n) /= 0.0_wp) exit
       CS%chl_dep_bands = n - 1
     enddo
     do n=CS%chl_dep_bands+1,optics%nbands
-      if (CS%opacity_coef(2,n) /= 0.0) then
+      if (CS%opacity_coef(2,n) /= 0.0_wp) then
         call MOM_error(WARNING, "set_opacity: A non-zero value of the chlorophyll dependence in "//&
             "OPACITY_VALUES_MANIZZA was set for a band with zero power in its chlorophyll dependence "//&
             "as set by CHOROPHYLL_POWER_MANIZZA.")
         CS%opacity_coef(1,n) = CS%opacity_coef(1,n) + CS%opacity_coef(2,n)
-        CS%opacity_coef(2,n) = 0.0
+        CS%opacity_coef(2,n) = 0.0_wp
       endif
     enddo
 
@@ -1284,12 +1286,12 @@ subroutine opacity_init(Time, G, GV, US, param_file, diag, CS, optics)
 
   call get_param(param_file, mdl, "OPACITY_LAND_VALUE", CS%opacity_land_value, &
                  "The value to use for opacity over land. The default is "//&
-                 "10 m-1 - a value for muddy water.", units="m-1", default=10.0, scale=US%Z_to_m)
+                 "10 m-1 - a value for muddy water.", units="m-1", default=10.0_wp, scale=US%Z_to_m)
 
   CS%warning_issued = .false.
 
   if (.not.allocated(optics%opacity_band)) &
-    allocate(optics%opacity_band(optics%nbands,isd:ied,jsd:jed,nz), source=0.0)
+    allocate(optics%opacity_band(optics%nbands,isd:ied,jsd:jed,nz), source=0.0_wp)
   if (.not.allocated(optics%sw_pen_band)) &
     allocate(optics%sw_pen_band(optics%nbands,isd:ied,jsd:jed))
   allocate(CS%id_opacity(optics%nbands), source=-1)
@@ -1329,65 +1331,65 @@ subroutine init_ohlmann_table(optics)
   !! These are the data from Ohlmann (2003) Table 1a with additional
   !! values provided by C. Ohlmann and implemented in CESM-POP by B. Briegleb
   integer, parameter :: nval_tab1a = 31
-  real, parameter, dimension(nval_tab1a) :: &
+  real(wp), parameter, dimension(nval_tab1a) :: &
        chl_tab1a = (/                       &
-       .001, .005, .01,  .02,               &
-       .03,  .05,  .10,  .15,               &
-       .20,  .25,  .30,  .35,               &
-       .40,  .45,  .50,  .60,               &
-       .70,  .80,  .90, 1.00,               &
-       1.50, 2.00, 2.50, 3.00,              &
-       4.00, 5.00, 6.00, 7.00,              &
-       8.00, 9.00, 10.00  /)
+       .001_wp, .005_wp, .01_wp,  .02_wp,               &
+       .03_wp,  .05_wp,  .10_wp,  .15_wp,               &
+       .20_wp,  .25_wp,  .30_wp,  .35_wp,               &
+       .40_wp,  .45_wp,  .50_wp,  .60_wp,               &
+       .70_wp,  .80_wp,  .90_wp, 1.00_wp,               &
+       1.50_wp, 2.00_wp, 2.50_wp, 3.00_wp,              &
+       4.00_wp, 5.00_wp, 6.00_wp, 7.00_wp,              &
+       8.00_wp, 9.00_wp, 10.00_wp  /)
 
-  real, parameter, dimension(nval_tab1a) :: &
+  real(wp), parameter, dimension(nval_tab1a) :: &
        a1_tab1a = (/                        &
-       0.4421, 0.4451, 0.4488, 0.4563,      &
-       0.4622, 0.4715, 0.4877, 0.4993,      &
-       0.5084, 0.5159, 0.5223, 0.5278,      &
-       0.5326, 0.5369, 0.5408, 0.5474,      &
-       0.5529, 0.5576, 0.5615, 0.5649,      &
-       0.5757, 0.5802, 0.5808, 0.5788,      &
-       0.56965, 0.55638, 0.54091, 0.52442,  &
-       0.50766, 0.49110, 0.47505  /)
+       0.4421_wp, 0.4451_wp, 0.4488_wp, 0.4563_wp,      &
+       0.4622_wp, 0.4715_wp, 0.4877_wp, 0.4993_wp,      &
+       0.5084_wp, 0.5159_wp, 0.5223_wp, 0.5278_wp,      &
+       0.5326_wp, 0.5369_wp, 0.5408_wp, 0.5474_wp,      &
+       0.5529_wp, 0.5576_wp, 0.5615_wp, 0.5649_wp,      &
+       0.5757_wp, 0.5802_wp, 0.5808_wp, 0.5788_wp,      &
+       0.56965_wp, 0.55638_wp, 0.54091_wp, 0.52442_wp,  &
+       0.50766_wp, 0.49110_wp, 0.47505_wp  /)
 
-  real, parameter, dimension(nval_tab1a) :: &
+  real(wp), parameter, dimension(nval_tab1a) :: &
        a2_tab1a = (/                        &
-       0.2981, 0.2963, 0.2940, 0.2894,      &
-       0.2858, 0.2800, 0.2703, 0.2628,      &
-       0.2571, 0.2523, 0.2481, 0.2444,      &
-       0.2411, 0.2382, 0.2356, 0.2309,      &
-       0.2269, 0.2235, 0.2206, 0.2181,      &
-       0.2106, 0.2089, 0.2113, 0.2167,      &
-       0.23357, 0.25504, 0.27829, 0.30274,  &
-       0.32698, 0.35056, 0.37303 /)
+       0.2981_wp, 0.2963_wp, 0.2940_wp, 0.2894_wp,      &
+       0.2858_wp, 0.2800_wp, 0.2703_wp, 0.2628_wp,      &
+       0.2571_wp, 0.2523_wp, 0.2481_wp, 0.2444_wp,      &
+       0.2411_wp, 0.2382_wp, 0.2356_wp, 0.2309_wp,      &
+       0.2269_wp, 0.2235_wp, 0.2206_wp, 0.2181_wp,      &
+       0.2106_wp, 0.2089_wp, 0.2113_wp, 0.2167_wp,      &
+       0.23357_wp, 0.25504_wp, 0.27829_wp, 0.30274_wp,  &
+       0.32698_wp, 0.35056_wp, 0.37303_wp /)
 
-  real, parameter, dimension(nval_tab1a) :: &
+  real(wp), parameter, dimension(nval_tab1a) :: &
        b1_tab1a = (/                        &
-       0.0287, 0.0301, 0.0319, 0.0355,      &
-       0.0384, 0.0434, 0.0532, 0.0612,      &
-       0.0681, 0.0743, 0.0800, 0.0853,      &
-       0.0902, 0.0949, 0.0993, 0.1077,      &
-       0.1154, 0.1227, 0.1294, 0.1359,      &
-       0.1640, 0.1876, 0.2082, 0.2264,      &
-       0.25808, 0.28498, 0.30844, 0.32932,  &
-       0.34817, 0.36540, 0.38132 /)
+       0.0287_wp, 0.0301_wp, 0.0319_wp, 0.0355_wp,      &
+       0.0384_wp, 0.0434_wp, 0.0532_wp, 0.0612_wp,      &
+       0.0681_wp, 0.0743_wp, 0.0800_wp, 0.0853_wp,      &
+       0.0902_wp, 0.0949_wp, 0.0993_wp, 0.1077_wp,      &
+       0.1154_wp, 0.1227_wp, 0.1294_wp, 0.1359_wp,      &
+       0.1640_wp, 0.1876_wp, 0.2082_wp, 0.2264_wp,      &
+       0.25808_wp, 0.28498_wp, 0.30844_wp, 0.32932_wp,  &
+       0.34817_wp, 0.36540_wp, 0.38132_wp /)
 
-  real, parameter, dimension(nval_tab1a) :: &
+  real(wp), parameter, dimension(nval_tab1a) :: &
        b2_tab1a = (/                        &
-       0.3192, 0.3243, 0.3306, 0.3433,      &
-       0.3537, 0.3705, 0.4031, 0.4262,      &
-       0.4456, 0.4621, 0.4763, 0.4889,      &
-       0.4999, 0.5100, 0.5191, 0.5347,      &
-       0.5477, 0.5588, 0.5682, 0.5764,      &
-       0.6042, 0.6206, 0.6324, 0.6425,      &
-       0.66172, 0.68144, 0.70086, 0.72144,  &
-       0.74178, 0.76190, 0.78155 /)
+       0.3192_wp, 0.3243_wp, 0.3306_wp, 0.3433_wp,      &
+       0.3537_wp, 0.3705_wp, 0.4031_wp, 0.4262_wp,      &
+       0.4456_wp, 0.4621_wp, 0.4763_wp, 0.4889_wp,      &
+       0.4999_wp, 0.5100_wp, 0.5191_wp, 0.5347_wp,      &
+       0.5477_wp, 0.5588_wp, 0.5682_wp, 0.5764_wp,      &
+       0.6042_wp, 0.6206_wp, 0.6324_wp, 0.6425_wp,      &
+       0.66172_wp, 0.68144_wp, 0.70086_wp, 0.72144_wp,  &
+       0.74178_wp, 0.76190_wp, 0.78155_wp /)
 
   !! Make the table big enough so step size is smaller
   !! in log-space that any increment in Table 1a
   integer, parameter :: nval_lut=401
-  real :: chl, log10chl_lut, w1, w2
+  real(wp) :: chl, log10chl_lut, w1, w2
   integer :: n,m,mm1,err
 
   allocate(optics%a1_lut(nval_lut),optics%b1_lut(nval_lut),&
@@ -1406,7 +1408,7 @@ subroutine init_ohlmann_table(optics)
   m = 2
   do n=1,nval_lut
      log10chl_lut = optics%log10chl_min + (n-1)*optics%dlog10chl
-     chl = 10.0**log10chl_lut
+     chl = 10.0_wp**log10chl_lut
      chl = max(chl_tab1a(1),min(chl,chl_tab1a(nval_tab1a)))
 
      ! find interval in Table 1a (m-1,m]
@@ -1417,7 +1419,7 @@ subroutine init_ohlmann_table(optics)
 
      ! interpolation weights
      w2 = (chl - chl_tab1a(mm1))/(chl_tab1a(m) - chl_tab1a(mm1))
-     w1 = 1. - w2
+     w1 = 1._wp - w2
 
      ! fill in the tables
      optics%a1_lut(n) = w1*a1_tab1a(mm1) + w2*a1_tab1a(m)
@@ -1434,13 +1436,13 @@ function lookup_ohlmann_swpen(chl,optics) result(A)
 
   implicit none
 
-  real, intent(in) :: chl
+  real(wp), intent(in) :: chl
   type(optics_type), intent(in) :: optics
-  real, dimension(2) :: A
+  real(wp), dimension(2) :: A
 
   ! Local variables
 
-  real :: log10chl
+  real(wp) :: log10chl
   integer :: n
 
   ! Make sure we are in the table
@@ -1461,12 +1463,12 @@ end function lookup_ohlmann_swpen
 function lookup_ohlmann_opacity(chl,optics) result(B)
 
   implicit none
-  real, intent(in) :: chl
+  real(wp), intent(in) :: chl
   type(optics_type), intent(in) :: optics
-  real, dimension(2) :: B
+  real(wp), dimension(2) :: B
 
   ! Local variables
-  real :: log10chl
+  real(wp) :: log10chl
   integer :: n
 
   ! Make sure we are in the table

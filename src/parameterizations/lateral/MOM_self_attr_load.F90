@@ -18,6 +18,8 @@ use MOM_unit_scaling,        only : unit_scale_type
 use MOM_variables,           only : thermo_var_ptrs
 use MOM_verticalGrid,        only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public calc_SAL, scalar_SAL_sensitivity, SAL_init, SAL_end
@@ -35,20 +37,20 @@ type, public :: SAL_CS ; private
     !! facilitate convergence.
   logical :: use_bpa = .false.
     !< If true, use bottom pressure anomaly instead of SSH to calculate SAL.
-  real :: eta_prop
+  real(wp) :: eta_prop
     !< The partial derivative of eta_sal with the local value of eta [nondim].
-  real :: linear_scaling
+  real(wp) :: linear_scaling
     !< Dimensional coefficients for scalar SAL [nondim] or [Z T2 L-2 R-1 ~> m Pa-1]
   type(sht_CS), allocatable :: sht
     !< Spherical harmonic transforms (SHT) control structure
   integer :: sal_sht_Nd
     !< Maximum degree for spherical harmonic transforms [nondim]
-  real, allocatable :: pbot_ref(:,:)
+  real(wp), allocatable :: pbot_ref(:,:)
     !< Reference bottom pressure [R L2 T-2 ~> Pa]
-  real, allocatable :: Love_scaling(:)
+  real(wp), allocatable :: Love_scaling(:)
     !< Dimensional coefficients for harmonic SAL, which are functions of Love numbers
     !! [nondim] or [Z T2 L-2 R-1 ~> m Pa-1], depending on the value of use_ppa.
-  real, allocatable :: Snm_Re(:), &    !< Real SHT coefficient for SHT SAL [Z ~> m]
+  real(wp), allocatable :: Snm_Re(:), &    !< Real SHT coefficient for SHT SAL [Z ~> m]
                        Snm_Im(:)       !< Imaginary SHT coefficient for SHT SAL [Z ~> m]
 end type SAL_CS
 
@@ -64,16 +66,16 @@ contains
 !! The output field is expressed as geopotential height anomaly, and therefore has the unit of [Z ~> m].
 subroutine calc_SAL(eta, eta_sal, G, CS, tmp_scale)
   type(ocean_grid_type), intent(in) :: G  !< The ocean's grid structure.
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: eta     !< The sea surface height anomaly from
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in)  :: eta     !< The sea surface height anomaly from
               !! a time-mean geoid or total bottom pressure [Z ~> m] or [R L2 T-2 ~> Pa].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: eta_sal !< The geopotential height anomaly from
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: eta_sal !< The geopotential height anomaly from
               !! self-attraction and loading [Z ~> m].
   type(SAL_CS), intent(inout) :: CS !< The control structure returned by a previous call to SAL_init.
-  real, optional, intent(in)  :: tmp_scale !< A rescaling factor to temporarily convert eta
+  real(wp), optional, intent(in)  :: tmp_scale !< A rescaling factor to temporarily convert eta
               !! to MKS units in reproducing sumes [m Z-1 ~> 1]
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: bpa ! SSH or bottom pressure anomaly [Z ~> m] or [R L2 T-2 ~> Pa]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: bpa ! SSH or bottom pressure anomaly [Z ~> m] or [R L2 T-2 ~> Pa]
   integer :: n, m, l
   integer :: Isq, Ieq, Jsq, Jeq
   integer :: i, j
@@ -113,7 +115,7 @@ subroutine calc_SAL(eta, eta_sal, G, CS, tmp_scale)
 
   else
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-      eta_sal(i,j) = 0.0
+      eta_sal(i,j) = 0.0_wp
     enddo ; enddo
   endif
 
@@ -125,7 +127,7 @@ end subroutine calc_SAL
 !! approximation of self-attraction and loading.
 subroutine scalar_SAL_sensitivity(CS, deta_sal_deta)
   type(SAL_CS), intent(in)  :: CS !< The control structure returned by a previous call to SAL_init.
-  real,         intent(out) :: deta_sal_deta !< The partial derivative of eta_sal with
+  real(wp),         intent(out) :: deta_sal_deta !< The partial derivative of eta_sal with
                                              !! the local value of eta [nondim].
   deta_sal_deta = CS%eta_prop
 end subroutine scalar_SAL_sensitivity
@@ -134,16 +136,16 @@ end subroutine scalar_SAL_sensitivity
 !! The algorithm is based on the SAL implementation in MPAS-ocean, which was modified by Kristin Barton from
 !! routine written by K. Quinn (March 2010) and modified by M. Schindelegger (May 2017).
 subroutine calc_love_scaling(rhoW, rhoE, grav, CS)
-  real, intent(in) :: rhoW !< The average density of sea water [R ~> kg m-3]
-  real, intent(in) :: rhoE !< The average density of Earth [R ~> kg m-3]
-  real, intent(in) :: grav !< The gravitational acceleration [L2 Z-1 T-2 ~> m s-2]
+  real(wp), intent(in) :: rhoW !< The average density of sea water [R ~> kg m-3]
+  real(wp), intent(in) :: rhoE !< The average density of Earth [R ~> kg m-3]
+  real(wp), intent(in) :: grav !< The gravitational acceleration [L2 Z-1 T-2 ~> m s-2]
   type(SAL_CS), intent(inout) :: CS !< The control structure returned by a previous call to SAL_init.
 
   ! Local variables
-  real :: coef_rhoE ! A scaling coefficient of solid Earth density. coef_rhoE = rhoW / rhoE with USE_BPA=False
+  real(wp) :: coef_rhoE ! A scaling coefficient of solid Earth density. coef_rhoE = rhoW / rhoE with USE_BPA=False
       ! and coef_rhoE = 1.0 / (rhoE * grav) with USE_BPA=True. [nondim] or [Z T2 L-2 R-1 ~> m Pa-1]
-  real, dimension(:), allocatable :: HDat, LDat, KDat ! Love numbers converted in CF reference frames [nondim]
-  real :: H1, L1, K1 ! Temporary variables to store degree 1 Love numbers [nondim]
+  real(wp), dimension(:), allocatable :: HDat, LDat, KDat ! Love numbers converted in CF reference frames [nondim]
+  real(wp) :: H1, L1, K1 ! Temporary variables to store degree 1 Love numbers [nondim]
   integer :: n_tot ! Size of the stored Love numbers [nondim]
   integer :: nlm  ! Maximum spherical harmonics degree [nondim]
   integer :: n, m, l
@@ -161,13 +163,13 @@ subroutine calc_love_scaling(rhoW, rhoE, grav, CS)
   ! Convert reference frames from CM to CF
   if (nlm > 0) then
     H1 = HDat(2) ; L1 = LDat(2) ;  K1 = KDat(2)
-    HDat(2) = ( 2.0 / 3.0) * (H1 - L1)
-    LDat(2) = (-1.0 / 3.0) * (H1 - L1)
-    KDat(2) = (-1.0 / 3.0) * H1 - (2.0 / 3.0) * L1 - 1.0
+    HDat(2) = ( 2.0_wp / 3.0_wp) * (H1 - L1)
+    LDat(2) = (-1.0_wp / 3.0_wp) * (H1 - L1)
+    KDat(2) = (-1.0_wp / 3.0_wp) * H1 - (2.0_wp / 3.0_wp) * L1 - 1.0_wp
   endif
 
   if (CS%use_bpa) then
-    coef_rhoE = 1.0 / (rhoE * grav) ! [Z T2 L-2 R-1 ~> m Pa-1]
+    coef_rhoE = 1.0_wp / (rhoE * grav) ! [Z T2 L-2 R-1 ~> m Pa-1]
   else
     coef_rhoE = rhoW / rhoE ! [nondim]
   endif
@@ -175,7 +177,7 @@ subroutine calc_love_scaling(rhoW, rhoE, grav, CS)
   do m=0,nlm ; do n=m,nlm
     l = order2index(m, nlm)
     ! Love_scaling has the same as coef_rhoE.
-    CS%Love_scaling(l+n-m) = (3.0 / real(2*n+1)) * coef_rhoE * (1.0 + KDat(n+1) - HDat(n+1))
+    CS%Love_scaling(l+n-m) = (3.0_wp / real(2*n+1, wp)) * coef_rhoE * (1.0_wp + KDat(n+1) - HDat(n+1))
   enddo ; enddo
 end subroutine calc_love_scaling
 
@@ -187,16 +189,16 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
   type(param_file_type),          intent(in)    :: param_file !< A structure to parse for run-time parameters.
   type(SAL_CS),                   intent(inout) :: CS !< Self-attraction and loading control structure
   type(thermo_var_ptrs),          intent(in)    :: tv !< A structure pointing to various thermodynamic variables.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                   intent(in)    :: h  !< Layer thicknesses [H ~> m or kg m-2]
   type(MOM_restart_CS), optional, intent(in)    :: restart_CS !< MOM restart control structure
   ! Local variables
 # include "version_variable.h"
   character(len=40)  :: mdl = "MOM_self_attr_load" ! This module's name.
   integer :: lmax ! Total modes of the real spherical harmonics [nondim]
-  real :: rhoE    ! The average density of Earth [R ~> kg m-3].
+  real(wp) :: rhoE    ! The average density of Earth [R ~> kg m-3].
   character(len=20)  :: bpa_config ! String for reference bottom pressure config option
-  real :: tmp(G%isd:G%ied, G%jsd:G%jed) ! Temporary field storing mass returned by find_col_mass
+  real(wp) :: tmp(G%isd:G%ied, G%jsd:G%jed) ! Temporary field storing mass returned by find_col_mass
                                         ! [R Z ~> kg m-2]
   logical :: restart_sim ! If true, this is a restart run
   character(len=200) :: filename, ref_pbot_file, inputdir ! Strings for file/path
@@ -206,7 +208,7 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
   type(MOM_field) :: fields(1)        ! used to write ref_pbot file
   logical :: calculate_sal, tides, use_tidal_sal_file
   integer :: default_answer_date, tides_answer_date ! Recover old answers with tides
-  real :: sal_scalar_value ! Scaling SAL factors [nondim]
+  real(wp) :: sal_scalar_value ! Scaling SAL factors [nondim]
   integer :: isd, ied, jsd, jed
 
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -223,7 +225,7 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
                  "loading (SAL). Otherwise sea surface height anomaly is used, which is "// &
                  "only accurate for uniform density fluid.", default=.False.)
   if (CS%use_bpa) then
-    allocate(CS%pbot_ref(isd:ied, jsd:jed), source=0.0)
+    allocate(CS%pbot_ref(isd:ied, jsd:jed), source=0.0_wp)
     call get_param(param_file, mdl, "SAL_REF_PBOT_CONFIG", bpa_config, default="file", &
                    do_not_log=.True.)
     restart_sim = .False. ; if (present(restart_CS)) restart_sim = (.not. is_new_run(restart_CS))
@@ -287,7 +289,7 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
   call get_param(param_file, mdl, "SAL_SCALAR_VALUE", sal_scalar_value, "The constant of "//&
                  "proportionality between self-attraction and loading (SAL) geopotential "//&
                  "anomaly and barotropic geopotential anomaly. This is only used if "//&
-                 "SAL_SCALAR_APPROX is true or USE_PREVIOUS_TIDES is true.", default=0.0, &
+                 "SAL_SCALAR_APPROX is true or USE_PREVIOUS_TIDES is true.", default=0.0_wp, &
                  units="m m-1", do_not_log=.not.(CS%use_sal_scalar .or. CS%use_tidal_sal_prev), &
                  old_name='TIDE_SAL_SCALAR_VALUE')
   call get_param(param_file, '', "USE_PREVIOUS_TIDES", CS%use_tidal_sal_prev, &
@@ -302,12 +304,12 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
   call get_param(param_file, mdl, "RHO_SOLID_EARTH", rhoE, &
                  "The mean solid earth density.  This is used for calculating the "// &
                  "self-attraction and loading term.", units="kg m-3", &
-                 default=5517.0, scale=US%kg_m3_to_R, do_not_log=(.not. CS%use_sal_sht))
+                 default=5517.0_wp, scale=US%kg_m3_to_R, do_not_log=(.not. CS%use_sal_sht))
 
   ! Set scaling coefficients for scalar approximation
   if (CS%use_sal_scalar .or. CS%use_tidal_sal_prev) then
     if (CS%use_sal_scalar .and. CS%use_tidal_sal_prev) then
-      CS%eta_prop = 2.0 * sal_scalar_value
+      CS%eta_prop = 2.0_wp * sal_scalar_value
     else
       CS%eta_prop = sal_scalar_value
     endif
@@ -317,16 +319,16 @@ subroutine SAL_init(h, tv, G, GV, US, param_file, CS, restart_CS)
       CS%linear_scaling = CS%eta_prop
     endif
   else
-    CS%eta_prop = 0.0 ; CS%linear_scaling = 0.0
+    CS%eta_prop = 0.0_wp ; CS%linear_scaling = 0.0_wp
   endif
 
   ! Set scaling coefficients for spherical harmonics
   if (CS%use_sal_sht) then
     lmax = calc_lmax(CS%sal_sht_Nd)
-    allocate(CS%Snm_Re(lmax), source=0.0)
-    allocate(CS%Snm_Im(lmax), source=0.0)
+    allocate(CS%Snm_Re(lmax), source=0.0_wp)
+    allocate(CS%Snm_Im(lmax), source=0.0_wp)
 
-    allocate(CS%Love_scaling(lmax), source=0.0)
+    allocate(CS%Love_scaling(lmax), source=0.0_wp)
     call calc_love_scaling(GV%Rho0, rhoE, GV%g_Earth, CS)
 
     allocate(CS%sht)

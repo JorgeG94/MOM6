@@ -24,6 +24,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : surface, thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -41,14 +43,14 @@ type, public :: boundary_impulse_tracer_CS ; private
   logical :: coupled_tracers = .false. !< These tracers are not offered to the  coupler.
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:) => NULL() !< The array of tracers used in this subroutine, in [CU ~> conc] (g m-3)?
+  real(wp), pointer :: tr(:,:,:,:) => NULL() !< The array of tracers used in this subroutine, in [CU ~> conc] (g m-3)?
   logical :: tracers_may_reinit  !< If true, boundary_impulse can be initialized if not found in restart file
   integer, dimension(NTR_MAX) :: ind_tr  !< Indices returned by atmos_ocn_coupler_flux if it is used and the
                                          !! surface tracer concentrations are to be provided to the coupler.
 
   integer :: nkml !< Number of layers in mixed layer
-  real, dimension(NTR_MAX)  :: land_val = -1.0 !< A value to use to fill in tracers over land [CU ~> conc]
-  real :: remaining_source_time !< How much longer (same units as the timestep) to
+  real(wp), dimension(NTR_MAX)  :: land_val = -1.0_wp !< A value to use to fill in tracers over land [CU ~> conc]
+  real(wp) :: remaining_source_time !< How much longer (same units as the timestep) to
                                 !! inject the tracer at the surface [T ~> s]
 
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
@@ -80,8 +82,8 @@ function register_boundary_impulse_tracer(HI, GV, US, param_file, CS, tr_Reg, re
                             ! kg(tracer) kg(water)-1 m3 s-1 or kg(tracer) s-1.
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [CU ~> conc]
-  real, pointer :: rem_time_ptr => NULL() ! The ramaining injection time [T ~> s]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [CU ~> conc]
+  real(wp), pointer :: rem_time_ptr => NULL() ! The ramaining injection time [T ~> s]
   logical :: register_boundary_impulse_tracer
   integer :: isd, ied, jsd, jed, nz, m
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nz = GV%ke
@@ -98,14 +100,14 @@ function register_boundary_impulse_tracer(HI, GV, US, param_file, CS, tr_Reg, re
                  "Length of time for the boundary tracer to be injected "//&
                  "into the mixed layer. After this time has elapsed, the "//&
                  "surface becomes a sink for the boundary impulse tracer.", &
-                 units="s", default=31536000.0, scale=US%s_to_T)
+                 units="s", default=31536000.0_wp, scale=US%s_to_T)
   call get_param(param_file, mdl, "TRACERS_MAY_REINIT", CS%tracers_may_reinit, &
                  "If true, tracers may go through the initialization code "//&
                  "if they are not found in the restart files.  Otherwise "//&
                  "it is a fatal error if the tracers are not found in the "//&
                  "restart files of a restarted run.", default=.false.)
   CS%ntr = NTR_MAX
-  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0)
+  allocate(CS%tr(isd:ied,jsd:jed,nz,CS%ntr), source=0.0_wp)
 
   CS%nkml = max(GV%nkml,1)
 
@@ -152,7 +154,7 @@ subroutine initialize_boundary_impulse_tracer(restart, day, G, GV, US, h, diag, 
   type(ocean_grid_type),              intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),              intent(in) :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_ctrl),            target, intent(in) :: diag !< A structure that is used to regulate
                                                          !! diagnostic output.
@@ -183,7 +185,7 @@ subroutine initialize_boundary_impulse_tracer(restart, day, G, GV, US, h, diag, 
     call query_vardesc(CS%tr_desc(m), name=name, caller="initialize_boundary_impulse_tracer")
     if ((.not.restart) .or. (.not. query_initialized(CS%tr(:,:,:,m), name, CS%restart_CSp))) then
       do k=1,CS%nkml ; do j=jsd,jed ; do i=isd,ied
-        CS%tr(i,j,k,m) = 1.0
+        CS%tr(i,j,k,m) = 1.0_wp
       enddo ; enddo ; enddo
       call set_initialized(CS%tr(:,:,:,m), name, CS%restart_CSp)
     endif
@@ -200,30 +202,30 @@ subroutine boundary_impulse_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
                      tv, debug, evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea   !< an array to which the amount of fluid entrained
                                               !! from the layer above during this call will be
                                               !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb   !< an array to which the amount of fluid entrained
                                               !! from the layer below during this call will be
                                               !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
   type(boundary_impulse_tracer_CS),  pointer :: CS !< The control structure returned by a previous
                                               !! call to register_boundary_impulse_tracer.
   type(thermo_var_ptrs),   intent(in) :: tv   !< A structure pointing to various
                                               !! thermodynamic variables
   logical,                 intent(in) :: debug !< If true calculate checksums
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                               !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                               !! fluxes can be applied [H ~> m or kg m-2]
 
 !   This subroutine applies diapycnal diffusion and any other column
@@ -235,7 +237,7 @@ subroutine boundary_impulse_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   ! Local variables
   integer :: i, j, k, is, ie, js, je, nz, m
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -256,14 +258,14 @@ subroutine boundary_impulse_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   ! Set surface conditions
   do m=1,1
-    if (CS%remaining_source_time > 0.0) then
+    if (CS%remaining_source_time > 0.0_wp) then
       do k=1,CS%nkml ; do j=js,je ; do i=is,ie
-        CS%tr(i,j,k,m) = 1.0
+        CS%tr(i,j,k,m) = 1.0_wp
       enddo ; enddo ; enddo
       CS%remaining_source_time = CS%remaining_source_time-dt
     else
       do k=1,CS%nkml ; do j=js,je ; do i=is,ie
-        CS%tr(i,j,k,m) = 0.0
+        CS%tr(i,j,k,m) = 0.0_wp
       enddo ; enddo ; enddo
     endif
 
@@ -278,7 +280,7 @@ end subroutine boundary_impulse_tracer_column_physics
 function boundary_impulse_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),                    intent(in   ) :: G    !< The ocean's grid structure
   type(verticalGrid_type),                  intent(in   ) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in   ) :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in   ) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(EFP_type), dimension(:),             intent(  out) :: stocks !< The mass-weighted integrated amount of each
                                                                   !! tracer, in kg times concentration units [kg conc]
   type(boundary_impulse_tracer_CS),         pointer       :: CS   !< The control structure returned by a previous
@@ -321,7 +323,7 @@ subroutine boundary_impulse_tracer_surface_state(sfc_state, h, G, GV, CS)
   type(verticalGrid_type), intent(in)    :: GV !< The ocean's vertical grid structure
   type(surface),           intent(inout) :: sfc_state !< A structure containing fields that
                                                !! describe the surface state of the ocean.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h  !< Layer thickness [H ~> m or kg m-2].
   type(boundary_impulse_tracer_CS), pointer :: CS !< The control structure returned by a previous
                                                !! call to register_boundary_impulse_tracer.

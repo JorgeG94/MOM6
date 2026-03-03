@@ -29,6 +29,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : surface, thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -43,14 +45,14 @@ integer, parameter :: NTR = 2 !< the number of tracers in this module.
 !! and some metadata for a single CFC tracer
 type, private :: CFC_tracer_data
   type(vardesc) :: desc                     !< A set of metadata for the tracer
-  real :: IC_val = 0.0                      !< The initial value assigned to the tracer [mol kg-1].
-  real :: land_val = -1.0                   !< The value of the tracer used where land is
+  real(wp) :: IC_val = 0.0_wp                      !< The initial value assigned to the tracer [mol kg-1].
+  real(wp) :: land_val = -1.0_wp                   !< The value of the tracer used where land is
                                             !! masked out [mol kg-1].
   character(len=32) :: name                 !< Tracer variable name
   integer :: id_cmor = -1                   !< Diagnostic id
   integer :: id_sfc_flux = -1               !< Surface flux id
-  real, pointer, dimension(:,:,:) :: conc   !< The tracer concentration [mol kg-1].
-  real, pointer, dimension(:,:) :: sfc_flux !< Surface flux [CU R Z T-1 ~> mol m-2 s-1]
+  real(wp), pointer, dimension(:,:,:) :: conc   !< The tracer concentration [mol kg-1].
+  real(wp), pointer, dimension(:,:) :: sfc_flux !< Surface flux [CU R Z T-1 ~> mol m-2 s-1]
   type(tracer_type), pointer :: tr_ptr      !< pointer to tracer inside Tr_reg
 end type CFC_tracer_data
 
@@ -95,7 +97,7 @@ function register_CFC_cap(HI, GV, param_file, CS, tr_Reg, restart_CS)
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=200) :: inputdir ! The directory where NetCDF input files are.
-  real, dimension(:,:,:), pointer :: tr_ptr => NULL() ! A pointer to a CFC tracer [mol kg-1]
+  real(wp), dimension(:,:,:), pointer :: tr_ptr => NULL() ! A pointer to a CFC tracer [mol kg-1]
   character(len=200) :: CFC_BC_file           ! filename with cfc11 and cfc12 data
   character(len=30)  :: CFC_BC_var_name       ! varname of field in CFC_BC_file
   character :: m2char
@@ -140,7 +142,7 @@ function register_CFC_cap(HI, GV, param_file, CS, tr_Reg, restart_CS)
     write(m2char, "(I1)") m
     call get_param(param_file, mdl, "CFC1"//m2char//"_IC_VAL", CS%CFC_data(m)%IC_val, &
                    "Value that CFC_1"//m2char//" is set to when it is not read from a file.", &
-                   units="mol kg-1", default=0.0)
+                   units="mol kg-1", default=0.0_wp)
   enddo
 
   ! the following params are not used in this module. Instead, they are used in
@@ -196,8 +198,8 @@ function register_CFC_cap(HI, GV, param_file, CS, tr_Reg, restart_CS)
                                    "Moles Per Unit Mass of CFC-1"//m2char//" in sea water", &
                                    caller=mdl)
 
-    allocate(CS%CFC_data(m)%conc(isd:ied,jsd:jed,nz), source=0.0)
-    allocate(CS%CFC_data(m)%sfc_flux(isd:ied,jsd:jed), source=0.0)
+    allocate(CS%CFC_data(m)%conc(isd:ied,jsd:jed,nz), source=0.0_wp)
+    allocate(CS%CFC_data(m)%sfc_flux(isd:ied,jsd:jed), source=0.0_wp)
 
     ! This pointer assignment is needed to force the compiler not to do a copy in
     ! the registration calls.  Curses on the designers and implementers of F90.
@@ -223,7 +225,7 @@ subroutine initialize_CFC_cap(restart, day, G, GV, US, h, diag, OBC, CS)
   type(ocean_grid_type),          intent(in) :: G          !< The ocean's grid structure.
   type(verticalGrid_type),        intent(in) :: GV         !< The ocean's vertical grid structure.
   type(unit_scale_type),          intent(in) :: US         !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                   intent(in) :: h          !< Layer thicknesses [H ~> m or kg m-2].
   type(diag_ctrl), target,        intent(in) :: diag       !< A structure that is used to regulate
                                                            !! diagnostic output.
@@ -284,11 +286,11 @@ subroutine init_tracer_CFC(h, tr, name, land_val, IC_val, G, GV, US, CS)
   type(ocean_grid_type),                     intent(in)  :: G        !< The ocean's grid structure
   type(verticalGrid_type),                   intent(in)  :: GV       !< The ocean's vertical grid structure.
   type(unit_scale_type),                     intent(in)  :: US       !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h        !< Layer thicknesses [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: tr       !< The tracer concentration array [mol kg-1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h        !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: tr       !< The tracer concentration array [mol kg-1]
   character(len=*),                          intent(in)  :: name     !< The tracer name
-  real,                                      intent(in)  :: land_val !< A value the tracer takes over land [mol kg-1]
-  real,                                      intent(in)  :: IC_val   !< The initial condition value for the
+  real(wp),                                      intent(in)  :: land_val !< A value the tracer takes over land [mol kg-1]
+  real(wp),                                      intent(in)  :: IC_val   !< The initial condition value for the
                                                                      !! tracer [mol kg-1]
   type(CFC_cap_CS),                          pointer     :: CS       !< The control structure returned by a
                                                                      !! previous call to register_CFC_cap.
@@ -315,7 +317,7 @@ subroutine init_tracer_CFC(h, tr, name, land_val, IC_val, G, GV, US, CS)
     endif
   else
     do k=1,nz ; do j=js,je ; do i=is,ie
-      if (G%mask2dT(i,j) < 0.5) then
+      if (G%mask2dT(i,j) < 0.5_wp) then
         tr(i,j,k) = land_val
       else
         tr(i,j,k) = IC_val
@@ -332,36 +334,36 @@ subroutine CFC_cap_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US, C
                                   nonLocalTrans, evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G     !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV    !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea    !< an array to which the amount of fluid entrained
                                                !! from the layer above during this call will be
                                                !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb    !< an array to which the amount of fluid entrained
                                                !! from the layer below during this call will be
                                                !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes!< A structure containing pointers to thermodynamic
                                                !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US    !< A dimensional unit scaling type
   type(CFC_cap_CS),        pointer    :: CS    !< The control structure returned by a
                                                !! previous call to register_CFC_cap.
   type(KPP_CS),  optional, pointer    :: KPP_CSp  !< KPP control structure
-  real,          optional, intent(in) :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                                !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                                !! fluxes can be applied [H ~> m or kg m-2]
 
   ! The arguments to this subroutine are redundant in that
   !     h_new(k) = h_old(k) + ea(k) - eb(k-1) + eb(k) - ea(k+1)
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz, m
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -417,7 +419,7 @@ end subroutine CFC_cap_column_physics
 function CFC_cap_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),           intent(in)    :: G      !< The ocean's grid structure.
   type(verticalGrid_type),         intent(in)    :: GV     !< The ocean's vertical grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                    intent(in)    :: h      !< Layer thicknesses [H ~> m or kg m-2].
   type(EFP_type), dimension(:),    intent(out)   :: stocks !< The mass-weighted integrated amount of each
                                                            !! tracer, in kg times concentration units [kg conc]
@@ -430,8 +432,8 @@ function CFC_cap_stock(h, stocks, G, GV, CS, names, units, stock_index)
   integer                                        :: CFC_cap_stock !< The number of stocks calculated here.
 
   ! Local variables
-  real :: stock_scale ! The dimensional scaling factor to convert stocks to kg [kg H-1 L-2 ~> kg m-3 or 1]
-  real :: mass        ! The cell volume or mass [H L2 ~> m3 or kg]
+  real(wp) :: stock_scale ! The dimensional scaling factor to convert stocks to kg [kg H-1 L-2 ~> kg m-3 or 1]
+  real(wp) :: mass        ! The cell volume or mass [H L2 ~> m3 or kg]
   integer :: i, j, k, is, ie, js, je, nz, m
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -468,31 +470,31 @@ subroutine CFC_cap_set_forcing(sfc_state, fluxes, day_start, day_interval, G, US
                                        !! fluxes will be applied.
   type(ocean_grid_type), intent(in)    :: G  !< The ocean's grid structure.
   type(unit_scale_type), intent(in)    :: US !< A dimensional unit scaling type
-  real,                  intent(in)    :: Rho0 !< The mean ocean density [R ~> kg m-3]
+  real(wp),                  intent(in)    :: Rho0 !< The mean ocean density [R ~> kg m-3]
   type(CFC_cap_CS),      pointer       :: CS !< The control structure returned by a
                                        !! previous call to register_CFC_cap.
 
   ! Local variables
   type(time_type) :: Time_external ! time value used in CFC_BC_file
-  real, dimension(SZI_(G),SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: &
     kw_wo_sc_no_term, &  ! gas transfer velocity, without the Schmidt number term [Z T-1 ~> m s-1].
     kw, &                ! gas transfer velocity [Z T-1 ~> m s-1].
     cair, &              ! The surface gas concentration in equilibrium with the atmosphere
                          ! (saturation concentration) [mol kg-1].
     cfc11_atm, &         ! CFC11 atm mole fraction [pico mol/mol]
     cfc12_atm            ! CFC12 atm mole fraction [pico mol/mol]
-  real :: cfc11_atm_nh   ! NH value for cfc11_atm [pico mol/mol]
-  real :: cfc11_atm_sh   ! SH value for cfc11_atm [pico mol/mol]
-  real :: cfc12_atm_nh   ! NH value for cfc12_atm [pico mol/mol]
-  real :: cfc12_atm_sh   ! SH value for cfc12_atm [pico mol/mol]
-  real :: ta             ! Absolute sea surface temperature [hectoKelvin]
-  real :: sal            ! Surface salinity [PSU].
-  real :: alpha_11       ! The solubility of CFC 11 [mol kg-1 atm-1].
-  real :: alpha_12       ! The solubility of CFC 12 [mol kg-1 atm-1].
-  real :: sc_11, sc_12   ! The Schmidt numbers of CFC 11 and CFC 12 [nondim].
-  real :: kw_coeff       ! A coefficient used to compute the piston velocity [Z T-1 T2 L-2] = [Z T L-2 ~> s m-1]
-  real, parameter :: pa_to_atm = 9.8692316931427e-6 ! factor for converting from Pa to atm [atm Pa-1].
-  real :: press_to_atm   ! converts from model pressure units to atm [atm T2 R-1 L-2 ~> atm Pa-1]
+  real(wp) :: cfc11_atm_nh   ! NH value for cfc11_atm [pico mol/mol]
+  real(wp) :: cfc11_atm_sh   ! SH value for cfc11_atm [pico mol/mol]
+  real(wp) :: cfc12_atm_nh   ! NH value for cfc12_atm [pico mol/mol]
+  real(wp) :: cfc12_atm_sh   ! SH value for cfc12_atm [pico mol/mol]
+  real(wp) :: ta             ! Absolute sea surface temperature [hectoKelvin]
+  real(wp) :: sal            ! Surface salinity [PSU].
+  real(wp) :: alpha_11       ! The solubility of CFC 11 [mol kg-1 atm-1].
+  real(wp) :: alpha_12       ! The solubility of CFC 12 [mol kg-1 atm-1].
+  real(wp) :: sc_11, sc_12   ! The Schmidt numbers of CFC 11 and CFC 12 [nondim].
+  real(wp) :: kw_coeff       ! A coefficient used to compute the piston velocity [Z T-1 T2 L-2] = [Z T L-2 ~> s m-1]
+  real(wp), parameter :: pa_to_atm = 9.8692316931427e-6_wp ! factor for converting from Pa to atm [atm Pa-1].
+  real(wp) :: press_to_atm   ! converts from model pressure units to atm [atm T2 R-1 L-2 ~> atm Pa-1]
   integer :: i, j, is, ie, js, je, m
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
@@ -502,35 +504,35 @@ subroutine CFC_cap_set_forcing(sfc_state, fluxes, day_start, day_interval, G, US
 
   ! CFC11 atm mole fraction, convert from ppt (pico mol/mol) to mol/mol
   call time_interp_external(CS%cfc11_atm_nh_handle, Time_external, cfc11_atm_nh)
-  cfc11_atm_nh = cfc11_atm_nh * 1.0e-12
+  cfc11_atm_nh = cfc11_atm_nh * 1.0e-12_wp
   call time_interp_external(CS%cfc11_atm_sh_handle, Time_external, cfc11_atm_sh)
-  cfc11_atm_sh = cfc11_atm_sh * 1.0e-12
+  cfc11_atm_sh = cfc11_atm_sh * 1.0e-12_wp
 
   ! CFC12 atm mole fraction, convert from ppt (pico mol/mol) to mol/mol
   call time_interp_external(CS%cfc12_atm_nh_handle, Time_external, cfc12_atm_nh)
-  cfc12_atm_nh = cfc12_atm_nh * 1.0e-12
+  cfc12_atm_nh = cfc12_atm_nh * 1.0e-12_wp
   call time_interp_external(CS%cfc12_atm_sh_handle, Time_external, cfc12_atm_sh)
-  cfc12_atm_sh = cfc12_atm_sh * 1.0e-12
+  cfc12_atm_sh = cfc12_atm_sh * 1.0e-12_wp
 
   !---------------------------------------------------------------------
   !     Gas exchange/piston velocity parameter
   !---------------------------------------------------------------------
   ! From a = 0.251 cm/hr s^2/m^2 in Wannikhof 2014
   !        = 6.97e-7 [m/s s^2/m^2] [Z T-1 T2 L-2] = [Z T L-2 ~> s m-1]
-  kw_coeff = (US%m_to_Z*US%s_to_T*US%L_to_m**2) * 6.97e-7
+  kw_coeff = (US%m_to_Z*US%s_to_T*US%L_to_m**2) * 6.97e-7_wp
 
   ! set unit conversion factors
   press_to_atm = US%R_to_kg_m3*US%L_T_to_m_s**2 * pa_to_atm
 
   do j=js,je ; do i=is,ie
-    if (G%geoLatT(i,j) < -10.0) then
+    if (G%geoLatT(i,j) < -10.0_wp) then
       cfc11_atm(i,j) = cfc11_atm_sh
       cfc12_atm(i,j) = cfc12_atm_sh
-    elseif (G%geoLatT(i,j) <= 10.0) then
+    elseif (G%geoLatT(i,j) <= 10.0_wp) then
       cfc11_atm(i,j) = cfc11_atm_sh + &
-          (0.05 * G%geoLatT(i,j) + 0.5) * (cfc11_atm_nh - cfc11_atm_sh)
+          (0.05_wp * G%geoLatT(i,j) + 0.5_wp) * (cfc11_atm_nh - cfc11_atm_sh)
       cfc12_atm(i,j) = cfc12_atm_sh + &
-          (0.05 * G%geoLatT(i,j) + 0.5) * (cfc12_atm_nh - cfc12_atm_sh)
+          (0.05_wp * G%geoLatT(i,j) + 0.5_wp) * (cfc12_atm_nh - cfc12_atm_sh)
     else
       cfc11_atm(i,j) = cfc11_atm_nh
       cfc12_atm(i,j) = cfc12_atm_nh
@@ -539,7 +541,7 @@ subroutine CFC_cap_set_forcing(sfc_state, fluxes, day_start, day_interval, G, US
 
   do j=js,je ; do i=is,ie
     ! ta in hectoKelvin
-    ta = max(0.01, (US%C_to_degC*sfc_state%SST(i,j) + 273.15) * 0.01)
+    ta = max(0.01_wp, (US%C_to_degC*sfc_state%SST(i,j) + 273.15_wp) * 0.01_wp)
     sal = US%S_to_ppt*sfc_state%SSS(i,j)
 
     ! Calculate solubilities
@@ -549,15 +551,15 @@ subroutine CFC_cap_set_forcing(sfc_state, fluxes, day_start, day_interval, G, US
     ! Wanninkhof (2014); doi:10.4319/lom.2014.12.351.
     call comp_CFC_schmidt(US%C_to_degC*sfc_state%SST(i,j), sc_11, sc_12)
 
-    kw_wo_sc_no_term(i,j) = kw_coeff * ((1.0 - fluxes%ice_fraction(i,j))*fluxes%u10_sqr(i,j))
+    kw_wo_sc_no_term(i,j) = kw_coeff * ((1.0_wp - fluxes%ice_fraction(i,j))*fluxes%u10_sqr(i,j))
 
     ! air concentrations and cfcs BC's fluxes
     ! CFC flux units: [mol kg-1 R Z T-1 ~> mol m-2 s-1]
-    kw(i,j) = kw_wo_sc_no_term(i,j) * sqrt(660.0 / sc_11)
+    kw(i,j) = kw_wo_sc_no_term(i,j) * sqrt(660.0_wp / sc_11)
     cair(i,j) = press_to_atm * alpha_11 * cfc11_atm(i,j) * fluxes%p_surf_full(i,j)
     CS%CFC_data(1)%sfc_flux(i,j) = kw(i,j) * (cair(i,j) - CS%CFC_data(1)%conc(i,j,1)) * Rho0
 
-    kw(i,j) = kw_wo_sc_no_term(i,j) * sqrt(660.0 / sc_12)
+    kw(i,j) = kw_wo_sc_no_term(i,j) * sqrt(660.0_wp / sc_12)
     cair(i,j) = press_to_atm * alpha_12 * cfc12_atm(i,j) * fluxes%p_surf_full(i,j)
     CS%CFC_data(2)%sfc_flux(i,j) = kw(i,j) * (cair(i,j) - CS%CFC_data(2)%conc(i,j,1)) * Rho0
   enddo ; enddo
@@ -573,42 +575,42 @@ end subroutine CFC_cap_set_forcing
 
 !> Calculates the CFC's solubility function following Warner and Weiss (1985) DSR, vol 32.
 subroutine get_solubility(alpha_11, alpha_12, ta, sal , mask)
-  real, intent(inout) :: alpha_11 !< The solubility of CFC 11 [mol kg-1 atm-1]
-  real, intent(inout) :: alpha_12 !< The solubility of CFC 12 [mol kg-1 atm-1]
-  real, intent(in   ) :: ta       !< Absolute sea surface temperature [hectoKelvin]
-  real, intent(in   ) :: sal      !< Surface salinity [PSU].
-  real, intent(in   ) :: mask     !< ocean mask [nondim]
+  real(wp), intent(inout) :: alpha_11 !< The solubility of CFC 11 [mol kg-1 atm-1]
+  real(wp), intent(inout) :: alpha_12 !< The solubility of CFC 12 [mol kg-1 atm-1]
+  real(wp), intent(in   ) :: ta       !< Absolute sea surface temperature [hectoKelvin]
+  real(wp), intent(in   ) :: sal      !< Surface salinity [PSU].
+  real(wp), intent(in   ) :: mask     !< ocean mask [nondim]
 
   ! Local variables
 
   ! Coefficients for calculating CFC11 solubilities
   ! from Table 5 in Warner and Weiss (1985) DSR, vol 32.
 
-  real, parameter :: d1_11 = -232.0411    ! [nondim]
-  real, parameter :: d2_11 =  322.5546    ! [hectoKelvin-1]
-  real, parameter :: d3_11 =  120.4956    ! [log(hectoKelvin)-1]
-  real, parameter :: d4_11 =   -1.39165   ! [hectoKelvin-2]
+  real(wp), parameter :: d1_11 = -232.0411_wp    ! [nondim]
+  real(wp), parameter :: d2_11 =  322.5546_wp    ! [hectoKelvin-1]
+  real(wp), parameter :: d3_11 =  120.4956_wp    ! [log(hectoKelvin)-1]
+  real(wp), parameter :: d4_11 =   -1.39165_wp   ! [hectoKelvin-2]
 
-  real, parameter :: e1_11 =   -0.146531  ! [PSU-1]
-  real, parameter :: e2_11 =    0.093621  ! [PSU-1 hectoKelvin-1]
-  real, parameter :: e3_11 =   -0.0160693 ! [PSU-2 hectoKelvin-2]
+  real(wp), parameter :: e1_11 =   -0.146531_wp  ! [PSU-1]
+  real(wp), parameter :: e2_11 =    0.093621_wp  ! [PSU-1 hectoKelvin-1]
+  real(wp), parameter :: e3_11 =   -0.0160693_wp ! [PSU-2 hectoKelvin-2]
 
   ! Coefficients for calculating CFC12 solubilities
   ! from Table 5 in Warner and Weiss (1985) DSR, vol 32.
 
-  real, parameter :: d1_12 = -220.2120    ! [nondim]
-  real, parameter :: d2_12 =  301.8695    ! [hectoKelvin-1]
-  real, parameter :: d3_12 =  114.8533    ! [log(hectoKelvin)-1]
-  real, parameter :: d4_12 =   -1.39165   ! [hectoKelvin-2]
+  real(wp), parameter :: d1_12 = -220.2120_wp    ! [nondim]
+  real(wp), parameter :: d2_12 =  301.8695_wp    ! [hectoKelvin-1]
+  real(wp), parameter :: d3_12 =  114.8533_wp    ! [log(hectoKelvin)-1]
+  real(wp), parameter :: d4_12 =   -1.39165_wp   ! [hectoKelvin-2]
 
-  real, parameter :: e1_12 =   -0.147718  ! [PSU-1]
-  real, parameter :: e2_12 =    0.093175  ! [PSU-1 hectoKelvin-1]
-  real, parameter :: e3_12 =   -0.0157340 ! [PSU-2 hectoKelvin-2]
+  real(wp), parameter :: e1_12 =   -0.147718_wp  ! [PSU-1]
+  real(wp), parameter :: e2_12 =    0.093175_wp  ! [PSU-1 hectoKelvin-1]
+  real(wp), parameter :: e3_12 =   -0.0157340_wp ! [PSU-2 hectoKelvin-2]
 
-  real :: factor ! introduce units to result [mol kg-1 atm-1]
+  real(wp) :: factor ! introduce units to result [mol kg-1 atm-1]
 
   ! Eq. 9 from Warner and Weiss (1985) DSR, vol 32.
-  factor = 1.0
+  factor = 1.0_wp
   alpha_11 = exp(d1_11 + d2_11/ta + d3_11*log(ta) + d4_11*ta**2 +&
                  sal * ((e3_11 * ta + e2_11) * ta + e1_11)) * &
              factor * mask
@@ -622,26 +624,26 @@ end subroutine get_solubility
 !> Compute Schmidt numbers of CFCs following Wanninkhof (2014); doi:10.4319/lom.2014.12.351
 !! Range of validity of fit is -2:40.
 subroutine comp_CFC_schmidt(sst_in, cfc11_sc, cfc12_sc)
-  real, intent(in)    :: sst_in   !< The sea surface temperature [degC].
-  real, intent(inout) :: cfc11_sc !< Schmidt number of CFC11 [nondim].
-  real, intent(inout) :: cfc12_sc !< Schmidt number of CFC12 [nondim].
+  real(wp), intent(in)    :: sst_in   !< The sea surface temperature [degC].
+  real(wp), intent(inout) :: cfc11_sc !< Schmidt number of CFC11 [nondim].
+  real(wp), intent(inout) :: cfc12_sc !< Schmidt number of CFC12 [nondim].
 
   !local variables
-  real , parameter :: a_11 = 3579.2    ! CFC11 Schmidt number fit coefficient [nondim]
-  real , parameter :: b_11 = -222.63   ! CFC11 Schmidt number fit coefficient [degC-1]
-  real , parameter :: c_11 = 7.5749    ! CFC11 Schmidt number fit coefficient [degC-2]
-  real , parameter :: d_11 = -0.14595  ! CFC11 Schmidt number fit coefficient [degC-3]
-  real , parameter :: e_11 = 0.0011874 ! CFC11 Schmidt number fit coefficient [degC-4]
-  real , parameter :: a_12 = 3828.1    ! CFC12 Schmidt number fit coefficient [nondim]
-  real , parameter :: b_12 = -249.86   ! CFC12 Schmidt number fit coefficient [degC-1]
-  real , parameter :: c_12 = 8.7603    ! CFC12 Schmidt number fit coefficient [degC-2]
-  real , parameter :: d_12 = -0.1716   ! CFC12 Schmidt number fit coefficient [degC-3]
-  real , parameter :: e_12 = 0.001408  ! CFC12 Schmidt number fit coefficient [degC-4]
-  real             :: sst  ! A range-limited sea surface temperature [degC]
+  real(wp) , parameter :: a_11 = 3579.2_wp    ! CFC11 Schmidt number fit coefficient [nondim]
+  real(wp) , parameter :: b_11 = -222.63_wp   ! CFC11 Schmidt number fit coefficient [degC-1]
+  real(wp) , parameter :: c_11 = 7.5749_wp    ! CFC11 Schmidt number fit coefficient [degC-2]
+  real(wp) , parameter :: d_11 = -0.14595_wp  ! CFC11 Schmidt number fit coefficient [degC-3]
+  real(wp) , parameter :: e_11 = 0.0011874_wp ! CFC11 Schmidt number fit coefficient [degC-4]
+  real(wp) , parameter :: a_12 = 3828.1_wp    ! CFC12 Schmidt number fit coefficient [nondim]
+  real(wp) , parameter :: b_12 = -249.86_wp   ! CFC12 Schmidt number fit coefficient [degC-1]
+  real(wp) , parameter :: c_12 = 8.7603_wp    ! CFC12 Schmidt number fit coefficient [degC-2]
+  real(wp) , parameter :: d_12 = -0.1716_wp   ! CFC12 Schmidt number fit coefficient [degC-3]
+  real(wp) , parameter :: e_12 = 0.001408_wp  ! CFC12 Schmidt number fit coefficient [degC-4]
+  real(wp)             :: sst  ! A range-limited sea surface temperature [degC]
 
 
   ! clip SST to avoid bad values
-  sst = MAX(-2.0, MIN(40.0, sst_in))
+  sst = MAX(-2.0_wp, MIN(40.0_wp, sst_in))
   cfc11_sc = a_11 + sst * (b_11 + sst * (c_11 + sst * (d_11 + sst * e_11)))
   cfc12_sc = a_12 + sst * (b_12 + sst * (c_12 + sst * (d_12 + sst * e_12)))
 
@@ -671,9 +673,9 @@ logical function CFC_cap_unit_tests(verbose)
                                  !! information for debugging unit tests
 
   ! Local variables
-  real :: dummy1, dummy2 ! Test values of Schmidt numbers [nondim] or solubilities [mol kg-1 atm-1] for CFC11 and CFC12
-  real :: ta  ! A test value of temperature [hectoKelvin]
-  real :: sal ! A test value of salinity [ppt]
+  real(wp) :: dummy1, dummy2 ! Test values of Schmidt numbers [nondim] or solubilities [mol kg-1 atm-1] for CFC11 and CFC12
+  real(wp) :: ta  ! A test value of temperature [hectoKelvin]
+  real(wp) :: sal ! A test value of salinity [ppt]
   character(len=120) :: test_name ! Title of the unit test
 
   CFC_cap_unit_tests = .false.
@@ -681,35 +683,35 @@ logical function CFC_cap_unit_tests(verbose)
 
   ! test comp_CFC_schmidt, Table 1 in Wanninkhof (2014); doi:10.4319/lom.2014.12.351
   test_name = 'Schmidt number calculation'
-  call comp_CFC_schmidt(20.0, dummy1, dummy2)
+  call comp_CFC_schmidt(20.0_wp, dummy1, dummy2)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy1, 1179.0, 0.5)
+                       compare_values(verbose, test_name, dummy1, 1179.0_wp, 0.5_wp)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy2, 1188.0, 0.5)
+                       compare_values(verbose, test_name, dummy2, 1188.0_wp, 0.5_wp)
 
   if (.not. CFC_cap_unit_tests) write(stdout,'(2x,a)') "Passed "//test_name
 
   test_name = 'Solubility function, SST = 1.0 C, and SSS = 10 psu'
-  ta = max(0.01, (1.0 + 273.15) * 0.01); sal = 10.
+  ta = max(0.01_wp, (1.0_wp + 273.15_wp) * 0.01_wp); sal = 10._wp
   ! cfc1 = 3.238 10-2 mol kg-1 atm-1
   ! cfc2 = 7.943 10-3 mol kg-1 atm-1
-  call get_solubility(dummy1, dummy2, ta, sal , 1.0)
+  call get_solubility(dummy1, dummy2, ta, sal , 1.0_wp)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy1, 3.238e-2, 5.0e-6)
+                       compare_values(verbose, test_name, dummy1, 3.238e-2_wp, 5.0e-6_wp)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy2, 7.943e-3, 5.0e-6)
+                       compare_values(verbose, test_name, dummy2, 7.943e-3_wp, 5.0e-6_wp)
 
   if (.not. CFC_cap_unit_tests) write(stdout,'(2x,a)')"Passed "//test_name
 
   test_name = 'Solubility function, SST = 20.0 C, and SSS = 35 psu'
-  ta = max(0.01, (20.0 + 273.15) * 0.01); sal = 35.
+  ta = max(0.01_wp, (20.0_wp + 273.15_wp) * 0.01_wp); sal = 35._wp
   ! cfc1 = 0.881 10-2 mol kg-1 atm-1
   ! cfc2 = 2.446 10-3 mol kg-1 atm-1
-  call get_solubility(dummy1, dummy2, ta, sal , 1.0)
+  call get_solubility(dummy1, dummy2, ta, sal , 1.0_wp)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy1, 8.8145e-3, 5.0e-8)
+                       compare_values(verbose, test_name, dummy1, 8.8145e-3_wp, 5.0e-8_wp)
   CFC_cap_unit_tests = CFC_cap_unit_tests .or. &
-                       compare_values(verbose, test_name, dummy2, 2.4462e-3, 5.0e-8)
+                       compare_values(verbose, test_name, dummy2, 2.4462e-3_wp, 5.0e-8_wp)
   if (.not. CFC_cap_unit_tests) write(stdout,'(2x,a)')"Passed "//test_name
 
 end function CFC_cap_unit_tests
@@ -719,12 +721,12 @@ end function CFC_cap_unit_tests
 logical function compare_values(verbose, test_name, calc, ans, limit)
   logical,             intent(in) :: verbose   !< If true, write results to stdout
   character(len=80),   intent(in) :: test_name !< Brief description of the unit test
-  real,                intent(in) :: calc      !< computed value in arbitrary units [A]
-  real,                intent(in) :: ans       !< correct value [A]
-  real,                intent(in) :: limit     !< value above which test fails [A]
+  real(wp),                intent(in) :: calc      !< computed value in arbitrary units [A]
+  real(wp),                intent(in) :: ans       !< correct value [A]
+  real(wp),                intent(in) :: limit     !< value above which test fails [A]
 
   ! Local variables
-  real :: diff  ! Difference in values [A]
+  real(wp) :: diff  ! Difference in values [A]
 
   diff = ans - calc
 

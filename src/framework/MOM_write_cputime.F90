@@ -9,6 +9,8 @@ use MOM_io,            only : open_ASCII_file, close_file, APPEND_FILE, WRITEONL
 use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
 use MOM_time_manager,  only : time_type, get_time, operator(>)
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public write_cputime, MOM_write_cputime_init, MOM_write_cputime_end, write_cputime_start_clock
@@ -21,17 +23,17 @@ integer :: MAX_TICKS      = 1000 !< The number of ticks per second, used by the 
 !> A control structure that regulates the writing of CPU time
 type, public :: write_cputime_CS ; private
   logical :: initialized = .false. !< True if this control structure has been initialized.
-  real :: maxcpu                !<   The maximum amount of CPU time per processor
+  real(wp) :: maxcpu                !<   The maximum amount of CPU time per processor
                                 !! for which MOM should run before saving a restart
                                 !! file and quitting with a return value that
                                 !! indicates that further execution is required to
                                 !! complete the simulation [wall-clock seconds].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !! Start_time is set in MOM_initialization.F90
-  real :: startup_cputime       !< The CPU time used in the startup phase of the model [clock_cycles].
-  real :: prev_cputime = 0.0    !< The last measured CPU time [clock_cycles].
-  real :: dn_dcpu_min = -1.0    !< The minimum derivative of timestep with CPU time [steps clock_cycles-1].
-  real :: cputime2 = 0.0        !< The accumulated CPU time [clock_cycles].
+  real(wp) :: startup_cputime       !< The CPU time used in the startup phase of the model [clock_cycles].
+  real(wp) :: prev_cputime = 0.0_wp    !< The last measured CPU time [clock_cycles].
+  real(wp) :: dn_dcpu_min = -1.0_wp    !< The minimum derivative of timestep with CPU time [steps clock_cycles-1].
+  real(wp) :: cputime2 = 0.0_wp        !< The accumulated CPU time [clock_cycles].
   integer :: previous_calls = 0 !< The number of times write_CPUtime has been called.
   integer :: prev_n = 0         !< The value of n from the last call.
   integer :: fileCPU_ascii= -1  !< The unit number of the CPU time file.
@@ -77,9 +79,9 @@ subroutine MOM_write_cputime_init(param_file, directory, Input_start_time, CS)
   ! Read all relevant parameters and write them to the model log.
 
   ! Determine whether all parameters are set to their default values.
-  call get_param(param_file, mdl, "MAXCPU", CS%maxcpu, units="wall-clock seconds", default=-1.0, do_not_log=.true.)
+  call get_param(param_file, mdl, "MAXCPU", CS%maxcpu, units="wall-clock seconds", default=-1.0_wp, do_not_log=.true.)
   call get_param(param_file, mdl, "CPU_TIME_FILE", CS%CPUfile, default="CPU_stats", do_not_log=.true.)
-  all_default = (CS%maxcpu == -1.0) .and. (trim(CS%CPUfile) == trim("CPU_stats"))
+  all_default = (CS%maxcpu == -1.0_wp) .and. (trim(CS%CPUfile) == trim("CPU_stats"))
 
   call log_version(param_file, mdl, version, "", all_default=all_default)
   call get_param(param_file, mdl, "MAXCPU", CS%maxcpu, &
@@ -91,7 +93,7 @@ subroutine MOM_write_cputime_init(param_file, directory, Input_start_time, CS)
                  "value for MAXCPU.  MAXCPU has units of wall-clock "//&
                  "seconds, so the actual CPU time used is larger by a "//&
                  "factor of the number of processors used.", &
-                 units="wall-clock seconds", default=-1.0)
+                 units="wall-clock seconds", default=-1.0_wp)
   call get_param(param_file, mdl, "CPU_TIME_FILE", CS%CPUfile, &
                  "The file into which CPU time is written.",default="CPU_stats")
   CS%CPUfile = trim(directory)//trim(CS%CPUfile)
@@ -134,10 +136,10 @@ subroutine write_cputime(day, n, CS, nmax, call_end)
   logical,      optional, intent(in)    :: call_end !< If true, also call MOM_write_cputime_end.
 
   ! Local variables
-  real    :: d_cputime     ! The change in CPU time since the last call
+  real(wp)    :: d_cputime     ! The change in CPU time since the last call
                            ! this subroutine [clock_cycles]
   integer :: new_cputime   ! The CPU time returned by SYSTEM_CLOCK [clock_cycles]
-  real    :: reday         ! The time in days, including fractional days [days]
+  real(wp)    :: reday         ! The time in days, including fractional days [days]
   integer :: start_of_day  ! The number of seconds since the start of the day
   integer :: num_days      ! The number of days in the time
 
@@ -153,7 +155,7 @@ subroutine write_cputime(day, n, CS, nmax, call_end)
 ! impossible. Negative fluctuations of less than 10 seconds are not interpreted
 ! as the clock rolling over.  This should be unnecessary but is sometimes needed
 ! on the GFDL SGI/O3k.
-  if (new_cputime < CS%prev_cputime-(10.0*CLOCKS_PER_SEC)) then
+  if (new_cputime < CS%prev_cputime-(10.0_wp*CLOCKS_PER_SEC)) then
     d_cputime = new_cputime - CS%prev_cputime + MAX_TICKS
   else
     d_cputime = new_cputime - CS%prev_cputime
@@ -164,16 +166,16 @@ subroutine write_cputime(day, n, CS, nmax, call_end)
 
   CS%cputime2 = CS%cputime2 + d_cputime
 
-  if ((CS%previous_calls >= 1) .and. (CS%maxcpu > 0.0)) then
+  if ((CS%previous_calls >= 1) .and. (CS%maxcpu > 0.0_wp)) then
     ! Determine the slowest rate at which time steps are executed.
-    if ((n > CS%prev_n) .and. (d_cputime > 0.0) .and. &
+    if ((n > CS%prev_n) .and. (d_cputime > 0.0_wp) .and. &
         ((CS%dn_dcpu_min*d_cputime < (n - CS%prev_n)) .or. &
-         (CS%dn_dcpu_min < 0.0))) &
+         (CS%dn_dcpu_min < 0.0_wp))) &
       CS%dn_dcpu_min = (n - CS%prev_n) / d_cputime
-    if (present(nmax) .and. (CS%dn_dcpu_min >= 0.0)) then
+    if (present(nmax) .and. (CS%dn_dcpu_min >= 0.0_wp)) then
       ! Have the model stop itself after 95% of the CPU time has been used.
       nmax = n + INT( CS%dn_dcpu_min * &
-          (0.95*CS%maxcpu * REAL(num_pes())*CLOCKS_PER_SEC - &
+          (0.95_wp*CS%maxcpu * REAL(num_pes(), wp)*CLOCKS_PER_SEC - &
            (CS%startup_cputime + CS%cputime2)) )
 !     write(mesg,*) "Resetting nmax to ",nmax," at day",reday
 !     call MOM_mesg(mesg)
@@ -182,7 +184,7 @@ subroutine write_cputime(day, n, CS, nmax, call_end)
   CS%prev_cputime = new_cputime ; CS%prev_n = n
 
   call get_time(day, start_of_day, num_days)
-  reday = REAL(num_days)+ (REAL(start_of_day)/86400.0)
+  reday = REAL(num_days, wp)+ (REAL(start_of_day, wp)/86400.0_wp)
 
   !  Reopen or create a text output file.
   if ((CS%previous_calls == 0) .and. (is_root_pe())) then
@@ -201,8 +203,8 @@ subroutine write_cputime(day, n, CS, nmax, call_end)
       write(CS%fileCPU_ascii,*)"        Day, Step number,     CPU time, CPU time change"
     endif
     write(CS%fileCPU_ascii,'(F12.3,", ",I11,", ",F12.3,", ",F12.3)') &
-           reday, n, (CS%cputime2 / real(CLOCKS_PER_SEC)), &
-           d_cputime / real(CLOCKS_PER_SEC)
+           reday, n, (CS%cputime2 / real(CLOCKS_PER_SEC, wp)), &
+           d_cputime / real(CLOCKS_PER_SEC, wp)
 
     flush(CS%fileCPU_ascii)
   endif

@@ -40,6 +40,8 @@ use MOM_netcdf, only : read_netcdf_field
 use MOM_error_handler, only : MOM_error, FATAL
 use MOM_error_handler, only : is_root_PE
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public :: MOM_file
@@ -128,7 +130,7 @@ end type axis_node_nc
 type :: MOM_field
   character(len=:), allocatable :: label
     !< Identifier for the field in the handle's list
-  real :: conversion
+  real(wp) :: conversion
     !< A factor to use to rescale the field before output [a A-1 ~> 1]
 end type MOM_field
 
@@ -425,7 +427,7 @@ interface
   !> Interface to register an axis to a MOM file
   function i_register_axis(handle, label, units, longname, cartesian, sense, &
       domain, data, edge_axis, calendar) result(axis)
-    import :: MOM_file, MOM_axis, domain1D
+    import :: MOM_file, MOM_axis, domain1D, wp
 
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
@@ -443,7 +445,7 @@ interface
       !! increase downward.
     type(domain1D), optional, intent(in) :: domain
       !< The domain decomposion for this axis
-    real, dimension(:), optional, intent(in) :: data
+    real(wp), dimension(:), optional, intent(in) :: data
       !< The coordinate values of the points on this axis
     logical, optional, intent(in) :: edge_axis
       !< If true, this axis marks an edge of the tracer cells
@@ -457,7 +459,7 @@ interface
   !> Interface to register a field to a netCDF file
   function i_register_field(handle, axes, label, units, longname, &
       pack, standard_name, checksum, conversion) result(field)
-    import :: MOM_file, MOM_axis, MOM_field, int64
+    import :: MOM_file, MOM_axis, MOM_field, int64, wp
     class(MOM_file), intent(inout) :: handle
         !< Handle for a file that is open for writing
     type(MOM_axis), intent(in) :: axes(:)
@@ -475,7 +477,7 @@ interface
       !< The standard (e.g., CMOR) name for this variable
     integer(kind=int64), dimension(:), optional, intent(in) :: checksum
       !< Checksum values that can be used to verify reads.
-    real, optional, intent(in) :: conversion
+    real(wp), optional, intent(in) :: conversion
       !< A factor to use to rescale the field before output [a A-1 ~> 1]
     type(MOM_field) :: field
       !< IO handle for field in MOM_file
@@ -497,20 +499,20 @@ interface
   !> Interface to write_field_4d()
   subroutine i_write_field_4d(handle, field_md, MOM_domain, field, tstamp, &
                               tile_count, fill_value)
-    import :: MOM_file, MOM_field, MOM_domain_type
+    import :: MOM_file, MOM_field, MOM_domain_type, wp
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
     type(MOM_field), intent(in) :: field_md
       !< Field type with metadata
     type(MOM_domain_type), intent(in) :: MOM_domain
       !< The MOM_Domain that describes the decomposition
-    real, intent(inout) :: field(:,:,:,:)
+    real(wp), intent(inout) :: field(:,:,:,:)
       !< Field to write
-    real, optional, intent(in) :: tstamp
+    real(wp), optional, intent(in) :: tstamp
       !< Model time of this field
     integer, optional, intent(in) :: tile_count
       !< PEs per tile (default: 1)
-    real, optional, intent(in) :: fill_value
+    real(wp), optional, intent(in) :: fill_value
       !< Missing data fill value
   end subroutine i_write_field_4d
 
@@ -518,20 +520,20 @@ interface
   !> Interface to write_field_3d()
   subroutine i_write_field_3d(handle, field_md, MOM_domain, field, tstamp, &
                               tile_count, fill_value)
-    import :: MOM_file, MOM_field, MOM_domain_type
+    import :: MOM_file, MOM_field, MOM_domain_type, wp
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
     type(MOM_field), intent(in) :: field_md
       !< Field type with metadata
     type(MOM_domain_type), intent(in) :: MOM_domain
       !< The MOM_Domain that describes the decomposition
-    real, intent(inout) :: field(:,:,:)
+    real(wp), intent(inout) :: field(:,:,:)
       !< Field to write
-    real, optional, intent(in) :: tstamp
+    real(wp), optional, intent(in) :: tstamp
       !< Model time of this field
     integer, optional, intent(in) :: tile_count
       !< PEs per tile (default: 1)
-    real, optional, intent(in) :: fill_value
+    real(wp), optional, intent(in) :: fill_value
       !< Missing data fill value
   end subroutine i_write_field_3d
 
@@ -539,48 +541,48 @@ interface
   !> Interface to write_field_2d()
   subroutine i_write_field_2d(handle, field_md, MOM_domain, field, tstamp, &
                               tile_count, fill_value)
-    import :: MOM_file, MOM_field, MOM_domain_type
+    import :: MOM_file, MOM_field, MOM_domain_type, wp
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
     type(MOM_field), intent(in) :: field_md
       !< Field type with metadata
     type(MOM_domain_type), intent(in) :: MOM_domain
       !< The MOM_Domain that describes the decomposition
-    real, dimension(:,:), intent(inout) :: field
+    real(wp), dimension(:,:), intent(inout) :: field
       !< Field to write
-    real, optional, intent(in) :: tstamp
+    real(wp), optional, intent(in) :: tstamp
       !< Model time of this field
     integer, optional, intent(in) :: tile_count
       !< PEs per tile (default: 1)
-    real, optional, intent(in) :: fill_value
+    real(wp), optional, intent(in) :: fill_value
       !< Missing data fill value
   end subroutine i_write_field_2d
 
 
   !> Interface to write_field_1d()
   subroutine i_write_field_1d(handle, field_md, field, tstamp)
-    import :: MOM_file, MOM_field
+    import :: MOM_file, MOM_field, wp
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
     type(MOM_field), intent(in) :: field_md
       !< Field type with metadata
-    real, dimension(:), intent(in) :: field
+    real(wp), dimension(:), intent(in) :: field
       !< Field to write
-    real, optional, intent(in) :: tstamp
+    real(wp), optional, intent(in) :: tstamp
       !< Model time of this field
   end subroutine i_write_field_1d
 
 
   !> Interface to write_field_0d()
   subroutine i_write_field_0d(handle, field_md, field, tstamp)
-    import :: MOM_file, MOM_field
+    import :: MOM_file, MOM_field, wp
     class(MOM_file), intent(inout) :: handle
       !< Handle for a file that is open for writing
     type(MOM_field), intent(in) :: field_md
       !< Field type with metadata
-    real, intent(in) :: field
+    real(wp), intent(in) :: field
       !< Field to write
-    real, optional, intent(in) :: tstamp
+    real(wp), optional, intent(in) :: tstamp
       !< Model time of this field
   end subroutine i_write_field_0d
 
@@ -992,7 +994,7 @@ function register_axis_infra(handle, label, units, longname, &
     !! downward.
   type(domain1D), optional, intent(in) :: domain
     !< The domain decomposion for this axis
-  real, dimension(:), optional, intent(in) :: data
+  real(wp), dimension(:), optional, intent(in) :: data
     !< The coordinate values of the points on this axis
   logical, optional, intent(in) :: edge_axis
     !< If true, this axis marks an edge of the tracer cells
@@ -1033,7 +1035,7 @@ function register_field_infra(handle, axes, label, units, longname, pack, &
     !< The standard (e.g., CMOR) name for this variable
   integer(kind=int64), dimension(:), optional, intent(in) :: checksum
     !< Checksum values that can be used to verify reads.
-  real, optional, intent(in) :: conversion
+  real(wp), optional, intent(in) :: conversion
     !< A factor to use to rescale the field before output [a A-1 ~> 1]
   type(MOM_field) :: field
     !< The field type where this information is stored
@@ -1053,7 +1055,7 @@ function register_field_infra(handle, axes, label, units, longname, pack, &
 
   call handle%fields%append(field_infra, label)
   field%label = label
-  field%conversion = 1.0 ; if (present(conversion)) field%conversion = conversion
+  field%conversion = 1.0_wp ; if (present(conversion)) field%conversion = conversion
 end function register_field_infra
 
 
@@ -1066,20 +1068,20 @@ subroutine write_field_4d_infra(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, intent(inout) :: field(:,:,:,:)
+  real(wp), intent(inout) :: field(:,:,:,:)
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(fieldtype) :: field_infra
-  real, allocatable :: unscaled_field(:,:,:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:,:,:) ! An unscaled version of field for output [a]
 
   field_infra = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_field(handle%handle_infra, field_infra, MOM_domain, field, &
         tstamp=tstamp, tile_count=tile_count, fill_value=fill_value)
   else
@@ -1101,20 +1103,20 @@ subroutine write_field_3d_infra(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, intent(inout) :: field(:,:,:)
+  real(wp), intent(inout) :: field(:,:,:)
     !< Field to write, perhaps in arbitrary rescaled units [A ~> a]
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(fieldtype) :: field_infra
-  real, allocatable :: unscaled_field(:,:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:,:) ! An unscaled version of field for output [a]
 
   field_infra = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_field(handle%handle_infra, field_infra, MOM_domain, field, &
         tstamp=tstamp, tile_count=tile_count, fill_value=fill_value)
   else
@@ -1137,20 +1139,20 @@ subroutine write_field_2d_infra(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, dimension(:,:), intent(inout) :: field
+  real(wp), dimension(:,:), intent(inout) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(fieldtype) :: field_infra
-  real, allocatable :: unscaled_field(:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:) ! An unscaled version of field for output [a]
 
   field_infra = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_field(handle%handle_infra, field_infra, MOM_domain, field, &
         tstamp=tstamp, tile_count=tile_count, fill_value=fill_value)
   else
@@ -1169,16 +1171,16 @@ subroutine write_field_1d_infra(handle, field_md, field, tstamp)
     !< Handle for a file that is open for writing
   type(MOM_field), intent(in) :: field_md
     !< Field type with metadata
-  real, dimension(:), intent(in) :: field
+  real(wp), dimension(:), intent(in) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
 
   type(fieldtype) :: field_infra
-  real, allocatable :: unscaled_field(:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:) ! An unscaled version of field for output [a]
 
   field_infra = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_field(handle%handle_infra, field_infra, field, tstamp=tstamp)
   else
     allocate(unscaled_field, source=field)
@@ -1195,13 +1197,13 @@ subroutine write_field_0d_infra(handle, field_md, field, tstamp)
     !< Handle for a file that is open for writing
   type(MOM_field), intent(in) :: field_md
     !< Field type with metadata
-  real, intent(in) :: field
+  real(wp), intent(in) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
 
   type(fieldtype) :: field_infra
-  real :: unscaled_field ! An unscaled version of field for output [a]
+  real(wp) :: unscaled_field ! An unscaled version of field for output [a]
 
   field_infra = handle%fields%get(field_md%label)
   unscaled_field = field_md%conversion*field
@@ -1287,7 +1289,7 @@ end subroutine get_file_fields_infra
 subroutine get_file_times_infra(handle, time_values, ntime)
   class(MOM_infra_file), intent(in) :: handle
     !< Handle for a file that is open for I/O
-  real, allocatable, dimension(:), intent(inout) :: time_values
+  real(wp), allocatable, dimension(:), intent(inout) :: time_values
     !< The real times for the records in file.
   integer, optional, intent(out) :: ntime
     !< The number of time levels in the file
@@ -1426,7 +1428,7 @@ function register_axis_nc(handle, label, units, longname, cartesian, sense, &
     !! downward.
   type(domain1D), optional, intent(in) :: domain
     !< The domain decomposion for this axis
-  real, dimension(:), optional, intent(in) :: data
+  real(wp), dimension(:), optional, intent(in) :: data
     !< The coordinate values of the points on this axis
   logical, optional, intent(in) :: edge_axis
     !< If true, this axis marks an edge of the tracer cells
@@ -1466,7 +1468,7 @@ function register_field_nc(handle, axes, label, units, longname, pack, &
     !< The standard (e.g., CMOR) name for this variable
   integer(kind=int64), dimension(:), optional, intent(in) :: checksum
     !< Checksum values that can be used to verify reads.
-  real, optional, intent(in) :: conversion
+  real(wp), optional, intent(in) :: conversion
     !< A factor to use to rescale the field before output [a A-1 ~> 1]
   type(MOM_field) :: field
 
@@ -1485,7 +1487,7 @@ function register_field_nc(handle, axes, label, units, longname, pack, &
     call handle%fields%append(field_nc, label)
   endif
   field%label = label
-  field%conversion = 1.0 ; if (present(conversion)) field%conversion = conversion
+  field%conversion = 1.0_wp ; if (present(conversion)) field%conversion = conversion
 end function register_field_nc
 
 
@@ -1513,22 +1515,22 @@ subroutine write_field_4d_nc(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, intent(inout) :: field(:,:,:,:)
+  real(wp), intent(inout) :: field(:,:,:,:)
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(netcdf_field) :: field_nc
-  real, allocatable :: unscaled_field(:,:,:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:,:,:) ! An unscaled version of field for output [a]
 
   if (.not. is_root_PE()) return
 
   field_nc = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_netcdf_field(handle%handle_nc, field_nc, field, time=tstamp)
   else
     allocate(unscaled_field, source=field)
@@ -1548,22 +1550,22 @@ subroutine write_field_3d_nc(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, intent(inout) :: field(:,:,:)
+  real(wp), intent(inout) :: field(:,:,:)
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(netcdf_field) :: field_nc
-  real, allocatable :: unscaled_field(:,:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:,:) ! An unscaled version of field for output [a]
 
   if (.not. is_root_PE()) return
 
   field_nc = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_netcdf_field(handle%handle_nc, field_nc, field, time=tstamp)
   else
     allocate(unscaled_field, source=field)
@@ -1583,22 +1585,22 @@ subroutine write_field_2d_nc(handle, field_md, MOM_domain, field, tstamp, &
     !< Field type with metadata
   type(MOM_domain_type), intent(in) :: MOM_domain
     !< The MOM_Domain that describes the decomposition
-  real, dimension(:,:), intent(inout) :: field
+  real(wp), dimension(:,:), intent(inout) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
   integer, optional, intent(in) :: tile_count
     !< PEs per tile (default: 1)
-  real, optional, intent(in) :: fill_value
+  real(wp), optional, intent(in) :: fill_value
     !< Missing data fill value
 
   type(netcdf_field) :: field_nc
-  real, allocatable :: unscaled_field(:,:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:,:) ! An unscaled version of field for output [a]
 
   if (.not. is_root_PE()) return
 
   field_nc = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_netcdf_field(handle%handle_nc, field_nc, field, time=tstamp)
   else
     allocate(unscaled_field, source=field)
@@ -1615,18 +1617,18 @@ subroutine write_field_1d_nc(handle, field_md, field, tstamp)
     !< Handle for a file that is open for writing
   type(MOM_field), intent(in) :: field_md
     !< Field type with metadata
-  real, dimension(:), intent(in) :: field
+  real(wp), dimension(:), intent(in) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
 
   type(netcdf_field) :: field_nc
-  real, allocatable :: unscaled_field(:) ! An unscaled version of field for output [a]
+  real(wp), allocatable :: unscaled_field(:) ! An unscaled version of field for output [a]
 
   if (.not. is_root_PE()) return
 
   field_nc = handle%fields%get(field_md%label)
-  if (field_md%conversion == 1.0) then
+  if (field_md%conversion == 1.0_wp) then
     call write_netcdf_field(handle%handle_nc, field_nc, field, time=tstamp)
   else
     allocate(unscaled_field, source=field)
@@ -1643,13 +1645,13 @@ subroutine write_field_0d_nc(handle, field_md, field, tstamp)
     !< Handle for a file that is open for writing
   type(MOM_field), intent(in) :: field_md
     !< Field type with metadata
-  real, intent(in) :: field
+  real(wp), intent(in) :: field
     !< Field to write
-  real, optional, intent(in) :: tstamp
+  real(wp), optional, intent(in) :: tstamp
     !< Model time of this field
 
   type(netcdf_field) :: field_nc
-  real :: unscaled_field ! An unscaled version of field for output [a]
+  real(wp) :: unscaled_field ! An unscaled version of field for output [a]
 
   if (.not. is_root_PE()) return
 
@@ -1802,10 +1804,10 @@ subroutine get_field_nc(handle, label, values, rescale)
     !< Handle of netCDF file to be read
   character(len=*), intent(in) :: label
     !< Field variable name
-  real, intent(inout) :: values(:,:)
+  real(wp), intent(inout) :: values(:,:)
     !< Field values read from the file.  It would be intent(out) but for the
     !! need to preserve any initialized values in the halo regions.
-  real, optional, intent(in) :: rescale
+  real(wp), optional, intent(in) :: rescale
     !< A multiplicative rescaling factor for the values that are read.
     !! Omitting this is the same as setting it to 1.
 
@@ -1823,7 +1825,7 @@ subroutine get_field_nc(handle, label, values, rescale)
     ! Local 1-based index bounds of compute domain
   integer :: bounds(2,2)
     ! Index bounds of domain
-  real, allocatable :: values_c(:,:)
+  real(wp), allocatable :: values_c(:,:)
     ! Field values on the compute domain, used for copying to a data domain
 
   isc = handle%HI%isc
@@ -1885,7 +1887,7 @@ subroutine get_field_nc(handle, label, values, rescale)
   ! values_c(:,:) to values(:,:).  But since rescale is only present for
   ! debugging, we can probably disregard this impact on performance.
   if (present(rescale)) then
-    if (rescale /= 1.0) then
+    if (rescale /= 1.0_wp) then
       values(iscl:iecl,jscl:jecl) = rescale * values(iscl:iecl,jscl:jecl)
     endif
   endif

@@ -13,6 +13,8 @@ module Recon1d_MPLM_WA_poly
 
 use Recon1d_MPLM_WA, only : MPLM_WA, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MPLM_WA_poly, testing
@@ -35,7 +37,7 @@ type, extends (MPLM_WA) :: MPLM_WA_poly
 
   ! Legacy representation
   integer :: degree !< Degree of polynomial used in legacy representation
-  real, allocatable, dimension(:,:) :: poly_coef !< Polynomial coefficients in legacy representation
+  real(wp), allocatable, dimension(:,:) :: poly_coef !< Polynomial coefficients in legacy representation
 
 contains
   !> Implementation of the MPLM_WA_poly initialization
@@ -70,7 +72,7 @@ contains
 subroutine init(this, n, h_neglect, check)
   class(MPLM_WA_poly), intent(out) :: this      !< This reconstruction
   integer,             intent(in)  :: n         !< Number of cells in this column
-  real, optional,      intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+  real(wp), optional,      intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
   logical, optional,   intent(in)  :: check     !< If true, enable some consistency checking
 
   this%n = n
@@ -92,13 +94,13 @@ end subroutine init
 !> Calculate a 1D MPLM_WA_poly reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(MPLM_WA_poly), intent(inout) :: this !< This reconstruction
-  real,           intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,           intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),           intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),           intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp(this%n) ! The PLM slopes (difference across cell) [A]
-  real :: mslp(this%n) ! The monotonized PLM slopes [A]
-  real :: e_r, edge ! Edge values [A]
-  real :: almost_one  ! A value that is slightly smaller than 1 [nondim]
+  real(wp) :: slp(this%n) ! The PLM slopes (difference across cell) [A]
+  real(wp) :: mslp(this%n) ! The monotonized PLM slopes [A]
+  real(wp) :: e_r, edge ! Edge values [A]
+  real(wp) :: almost_one  ! A value that is slightly smaller than 1 [nondim]
   integer :: k, n
 
   n = this%n
@@ -114,123 +116,123 @@ subroutine reconstruct(this, h, u)
   enddo ! end loop on interior cells
 
   ! Boundary cells use PCM. Extrapolation is handled after monotonization.
-  slp(1) = 0.
-  slp(n) = 0.
+  slp(1) = 0._wp
+  slp(n) = 0._wp
 
   ! This loop adjusts the slope so that edge values are monotonic.
   do k = 2, n-1
     mslp(k) = PLM_monotonized_slope( u(k-1), u(k), u(k+1), slp(k-1), slp(k), slp(k+1) )
   enddo ! end loop on interior cells
-  mslp(1) = 0.
-  mslp(n) = 0.
+  mslp(1) = 0._wp
+  mslp(n) = 0._wp
 
   ! Store and return edge values and polynomial coefficients.
-  almost_one = 1. - epsilon(e_r)
+  almost_one = 1._wp - epsilon(e_r)
   this%ul(1) = u(1)
   this%ur(1) = u(1)
   this%poly_coef(1,1) = u(1)
-  this%poly_coef(1,2) = 0.
+  this%poly_coef(1,2) = 0._wp
   do k = 2, n-1
-    this%ul(k) = u(k) - 0.5 * mslp(k) ! Left edge value of cell k
-    this%ur(k) = u(k) + 0.5 * mslp(k) ! Right edge value of cell k
+    this%ul(k) = u(k) - 0.5_wp * mslp(k) ! Left edge value of cell k
+    this%ur(k) = u(k) + 0.5_wp * mslp(k) ! Right edge value of cell k
 
     this%poly_coef(k,1) = this%ul(k)
     this%poly_coef(k,2) = this%ur(k) - this%ul(k)
     ! Check to see if this evaluation of the polynomial at x=1 would be
     ! monotonic w.r.t. the next cell's edge value. If not, scale back!
     edge = this%poly_coef(k,2) + this%poly_coef(k,1)
-    e_r = u(k+1) - 0.5 * sign( mslp(k+1), slp(k+1) )
-    if ( (edge-u(k))*(e_r-edge)<0.) then
+    e_r = u(k+1) - 0.5_wp * sign( mslp(k+1), slp(k+1) )
+    if ( (edge-u(k))*(e_r-edge)<0._wp) then
       this%poly_coef(k,2) = this%poly_coef(k,2) * almost_one
     endif
   enddo
   this%ul(n) = u(n)
   this%ur(n) = u(n)
   this%poly_coef(n,1) = u(n)
-  this%poly_coef(n,2) = 0.
+  this%poly_coef(n,2) = 0._wp
 
 end subroutine reconstruct
 
 !> Returns a limited PLM slope following White and Adcroft, 2008, in the same arbitrary
 !! units [A] as the input values.
 !! Note that this is not the same as the Colella and Woodward method.
-real elemental pure function PLM_slope_wa(h_l, h_c, h_r, h_neglect, u_l, u_c, u_r)
-  real, intent(in) :: h_l !< Thickness of left cell in arbitrary grid thickness units [H]
-  real, intent(in) :: h_c !< Thickness of center cell in arbitrary grid thickness units [H]
-  real, intent(in) :: h_r !< Thickness of right cell in arbitrary grid thickness units [H]
-  real, intent(in) :: h_neglect !< A negligible thickness [H]
-  real, intent(in) :: u_l !< Value of left cell in arbitrary units [A]
-  real, intent(in) :: u_c !< Value of center cell in arbitrary units [A]
-  real, intent(in) :: u_r !< Value of right cell in arbitrary units [A]
+real(wp) elemental pure function PLM_slope_wa(h_l, h_c, h_r, h_neglect, u_l, u_c, u_r)
+  real(wp), intent(in) :: h_l !< Thickness of left cell in arbitrary grid thickness units [H]
+  real(wp), intent(in) :: h_c !< Thickness of center cell in arbitrary grid thickness units [H]
+  real(wp), intent(in) :: h_r !< Thickness of right cell in arbitrary grid thickness units [H]
+  real(wp), intent(in) :: h_neglect !< A negligible thickness [H]
+  real(wp), intent(in) :: u_l !< Value of left cell in arbitrary units [A]
+  real(wp), intent(in) :: u_c !< Value of center cell in arbitrary units [A]
+  real(wp), intent(in) :: u_r !< Value of right cell in arbitrary units [A]
   ! Local variables
-  real :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
+  real(wp) :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
                                     ! differences across the cell [A]
-  real :: u_min, u_max ! Minimum and maximum value across cell [A]
+  real(wp) :: u_min, u_max ! Minimum and maximum value across cell [A]
 
   ! Side differences
   sigma_r = u_r - u_c
   sigma_l = u_c - u_l
 
   ! Quasi-second order difference
-  sigma_c = 2.0 * ( u_r - u_l ) * ( h_c / ( h_l + 2.0*h_c + h_r + h_neglect) )
+  sigma_c = 2.0_wp * ( u_r - u_l ) * ( h_c / ( h_l + 2.0_wp*h_c + h_r + h_neglect) )
 
   ! Limit slope so that reconstructions are bounded by neighbors
   u_min = min( u_l, u_c, u_r )
   u_max = max( u_l, u_c, u_r )
-  if ( (sigma_l * sigma_r) > 0.0 ) then
+  if ( (sigma_l * sigma_r) > 0.0_wp ) then
     ! This limits the slope so that the edge values are bounded by the
     ! two cell averages spanning the edge.
-    PLM_slope_wa = sign( min( abs(sigma_c), 2.*min( u_c - u_min, u_max - u_c ) ), sigma_c )
+    PLM_slope_wa = sign( min( abs(sigma_c), 2._wp*min( u_c - u_min, u_max - u_c ) ), sigma_c )
   else
     ! Extrema in the mean values require a PCM reconstruction avoid generating
     ! larger extreme values.
-    PLM_slope_wa = 0.0
+    PLM_slope_wa = 0.0_wp
   endif
 
   ! This block tests to see if roundoff causes edge values to be out of bounds
-  if (u_c - 0.5*abs(PLM_slope_wa) < u_min .or.  u_c + 0.5*abs(PLM_slope_wa) > u_max) then
-    PLM_slope_wa = PLM_slope_wa * ( 1. - epsilon(PLM_slope_wa) )
+  if (u_c - 0.5_wp*abs(PLM_slope_wa) < u_min .or.  u_c + 0.5_wp*abs(PLM_slope_wa) > u_max) then
+    PLM_slope_wa = PLM_slope_wa * ( 1._wp - epsilon(PLM_slope_wa) )
   endif
 
   ! An attempt to avoid inconsistency when the values become unrepresentable.
   ! ### The following 1.E-140 is dimensionally inconsistent. A newer version of
   ! PLM is progress that will avoid the need for such rounding.
-  if (abs(PLM_slope_wa) < 1.E-140) PLM_slope_wa = 0.
+  if (abs(PLM_slope_wa) < 1.E-140_wp) PLM_slope_wa = 0._wp
 
 end function PLM_slope_wa
 
 !> Returns a limited PLM slope following Colella and Woodward 1984, in the same
 !! arbitrary units as the input values [A].
-real elemental pure function PLM_monotonized_slope(u_l, u_c, u_r, s_l, s_c, s_r)
-  real, intent(in) :: u_l !< Value of left cell in arbitrary units [A]
-  real, intent(in) :: u_c !< Value of center cell in arbitrary units [A]
-  real, intent(in) :: u_r !< Value of right cell in arbitrary units [A]
-  real, intent(in) :: s_l !< PLM slope of left cell [A]
-  real, intent(in) :: s_c !< PLM slope of center cell [A]
-  real, intent(in) :: s_r !< PLM slope of right cell [A]
+real(wp) elemental pure function PLM_monotonized_slope(u_l, u_c, u_r, s_l, s_c, s_r)
+  real(wp), intent(in) :: u_l !< Value of left cell in arbitrary units [A]
+  real(wp), intent(in) :: u_c !< Value of center cell in arbitrary units [A]
+  real(wp), intent(in) :: u_r !< Value of right cell in arbitrary units [A]
+  real(wp), intent(in) :: s_l !< PLM slope of left cell [A]
+  real(wp), intent(in) :: s_c !< PLM slope of center cell [A]
+  real(wp), intent(in) :: s_r !< PLM slope of right cell [A]
   ! Local variables
-  real :: e_r, e_l, edge ! Right, left and temporary edge values [A]
-  real :: almost_two ! The number 2, almost [nondim]
-  real :: slp ! Magnitude of PLM central slope [A]
+  real(wp) :: e_r, e_l, edge ! Right, left and temporary edge values [A]
+  real(wp) :: almost_two ! The number 2, almost [nondim]
+  real(wp) :: slp ! Magnitude of PLM central slope [A]
 
-  almost_two = 2. * ( 1. - epsilon(s_c) )
+  almost_two = 2._wp * ( 1._wp - epsilon(s_c) )
 
   ! Edge values of neighbors abutting this cell
-  e_r = u_l + 0.5*s_l
-  e_l = u_r - 0.5*s_r
+  e_r = u_l + 0.5_wp*s_l
+  e_l = u_r - 0.5_wp*s_r
   slp = abs(s_c)
 
   ! Check that left edge is between right edge of cell to the left and this cell mean
-  edge = u_c - 0.5 * s_c
-  if ( ( edge - e_r ) * ( u_c - edge ) < 0. ) then
-    edge = 0.5 * ( edge + e_r )
+  edge = u_c - 0.5_wp * s_c
+  if ( ( edge - e_r ) * ( u_c - edge ) < 0._wp ) then
+    edge = 0.5_wp * ( edge + e_r )
     slp = min( slp, abs( edge - u_c ) * almost_two )
   endif
 
   ! Check that right edge is between left edge of cell to the right and this cell mean
-  edge = u_c + 0.5 * s_c
-  if ( ( edge - u_c ) * ( e_l - edge ) < 0. ) then
-    edge = 0.5 * ( edge + e_l )
+  edge = u_c + 0.5_wp * s_c
+  if ( ( edge - u_c ) * ( e_l - edge ) < 0._wp ) then
+    edge = 0.5_wp * ( edge + e_l )
     slp = min( slp, abs( edge - u_c ) * almost_two )
   endif
 
@@ -241,14 +243,14 @@ end function PLM_monotonized_slope
 !> Average between xa and xb for cell k of a 1D PLM reconstruction [A]
 !! Note: this uses the simple polynomial form a + b * x  on x E (0,1)
 !! which can overshoot at x=1
-real function average(this, k, xa, xb)
+real(wp) function average(this, k, xa, xb)
   class(MPLM_WA_poly), intent(in) :: this !< This reconstruction
   integer,        intent(in) :: k    !< Cell number
-  real,           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-  real,           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+  real(wp),           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+  real(wp),           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
 
   average = this%poly_coef(k,1) &
-          + this%poly_coef(k,2) * 0.5 * ( xb + xa )
+          + this%poly_coef(k,2) * 0.5_wp * ( xb + xa )
 
 end function average
 
@@ -266,29 +268,29 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
                                    isrc_start, isrc_end, isrc_max, isub_src, &
                                    u_sub, uh_sub, u02_err)
   class(MPLM_WA_poly), intent(in) :: this !< 1-D reconstruction type
-  real,    intent(in)  :: h0(*)  !< Source grid widths (size n0) [H]
-  real,    intent(in)  :: u0(*)  !< Source grid widths (size n0) [H]
+  real(wp),    intent(in)  :: h0(*)  !< Source grid widths (size n0) [H]
+  real(wp),    intent(in)  :: u0(*)  !< Source grid widths (size n0) [H]
   integer, intent(in)  :: n1      !< Number of cells in target grid
-  real,    intent(in)  :: h_sub(*) !< Overlapping sub-cell thicknesses, h_sub [H]
+  real(wp),    intent(in)  :: h_sub(*) !< Overlapping sub-cell thicknesses, h_sub [H]
   integer, intent(in)  :: isrc_start(*) !< Index of first sub-cell within each source cell
   integer, intent(in)  :: isrc_end(*) !< Index of last sub-cell within each source cell
   integer, intent(in)  :: isrc_max(*) !< Index of thickest sub-cell within each source cell
   integer, intent(in)  :: isub_src(*) !< Index of source cell for each sub-cell
-  real,    intent(out) :: u_sub(*) !< Sub-cell cell averages (size n1) [A]
-  real,    intent(out) :: uh_sub(*) !< Sub-cell cell integrals (size n1) [A H]
-  real,    intent(out) :: u02_err !< Integrated reconstruction error estimates [A H]
+  real(wp),    intent(out) :: u_sub(*) !< Sub-cell cell averages (size n1) [A]
+  real(wp),    intent(out) :: uh_sub(*) !< Sub-cell cell integrals (size n1) [A H]
+  real(wp),    intent(out) :: u02_err !< Integrated reconstruction error estimates [A H]
   ! Local variables
   integer :: i_sub ! Index of sub-cell
   integer :: i0 ! Index into h0(1:n0), source column
   integer :: i_max ! Used to record which sub-cell is the largest contribution of a source cell
-  real :: dh_max ! Used to record which sub-cell is the largest contribution of a source cell [H]
-  real :: xa, xb ! Non-dimensional position within a source cell (0..1) [nondim]
-  real :: dh ! The width of the sub-cell [H]
-  real :: duh ! The total amount of accumulated stuff (u*h) [A H]
-  real :: dh0_eff ! Running sum of source cell thickness [H]
+  real(wp) :: dh_max ! Used to record which sub-cell is the largest contribution of a source cell [H]
+  real(wp) :: xa, xb ! Non-dimensional position within a source cell (0..1) [nondim]
+  real(wp) :: dh ! The width of the sub-cell [H]
+  real(wp) :: duh ! The total amount of accumulated stuff (u*h) [A H]
+  real(wp) :: dh0_eff ! Running sum of source cell thickness [H]
   integer :: i0_last_thick_cell, n0
-  real :: u0_min(this%n), u0_max(this%n) ! Min/max of u0 for each source cell [A]
-  real :: ul, ur ! left/right edge values of cell i0
+  real(wp) :: u0_min(this%n), u0_max(this%n) ! Min/max of u0 for each source cell [A]
+  real(wp) :: ul, ur ! left/right edge values of cell i0
 
   n0 = this%n
 
@@ -298,15 +300,15 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
     ur = this%ur(i0)
     u0_min(i0) = min(ul, ur)
     u0_max(i0) = max(ul, ur)
-    if (h0(i0)>0.) i0_last_thick_cell = i0
+    if (h0(i0)>0._wp) i0_last_thick_cell = i0
   enddo
 
   ! Loop over each sub-cell to calculate average/integral values within each sub-cell.
   ! Uses: h_sub, isub_src, h0_eff
   ! Sets: u_sub, uh_sub
-  xa = 0.
-  dh0_eff = 0.
-  u02_err = 0.
+  xa = 0._wp
+  dh0_eff = 0._wp
+  u02_err = 0._wp
   do i_sub = 1, n0+n1
 
     ! Sub-cell thickness from loop above
@@ -319,12 +321,12 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
     ! Integral is over distance dh but expressed in terms of non-dimensional
     ! positions with source cell from xa to xb  (0 <= xa <= xb <= 1).
     dh0_eff = dh0_eff + dh ! Cumulative thickness within the source cell
-    if (h0(i0)>0.) then
+    if (h0(i0)>0._wp) then
       xb = dh0_eff / h0(i0) ! This expression yields xa <= xb <= 1.0
-      xb = min(1., xb) ! This is only needed when the total target column is wider than the source column
+      xb = min(1._wp, xb) ! This is only needed when the total target column is wider than the source column
       u_sub(i_sub) = this%average( i0, xa, xb )
     else ! Vanished cell
-      xb = 1.
+      xb = 1._wp
       u_sub(i_sub) = u0(i0)
     endif
     uh_sub(i_sub) = dh * u_sub(i_sub)
@@ -333,8 +335,8 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
 
     if (isub_src(i_sub+1) /= i0) then
       ! If the next sub-cell is in a different source cell, reset the position counters
-      dh0_eff = 0.
-      xa = 0.
+      dh0_eff = 0._wp
+      xa = 0._wp
     else
       xa = xb ! Next integral will start at end of last
     endif
@@ -350,12 +352,12 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
   ! Integral is over distance dh but expressed in terms of non-dimensional
   ! positions with source cell from xa to xb  (0 <= xa <= xb <= 1).
   dh0_eff = dh0_eff + dh ! Cumulative thickness within the source cell
-  if (h0(i0)>0.) then
+  if (h0(i0)>0._wp) then
     xb = dh0_eff / h0(i0) ! This expression yields xa <= xb <= 1.0
-    xb = min(1., xb) ! This is only needed when the total target column is wider than the source column
+    xb = min(1._wp, xb) ! This is only needed when the total target column is wider than the source column
     u_sub(i_sub) = this%average( i0, xa, xb )
   else ! Vanished cell
-    xb = 1.
+    xb = 1._wp
     u_sub(i_sub) = u0(i0)
   endif
   u_sub(i_sub) = max( u_sub(i_sub), u0_min(i0) )
@@ -370,9 +372,9 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
   do i0 = 1, i0_last_thick_cell
     i_max = isrc_max(i0)
     dh_max = h_sub(i_max)
-    if (dh_max > 0.) then
+    if (dh_max > 0._wp) then
       ! duh will be the sum of sub-cell integrals within the source cell except for the thickest sub-cell.
-      duh = 0.
+      duh = 0._wp
       do i_sub = isrc_start(i0), isrc_end(i0)
         if (i_sub /= i_max) duh = duh + uh_sub(i_sub)
       enddo
@@ -392,36 +394,36 @@ end subroutine remap_to_sub_grid
 !> Checks the MPLM_WA_poly reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(MPLM_WA_poly), intent(in) :: this !< This reconstruction
-  real,                intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,                intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),                intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),                intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell reconstruction is monotonic within each cell (it should be as a straight line)
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check the cell is a straight line (to within machine precision)
   do k = 1, this%n
-    if ( abs(2. * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
-         max(abs(2. * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
+    if ( abs(2._wp * this%u_mean(k) - ( this%ul(k) + this%ur(k) )) > epsilon(this%u_mean(1)) * &
+         max(abs(2._wp * this%u_mean(k)), abs(this%ul(k)), abs(this%ur(k))) ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of right edges, w.r.t. the cell means
   do K = 1, this%n-1
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. the cell means
   do K = 2, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. this cell mean and the previous cell right edge
@@ -429,7 +431,7 @@ logical function check_reconstruction(this, h, u)
   ! Note that in OM4 implementation, we were not consistent for top and bottom layers due
   ! extrapolation using cell means rather than edge values
   do K = 2, this%n-2
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
 end function check_reconstruction
@@ -441,8 +443,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,             intent(in)    :: stdout  !< I/O channel for stdout
   integer,             intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -454,31 +456,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3), ull(3), urr(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/1.,2.,5./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/1.,4.,5./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/1._wp,2._wp,5._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/1._wp,4._wp,5._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,2.,0./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/0.,2.,0./), 'dfdx in center')
-  call test%real_arr(3, ur, (/0.,2.,0./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/0._wp,2._wp,0._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/0._wp,2._wp,0._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/0._wp,2._wp,0._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(3, um, (/1.,3.25,5./), 'Return interval average')
+  call test%real_arr(3, um, (/1._wp,3.25_wp,5._wp/), 'Return interval average')
 
   unit_tests = test%summarize('MPLM_WA_poly:unit_tests')
 

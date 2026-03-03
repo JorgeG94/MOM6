@@ -32,6 +32,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : surface, thermo_var_ptrs
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 !> A state hidden in module data that is very much not allowed in MOM6
@@ -52,9 +54,9 @@ type, public :: MOM_generic_tracer_CS ; private
   character(len = 200) :: IC_file !< The file in which the generic tracer initial values can
                                   !! be found, or an empty string for internal initialization.
   logical :: Z_IC_file !< If true, the generic_tracer IC_file is in Z-space.  The default is false.
-  real :: tracer_IC_val = 0.0    !< The initial value assigned to tracers, in
+  real(wp) :: tracer_IC_val = 0.0_wp    !< The initial value assigned to tracers, in
                                  !! concentration units [conc]
-  real :: tracer_land_val = -1.0 !< The values of tracers used where land is masked out, in
+  real(wp) :: tracer_land_val = -1.0_wp !< The values of tracers used where land is masked out, in
                                  !! concentration units [conc]
   logical :: tracers_may_reinit  !< If true, tracers may go through the
                                  !! initialization code if they are not found in the restart files.
@@ -121,7 +123,7 @@ subroutine initialize_MOM_generic_tracer(restart, day, G, GV, US, h, tv, param_f
   type(ocean_grid_type),                 intent(inout) :: G    !< The ocean's grid structure
   type(verticalGrid_type),               intent(in)    :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),                 intent(in)    :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(thermo_var_ptrs),                 intent(in) :: tv      !< A structure pointing to various thermodynamic
                                                                !! variables
   type(param_file_type),                 intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -149,28 +151,28 @@ subroutine MOM_generic_tracer_column_physics(h_old, h_new, ea, eb, fluxes, Hml, 
       evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G     !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV    !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea    !< The amount of fluid entrained from the layer
                                                !! above during this call [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb    !< The amount of fluid entrained from the layer
                                                !! below during this call [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                                !! and tracer forcing fields.
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: Hml  !< Mixed layer depth [Z ~> m]
-  real,                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in) :: Hml  !< Mixed layer depth [Z ~> m]
+  real(wp),                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US    !< A dimensional unit scaling type
   type(MOM_generic_tracer_CS), pointer :: CS   !< Pointer to the control structure for this module.
   type(thermo_var_ptrs),   intent(in) :: tv    !< A structure pointing to various thermodynamic variables
   type(optics_type),       intent(in) :: optics !< The structure containing optical properties.
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                                !! be fluxed out of the top layer in a timestep [nondim]
                                                !   Stored previously in diabatic CS.
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which fluxes
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which fluxes
                                                !!  can be applied [H ~> m or kg m-2]
                                                !   Stored previously in diabatic CS.
 
@@ -184,7 +186,7 @@ end subroutine MOM_generic_tracer_column_physics
 function MOM_generic_tracer_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),              intent(in)    :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in)    :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< Layer thicknesses [H ~> m or kg m-2]
   type(EFP_type), dimension(:),       intent(out)   :: stocks !< The mass-weighted integrated amount of each
                                                               !! tracer, in kg times concentration units [kg conc]
   type(MOM_generic_tracer_CS),        pointer       :: CS     !< Pointer to the control structure for this module.
@@ -201,7 +203,7 @@ function MOM_generic_tracer_stock(h, stocks, G, GV, CS, names, units, stock_inde
   ! These should never be used, but they are set to avoid compile-time warnings
   do m=1,size(names) ; names(m) = "" ; enddo
   do m=1,size(units) ; units(m) = "" ; enddo
-  do m=1,size(stocks) ; stocks(m) = real_to_EFP(0.0) ; enddo
+  do m=1,size(stocks) ; stocks(m) = real_to_EFP(0.0_wp) ; enddo
 
 end function MOM_generic_tracer_stock
 
@@ -214,22 +216,22 @@ function MOM_generic_tracer_min_max(ind_start, got_minmax, gmin, gmax, G, CS, na
   integer,                        intent(in)    :: ind_start !< The index of the tracer to start with
   logical, dimension(:),          intent(out)   :: got_minmax !< Indicates whether the global min and
                                                           !! max are found for each tracer
-  real, dimension(:),             intent(out)   :: gmin   !< Global minimum of each tracer [conc]
-  real, dimension(:),             intent(out)   :: gmax   !< Global maximum of each tracer [conc]
+  real(wp), dimension(:),             intent(out)   :: gmin   !< Global minimum of each tracer [conc]
+  real(wp), dimension(:),             intent(out)   :: gmax   !< Global maximum of each tracer [conc]
   type(ocean_grid_type),          intent(in)    :: G      !< The ocean's grid structure
   type(MOM_generic_tracer_CS),    pointer       :: CS     !< Pointer to the control structure for this module.
   character(len=*), dimension(:), intent(out)   :: names  !< The names of the stocks calculated.
   character(len=*), dimension(:), intent(out)   :: units  !< The units of the stocks calculated.
-  real, dimension(:),   optional, intent(out)   :: xgmin  !< The x-position of the global minimum in the
+  real(wp), dimension(:),   optional, intent(out)   :: xgmin  !< The x-position of the global minimum in the
                                                           !! units of G%geoLonT, often [degrees_E] or [km] or [m]
-  real, dimension(:),   optional, intent(out)   :: ygmin  !< The y-position of the global minimum in the
+  real(wp), dimension(:),   optional, intent(out)   :: ygmin  !< The y-position of the global minimum in the
                                                           !! units of G%geoLatT, often [degrees_N] or [km] or [m]
-  real, dimension(:),   optional, intent(out)   :: zgmin  !< The z-position of the global minimum [layer]
-  real, dimension(:),   optional, intent(out)   :: xgmax  !< The x-position of the global maximum in the
+  real(wp), dimension(:),   optional, intent(out)   :: zgmin  !< The z-position of the global minimum [layer]
+  real(wp), dimension(:),   optional, intent(out)   :: xgmax  !< The x-position of the global maximum in the
                                                           !! units of G%geoLonT, often [degrees_E] or [km] or [m]
-  real, dimension(:),   optional, intent(out)   :: ygmax  !< The y-position of the global maximum in the
+  real(wp), dimension(:),   optional, intent(out)   :: ygmax  !< The y-position of the global maximum in the
                                                           !! units of G%geoLatT, often [degrees_N] or [km] or [m]
-  real, dimension(:),   optional, intent(out)   :: zgmax  !< The z-position of the global maximum [layer]
+  real(wp), dimension(:),   optional, intent(out)   :: zgmax  !< The z-position of the global maximum [layer]
   integer                                       :: MOM_generic_tracer_min_max !< Return value, the
                                                           !! number of tracers done here.
 
@@ -244,12 +246,12 @@ function MOM_generic_tracer_min_max(ind_start, got_minmax, gmin, gmax, G, CS, na
   gmin(:) = huge(gmin)
   do m=1,size(names) ; names(m) = "" ; enddo
   do m=1,size(units) ; units(m) = "" ; enddo
-  if (present(xgmin)) xgmin(:) = 0.0
-  if (present(ygmin)) ygmin(:) = 0.0
-  if (present(zgmin)) zgmin(:) = 0.0
-  if (present(xgmax)) xgmax(:) = 0.0
-  if (present(ygmax)) ygmax(:) = 0.0
-  if (present(zgmax)) zgmax(:) = 0.0
+  if (present(xgmin)) xgmin(:) = 0.0_wp
+  if (present(ygmin)) ygmin(:) = 0.0_wp
+  if (present(zgmin)) zgmin(:) = 0.0_wp
+  if (present(xgmax)) xgmax(:) = 0.0_wp
+  if (present(ygmax)) ygmax(:) = 0.0_wp
+  if (present(zgmax)) zgmax(:) = 0.0_wp
 
 end function MOM_generic_tracer_min_max
 
@@ -263,7 +265,7 @@ subroutine MOM_generic_tracer_surface_state(sfc_state, h, G, GV, CS)
   type(verticalGrid_type),               intent(in)    :: GV   !< The ocean's vertical grid structure
   type(surface),                         intent(inout) :: sfc_state !< A structure containing fields that
                                                                !! describe the surface state of the ocean.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(MOM_generic_tracer_CS),           pointer       :: CS   !< Pointer to the control structure for this module.
 
 end subroutine MOM_generic_tracer_surface_state
@@ -277,7 +279,7 @@ end subroutine MOM_generic_flux_init
 subroutine MOM_generic_tracer_fluxes_accumulate(flux_tmp, weight)
   type(forcing), intent(in)    :: flux_tmp  !< A structure containing pointers to
                                             !! thermodynamic and tracer forcing fields.
-  real,          intent(in)    :: weight    !< A weight for accumulating this flux [nondim]
+  real(wp),          intent(in)    :: weight    !< A weight for accumulating this flux [nondim]
 
 end subroutine MOM_generic_tracer_fluxes_accumulate
 
@@ -285,11 +287,11 @@ end subroutine MOM_generic_tracer_fluxes_accumulate
 subroutine MOM_generic_tracer_get(name,member,array, CS)
   character(len=*),         intent(in)  :: name   !< Name of requested tracer.
   character(len=*),         intent(in)  :: member !< The tracer element to return.
-  real, dimension(:,:,:),   intent(out) :: array  !< Array filled by this routine, in arbitrary units [A]
+  real(wp), dimension(:,:,:),   intent(out) :: array  !< Array filled by this routine, in arbitrary units [A]
   type(MOM_generic_tracer_CS), pointer  :: CS     !< Pointer to the control structure for this module.
 
   ! Local variables
-  real, dimension(:,:,:),   pointer :: array_ptr  ! The tracer in the generic tracer structures, in
+  real(wp), dimension(:,:,:),   pointer :: array_ptr  ! The tracer in the generic tracer structures, in
                                                   ! arbitrary units [A]
   character(len=128), parameter :: sub_name = 'MOM_generic_tracer_get'
 

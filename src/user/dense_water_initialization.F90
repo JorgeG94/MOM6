@@ -15,6 +15,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : thermo_var_ptrs
 use MOM_verticalGrid,  only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -25,27 +27,27 @@ public dense_water_initialize_sponges
 
 character(len=40) :: mdl = "dense_water_initialization" !< Module name
 
-real, parameter :: default_sill  = 0.2  !< Default depth of the sill [nondim]
-real, parameter :: default_shelf = 0.4  !< Default depth of the shelf [nondim]
-real, parameter :: default_mld   = 0.25 !< Default depth of the mixed layer [nondim]
+real(wp), parameter :: default_sill  = 0.2_wp  !< Default depth of the sill [nondim]
+real(wp), parameter :: default_shelf = 0.4_wp  !< Default depth of the shelf [nondim]
+real(wp), parameter :: default_mld   = 0.25_wp !< Default depth of the mixed layer [nondim]
 
 contains
 
 !> Initialize the topography field for the dense water experiment
 subroutine dense_water_initialize_topography(D, G, param_file, max_depth)
   type(dyn_horgrid_type),  intent(in)  :: G !< The dynamic horizontal grid type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                            intent(out) :: D !< Ocean bottom depth [Z ~> m]
   type(param_file_type),   intent(in)  :: param_file !< Parameter file structure
-  real,                    intent(in)  :: max_depth !< Maximum ocean depth [Z ~> m]
+  real(wp),                    intent(in)  :: max_depth !< Maximum ocean depth [Z ~> m]
 
   ! Local variables
-  real, dimension(5) :: domain_params ! nondimensional widths of all domain sections [nondim]
-  real :: sill_frac     ! Depth of the sill separating downslope from upslope, as a fraction of
+  real(wp), dimension(5) :: domain_params ! nondimensional widths of all domain sections [nondim]
+  real(wp) :: sill_frac     ! Depth of the sill separating downslope from upslope, as a fraction of
                         ! the basin depth [nondim]
-  real :: shelf_frac    ! Depth of the shelf region accumulating dense water for overflow,
+  real(wp) :: shelf_frac    ! Depth of the shelf region accumulating dense water for overflow,
                         ! as a fraction the basin depth [nondim]
-  real :: x             ! Horizontal position normalized by the domain width [nondim]
+  real(wp) :: x             ! Horizontal position normalized by the domain width [nondim]
   integer :: i, j
 
   call get_param(param_file, mdl, "DENSE_WATER_DOMAIN_PARAMS", domain_params, &
@@ -79,7 +81,7 @@ subroutine dense_water_initialize_topography(D, G, param_file, max_depth)
         D(i,j) = max_depth
       elseif (x <= domain_params(2)) then
         ! downslope region, linear
-        D(i,j) = max_depth - (1.0 - sill_frac) * max_depth * &
+        D(i,j) = max_depth - (1.0_wp - sill_frac) * max_depth * &
              (x - domain_params(1)) / (domain_params(2) - domain_params(1))
       elseif (x <= domain_params(3)) then
         ! sill region
@@ -103,16 +105,16 @@ subroutine dense_water_initialize_TS(G, GV, US, param_file, T, S, h, just_read)
   type(verticalGrid_type),                   intent(in)  :: GV !< Vertical grid control structure
   type(unit_scale_type),                     intent(in)  :: US !< A dimensional unit scaling type
   type(param_file_type),                     intent(in)  :: param_file !< Parameter file structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T !< Output temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S !< Output salinity [S ~> ppt]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h !< Layer thicknesses [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: T !< Output temperature [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(out) :: S !< Output salinity [S ~> ppt]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)  :: h !< Layer thicknesses [Z ~> m]
   logical,                                   intent(in)  :: just_read !< If true, this call will
                                                       !! only read parameters without changing T & S.
   ! Local variables
-  real :: mld             ! The initial mixed layer depth as a fraction of the maximum depth [nondim]
-  real :: S_ref, S_range  ! The reference salinity and its range in the initial conditions [S ~> ppt]
-  real :: T_ref           ! The reference temperature [C ~> degC]
-  real :: zi, zmid        ! Depths from the surface nondimensionalized by the maximum depth [nondim]
+  real(wp) :: mld             ! The initial mixed layer depth as a fraction of the maximum depth [nondim]
+  real(wp) :: S_ref, S_range  ! The reference salinity and its range in the initial conditions [S ~> ppt]
+  real(wp) :: T_ref           ! The reference temperature [C ~> degC]
+  real(wp) :: zi, zmid        ! Depths from the surface nondimensionalized by the maximum depth [nondim]
   integer :: i, j, k, nz
 
   nz = GV%ke
@@ -121,11 +123,11 @@ subroutine dense_water_initialize_TS(G, GV, US, param_file, T, S, h, just_read)
        "Depth of unstratified mixed layer as a fraction of the water column.", &
        units="nondim", default=default_mld, do_not_log=just_read)
   call get_param(param_file, mdl, "S_REF", S_ref, 'Reference salinity', &
-                 default=35.0, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
+                 default=35.0_wp, units="ppt", scale=US%ppt_to_S, do_not_log=just_read)
   call get_param(param_file, mdl,"T_REF", T_ref, 'Reference temperature', &
                 units='degC', scale=US%degC_to_C, fail_if_missing=.not.just_read, do_not_log=just_read)
   call get_param(param_file, mdl,"S_RANGE", S_range, 'Initial salinity range', &
-                units="ppt", default=2.0, scale=US%ppt_to_S, do_not_log=just_read)
+                units="ppt", default=2.0_wp, scale=US%ppt_to_S, do_not_log=just_read)
 
   if (just_read) return ! All run-time parameters have been read, so return.
 
@@ -134,17 +136,17 @@ subroutine dense_water_initialize_TS(G, GV, US, param_file, T, S, h, just_read)
 
   do j = G%jsc,G%jec
     do i = G%isc,G%iec
-      zi = 0.
+      zi = 0._wp
       do k = 1,nz
         ! nondimensional middle of layer
-        zmid = zi + 0.5 * h(i,j,k) / G%max_depth
+        zmid = zi + 0.5_wp * h(i,j,k) / G%max_depth
 
         if (zmid < mld) then
           ! use reference salinity in the mixed layer
           S(i,j,k) = S_ref
         else
           ! linear between bottom of mixed layer and bottom
-          S(i,j,k) = S_ref + S_range * (zmid - mld) / (1.0 - mld)
+          S(i,j,k) = S_ref + S_range * (zmid - mld) / (1.0_wp - mld)
         endif
 
         zi = zi + h(i,j,k) / G%max_depth
@@ -159,7 +161,7 @@ subroutine dense_water_initialize_sponges(G, GV, US, tv, depth_tot, param_file, 
   type(verticalGrid_type), intent(in) :: GV !< Vertical grid control structure
   type(unit_scale_type),   intent(in) :: US !< A dimensional unit scaling type
   type(thermo_var_ptrs),   intent(in) :: tv !< Thermodynamic variables
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real(wp), dimension(SZI_(G),SZJ_(G)), &
                            intent(in) :: depth_tot  !< The nominal total depth of the ocean [Z ~> m]
   type(param_file_type),   intent(in) :: param_file !< Parameter file structure
   logical,                 intent(in) :: use_ALE !< ALE flag
@@ -167,42 +169,42 @@ subroutine dense_water_initialize_sponges(G, GV, US, tv, depth_tot, param_file, 
   type(ALE_sponge_CS),     pointer    :: ACSp !< ALE sponge control structure pointer
 
   ! Local variables
-  real :: west_sponge_time_scale, east_sponge_time_scale ! Sponge timescales [T ~> s]
-  real :: west_sponge_width ! The fraction of the domain in which the western (outflow) sponge is active [nondim]
-  real :: east_sponge_width ! The fraction of the domain in which the eastern (outflow) sponge is active [nondim]
+  real(wp) :: west_sponge_time_scale, east_sponge_time_scale ! Sponge timescales [T ~> s]
+  real(wp) :: west_sponge_width ! The fraction of the domain in which the western (outflow) sponge is active [nondim]
+  real(wp) :: east_sponge_width ! The fraction of the domain in which the eastern (outflow) sponge is active [nondim]
 
-  real, dimension(SZI_(G),SZJ_(G)) :: Idamp ! inverse damping timescale [T-1 ~> s-1]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz ! sponge layer thicknesses in height units [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: T  ! sponge temperature [C ~> degC]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: S  ! sponge salinity [S ~> ppt]
-  real, dimension(SZK_(GV)+1) :: e0, eta1D ! interface positions for ALE sponge [Z ~> m]
-  real :: x         ! Horizontal position normalized by the domain width [nondim]
-  real :: zi, zmid  ! Depths from the surface nondimensionalized by the maximum depth [nondim]
-  real :: dist      ! Distance from the edge of a sponge normalized by the width of that sponge [nondim]
-  real :: mld       ! The initial mixed layer depth as a fraction of the maximum depth [nondim]
-  real :: S_ref, S_range  ! The reference salinity and its range in the initial conditions [S ~> ppt]
-  real :: S_dense   ! The salinity of the dense water being formed on the shelf [S ~> ppt]
-  real :: T_ref     ! The reference temperature [C ~> degC]
-  real :: sill_frac ! Fractional depths of the sill, relative to the maximum depth [nondim]
+  real(wp), dimension(SZI_(G),SZJ_(G)) :: Idamp ! inverse damping timescale [T-1 ~> s-1]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: dz ! sponge layer thicknesses in height units [Z ~> m]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: T  ! sponge temperature [C ~> degC]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: S  ! sponge salinity [S ~> ppt]
+  real(wp), dimension(SZK_(GV)+1) :: e0, eta1D ! interface positions for ALE sponge [Z ~> m]
+  real(wp) :: x         ! Horizontal position normalized by the domain width [nondim]
+  real(wp) :: zi, zmid  ! Depths from the surface nondimensionalized by the maximum depth [nondim]
+  real(wp) :: dist      ! Distance from the edge of a sponge normalized by the width of that sponge [nondim]
+  real(wp) :: mld       ! The initial mixed layer depth as a fraction of the maximum depth [nondim]
+  real(wp) :: S_ref, S_range  ! The reference salinity and its range in the initial conditions [S ~> ppt]
+  real(wp) :: S_dense   ! The salinity of the dense water being formed on the shelf [S ~> ppt]
+  real(wp) :: T_ref     ! The reference temperature [C ~> degC]
+  real(wp) :: sill_frac ! Fractional depths of the sill, relative to the maximum depth [nondim]
   integer :: i, j, k, nz
 
   nz = GV%ke
 
   call get_param(param_file, mdl, "DENSE_WATER_WEST_SPONGE_TIME_SCALE", west_sponge_time_scale, &
                  "The time scale on the west (outflow) of the domain for restoring. "//&
-                 "If zero, the sponge is disabled.", units="s", default=0., scale=US%s_to_T)
+                 "If zero, the sponge is disabled.", units="s", default=0._wp, scale=US%s_to_T)
   call get_param(param_file, mdl, "DENSE_WATER_WEST_SPONGE_WIDTH", west_sponge_width, &
                  "The fraction of the domain in which the western (outflow) sponge is active.", &
-                 units="nondim", default=0.1)
+                 units="nondim", default=0.1_wp)
   call get_param(param_file, mdl, "DENSE_WATER_EAST_SPONGE_TIME_SCALE", east_sponge_time_scale, &
                  "The time scale on the east (outflow) of the domain for restoring. "//&
-                 "If zero, the sponge is disabled.", units="s", default=0., scale=US%s_to_T)
+                 "If zero, the sponge is disabled.", units="s", default=0._wp, scale=US%s_to_T)
   call get_param(param_file, mdl, "DENSE_WATER_EAST_SPONGE_WIDTH", east_sponge_width, &
                  "The fraction of the domain in which the eastern (outflow) sponge is active.", &
-                 units="nondim", default=0.1)
+                 units="nondim", default=0.1_wp)
   call get_param(param_file, mdl, "DENSE_WATER_EAST_SPONGE_SALT", S_dense, &
                  "Salt anomaly of the dense water being formed in the overflow region.", &
-                 units="ppt", default=4.0, scale=US%ppt_to_S)
+                 units="ppt", default=4.0_wp, scale=US%ppt_to_S)
 
   call get_param(param_file, mdl, "DENSE_WATER_MLD", mld, &
                  units="nondim", default=default_mld, do_not_log=.true.)
@@ -210,31 +212,31 @@ subroutine dense_water_initialize_sponges(G, GV, US, tv, depth_tot, param_file, 
                  units="nondim", default=default_sill, do_not_log=.true.)
 
   call get_param(param_file, mdl, "S_REF", S_ref, &
-                 units="ppt", default=35.0, scale=US%ppt_to_S, do_not_log=.true.)
+                 units="ppt", default=35.0_wp, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(param_file, mdl, "S_RANGE", S_range, &
-                 units="ppt", default=2.0, scale=US%ppt_to_S, do_not_log=.true.)
+                 units="ppt", default=2.0_wp, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(param_file, mdl, "T_REF", T_ref, &
                  units='degC', scale=US%degC_to_C, fail_if_missing=.true., do_not_log=.true.)
 
   ! no active sponges
-  if (west_sponge_time_scale <= 0. .and. east_sponge_time_scale <= 0.) return
+  if (west_sponge_time_scale <= 0._wp .and. east_sponge_time_scale <= 0._wp) return
 
   ! everywhere is initially unsponged
-  Idamp(:,:) = 0.0
+  Idamp(:,:) = 0.0_wp
 
   do j = G%jsc, G%jec
     do i = G%isc,G%iec
-      if (G%mask2dT(i,j) > 0.) then
+      if (G%mask2dT(i,j) > 0._wp) then
         ! nondimensional x position
         x = (G%geoLonT(i,j) - G%west_lon) / G%len_lon
 
-        if (west_sponge_time_scale > 0. .and. x < west_sponge_width) then
-          dist = 1. - x / west_sponge_width
+        if (west_sponge_time_scale > 0._wp .and. x < west_sponge_width) then
+          dist = 1._wp - x / west_sponge_width
           ! scale restoring by depth into sponge
-          Idamp(i,j) = 1. / west_sponge_time_scale * max(0., min(1., dist))
-        elseif (east_sponge_time_scale > 0. .and. x > (1. - east_sponge_width)) then
-          dist = 1. - (1. - x) / east_sponge_width
-          Idamp(i,j) = 1. / east_sponge_time_scale * max(0., min(1., dist))
+          Idamp(i,j) = 1._wp / west_sponge_time_scale * max(0._wp, min(1._wp, dist))
+        elseif (east_sponge_time_scale > 0._wp .and. x > (1._wp - east_sponge_width)) then
+          dist = 1._wp - (1._wp - x) / east_sponge_width
+          Idamp(i,j) = 1._wp / east_sponge_time_scale * max(0._wp, min(1._wp, dist))
         endif
       endif
     enddo
@@ -243,7 +245,7 @@ subroutine dense_water_initialize_sponges(G, GV, US, tv, depth_tot, param_file, 
   if (use_ALE) then
     ! construct a uniform grid for the sponge
     do k = 1,nz
-      e0(k) = -G%max_depth * (real(k - 1) / real(nz))
+      e0(k) = -G%max_depth * (real(k - 1, wp) / real(nz, wp))
     enddo
     e0(nz+1) = -G%max_depth
 
@@ -271,19 +273,19 @@ subroutine dense_water_initialize_sponges(G, GV, US, tv, depth_tot, param_file, 
 
     do j = G%jsc,G%jec
       do i = G%isc,G%iec
-        zi = 0.
+        zi = 0._wp
         x = (G%geoLonT(i,j) - G%west_lon) / G%len_lon
         do k = 1,nz
           ! nondimensional middle of layer
-          zmid = zi + 0.5 * dz(i,j,k) / G%max_depth
+          zmid = zi + 0.5_wp * dz(i,j,k) / G%max_depth
 
-          if (x > (1. - east_sponge_width)) then
+          if (x > (1._wp - east_sponge_width)) then
             !if (zmid >= 0.9 * sill_frac) &
               S(i,j,k) = S_ref + S_dense
           else
             ! linear between bottom of mixed layer and bottom
             if (zmid >= mld) &
-              S(i,j,k) = S_ref + S_range * (zmid - mld) / (1.0 - mld)
+              S(i,j,k) = S_ref + S_range * (zmid - mld) / (1.0_wp - mld)
           endif
 
           zi = zi + dz(i,j,k) / G%max_depth

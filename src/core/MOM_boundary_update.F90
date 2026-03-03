@@ -27,6 +27,8 @@ use shelfwave_initialization,  only : shelfwave_OBC_end, shelfwave_OBC_CS
 use dyed_channel_initialization, only : dyed_channel_update_flow, register_dyed_channel_OBC
 use dyed_channel_initialization, only : dyed_channel_OBC_end, dyed_channel_OBC_CS
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -154,7 +156,7 @@ subroutine update_OBC_data(OBC, G, GV, US, tv, h, CS, Time)
   type(verticalGrid_type),                   intent(in)    :: GV   !< Ocean vertical grid structure
   type(unit_scale_type),                     intent(in)    :: US   !< A dimensional unit scaling type
   type(thermo_var_ptrs),                     intent(in)    :: tv   !< Thermodynamics structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: h    !< layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(inout) :: h    !< layer thicknesses [H ~> m or kg m-2]
   type(ocean_OBC_type),                      pointer       :: OBC  !< Open boundary structure
   type(update_OBC_CS),                       pointer       :: CS   !< Control structure for OBCs
   type(time_type),                           intent(in)    :: Time !< Model time

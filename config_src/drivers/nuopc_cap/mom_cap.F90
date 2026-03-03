@@ -93,6 +93,7 @@ use NUOPC_Model, only: SetVM
 
 #ifndef CESMCOUPLED
   use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
+use MOM_datatypes, only : wp
 #endif
 
 implicit none; private
@@ -160,7 +161,7 @@ type(is_restart_fh_type) :: restartfh_info     ! For flexible restarts in UFS
 character(len=8)  :: restart_mode = 'alarms'
 character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
-real(8) :: timere
+real(8, wp) :: timere
 
 contains
 
@@ -468,7 +469,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   integer                                :: inst_index
   logical                                :: i2o_per_cat
   logical                                :: found=.false.       ! rpointer inquiry
-  real(8)                                :: MPI_Wtime, timeiads
+  real(8, wp)                                :: MPI_Wtime, timeiads
 !--------------------------------
 
   rc = ESMF_SUCCESS
@@ -752,7 +753,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
            Ice_ocean_boundary% p (isc:iec,jsc:jec),               &
            Ice_ocean_boundary% lrunoff (isc:iec,jsc:jec),         &
            Ice_ocean_boundary% frunoff (isc:iec,jsc:jec),         &
-           source=0.0)
+           source=0.0_wp)
 
   ! Allocate memory for fields coming from multiple ice categories
   if (Ice_ocean_boundary%ice_ncat > 0) &
@@ -760,7 +761,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
              Ice_ocean_boundary% swnet_afracr(isc:iec,jsc:jec), &
              Ice_ocean_boundary% swpen_ifrac_n(isc:iec,jsc:jec,1:Ice_ocean_boundary%ice_ncat), &
              Ice_ocean_boundary% ifrac_n(isc:iec,jsc:jec,1:Ice_ocean_boundary%ice_ncat), &
-             source=0.0)
+             source=0.0_wp)
 
   if (cesm_coupled) then
     allocate(Ice_ocean_boundary% hrain (isc:iec,jsc:jec),           &
@@ -773,7 +774,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
              Ice_ocean_boundary% frunoff_glc (isc:iec,jsc:jec),     &
              Ice_ocean_boundary% hrofl_glc (isc:iec,jsc:jec),       &
              Ice_ocean_boundary% hrofi_glc (isc:iec,jsc:jec),       &
-             source=0.0)
+             source=0.0_wp)
 
     if (use_MARBL) then
       allocate(Ice_ocean_boundary% nhx_dep (isc:iec,jsc:jec),         &
@@ -785,19 +786,19 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
               Ice_ocean_boundary% seaice_bc_flux (isc:iec,jsc:jec),      &
               Ice_ocean_boundary% atm_co2_prog (isc:iec,jsc:jec),    &
               Ice_ocean_boundary% atm_co2_diag (isc:iec,jsc:jec),    &
-              source=0.0)
+              source=0.0_wp)
     endif
   endif
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then
-      allocate( Ice_ocean_boundary%lamult(isc:iec,jsc:jec), source=0.0)
+      allocate( Ice_ocean_boundary%lamult(isc:iec,jsc:jec), source=0.0_wp)
     else if (wave_method == "SURFACE_BANDS") then
       call query_ocean_state(ocean_state, NumWaveBands=Ice_ocean_boundary%num_stk_bands)
       allocate(Ice_ocean_boundary%ustkb(isc:iec,jsc:jec,Ice_ocean_boundary%num_stk_bands), &
                Ice_ocean_boundary%vstkb(isc:iec,jsc:jec,Ice_ocean_boundary%num_stk_bands), &
                Ice_ocean_boundary%stk_wavenumbers(Ice_ocean_boundary%num_stk_bands),       &
-               source=0.0)
+               source=0.0_wp)
       call query_ocean_state(ocean_state, WaveNumbers=Ice_ocean_boundary%stk_wavenumbers, unscale=.true.)
     else
       call MOM_error(FATAL, "Unsupported WAVE_METHOD encountered in NUOPC cap.")
@@ -963,11 +964,11 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   logical                                    :: found
   logical                                    :: isPresent, isSet
   integer(ESMF_KIND_I4), pointer             :: dataPtr_mask(:,:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_area(:,:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_xcen(:,:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_ycen(:,:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_xcor(:,:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_ycor(:,:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_area(:,:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_xcen(:,:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_ycen(:,:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_xcor(:,:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_ycor(:,:)
   integer                                    :: mpicom
   integer                                    :: localPet
   integer                                    :: localPeCount
@@ -983,28 +984,28 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   integer                                    :: spatialDim
   integer                                    :: numOwnedElements
   type(ESMF_Array)                           :: elemMaskArray
-  real(ESMF_KIND_R8)    , pointer            :: ownedElemCoords(:)
-  real(ESMF_KIND_R8)    , pointer            :: lat(:), latMesh(:)
-  real(ESMF_KIND_R8)    , pointer            :: lon(:), lonMesh(:)
+  real(ESMF_KIND_R8, wp)    , pointer            :: ownedElemCoords(:)
+  real(ESMF_KIND_R8, wp)    , pointer            :: lat(:), latMesh(:)
+  real(ESMF_KIND_R8, wp)    , pointer            :: lon(:), lonMesh(:)
   integer(ESMF_KIND_I4) , pointer            :: mask(:), maskMesh(:)
-  real(ESMF_KIND_R8)                         :: diff_lon, diff_lat
-  real                                       :: eps_omesh
-  real(ESMF_KIND_R8)                         :: L2_to_rad2
+  real(ESMF_KIND_R8, wp)                         :: diff_lon, diff_lat
+  real(wp)                                       :: eps_omesh
+  real(ESMF_KIND_R8, wp)                         :: L2_to_rad2
   type(ESMF_Field)                           :: lfield
-  real(ESMF_KIND_R8), allocatable            :: mesh_areas(:)
-  real(ESMF_KIND_R8), allocatable            :: model_areas(:)
-  real(ESMF_KIND_R8), pointer                :: dataPtr_mesh_areas(:)
-  real(ESMF_KIND_R8)                         :: min_areacor(2)
-  real(ESMF_KIND_R8)                         :: max_areacor(2)
-  real(ESMF_KIND_R8)                         :: min_areacor_glob(2)
-  real(ESMF_KIND_R8)                         :: max_areacor_glob(2)
+  real(ESMF_KIND_R8, wp), allocatable            :: mesh_areas(:)
+  real(ESMF_KIND_R8, wp), allocatable            :: model_areas(:)
+  real(ESMF_KIND_R8, wp), pointer                :: dataPtr_mesh_areas(:)
+  real(ESMF_KIND_R8, wp)                         :: min_areacor(2)
+  real(ESMF_KIND_R8, wp)                         :: max_areacor(2)
+  real(ESMF_KIND_R8, wp)                         :: min_areacor_glob(2)
+  real(ESMF_KIND_R8, wp)                         :: max_areacor_glob(2)
   character(len=*), parameter                :: subname='(MOM_cap:InitializeRealize)'
   integer                                    :: niproc, njproc
   integer                                    :: ip, jp, pe_ix
   integer                                    :: num_elim_blocks ! number of blocks to be eliminated
   integer                                    :: num_elim_cells_global, num_elim_cells_local, num_elim_cells_remaining
   integer, allocatable                       :: cell_mask(:,:)
-  real(8)                                    :: MPI_Wtime, timeirls
+  real(8, wp)                                    :: MPI_Wtime, timeirls
   !--------------------------------
 
   rc = ESMF_SUCCESS
@@ -1239,7 +1240,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
 
     eps_omesh = get_eps_omesh(ocean_state)
     do n = 1,lsize
-      diff_lon = abs(mod(lonMesh(n) - lon(n),360.0))
+      diff_lon = abs(mod(lonMesh(n) - lon(n),360.0_wp))
       if (diff_lon > eps_omesh) then
         frmt = "('ERROR: Difference between ESMF Mesh and MOM6 domain coords is "//&
                "greater than parameter EPS_OMESH. n, lonMesh(n), lon(n), diff_lon, "//&
@@ -1590,7 +1591,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   !     timeslice=1, relaxedFlag=.true., rc=rc)
   !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  timere = 0.
+  timere = 0._wp
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timeirls
 
 end subroutine InitializeRealize
@@ -1621,7 +1622,7 @@ subroutine DataInitialize(gcomp, rc)
   type(ESMF_Field)                       :: field
   character(len=64),allocatable          :: fieldNameList(:)
   character(len=*),parameter  :: subname='(MOM_cap:DataInitialize)'
-  real(8)                                :: MPI_Wtime, timedis
+  real(8, wp)                                :: MPI_Wtime, timedis
   !--------------------------------
 
   if(write_runtimelog) timedis = MPI_Wtime()
@@ -1739,7 +1740,7 @@ subroutine ModelAdvance(gcomp, rc)
   character(len=:), allocatable          :: rpointer_filename
   character(len=17)                      :: timestamp
   integer                                :: num_rest_files
-  real(8)                                :: MPI_Wtime, timers
+  real(8, wp)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
 
@@ -1747,7 +1748,7 @@ subroutine ModelAdvance(gcomp, rc)
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
   if(write_runtimelog) then
      timers = MPI_Wtime()
-     if(timere>0. .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time since last time step ',timers-timere
+     if(timere>0._wp .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time since last time step ',timers-timere
   endif
 
   call shr_log_setLogUnit (stdout)
@@ -2224,7 +2225,7 @@ subroutine ocean_model_finalize(gcomp, rc)
   integer                                :: alarmCount
   logical                                :: write_restart
   character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
-  real(8)                                :: MPI_Wtime, timefs
+  real(8, wp)                                :: MPI_Wtime, timefs
 
   if (is_root_pe()) then
     write(stdout,*) 'MOM: --- finalize called ---'
@@ -2266,7 +2267,7 @@ end subroutine ocean_model_finalize
 
 !> Set scalar data from state for a particula name
 subroutine State_SetScalar(value, scalar_id, State, mytask, scalar_name, scalar_count,  rc)
-  real(ESMF_KIND_R8),intent(in)     :: value
+  real(ESMF_KIND_R8, wp),intent(in)     :: value
   integer,           intent(in)     :: scalar_id
   type(ESMF_State),  intent(inout)  :: State
   integer,           intent(in)     :: mytask
@@ -2276,7 +2277,7 @@ subroutine State_SetScalar(value, scalar_id, State, mytask, scalar_name, scalar_
 
   ! local variables
   type(ESMF_Field)                :: field
-  real(ESMF_KIND_R8), pointer     :: farrayptr(:,:)
+  real(ESMF_KIND_R8, wp), pointer     :: farrayptr(:,:)
   character(len=*), parameter     :: subname='(MOM_cap:State_SetScalar)'
   !--------------------------------------------------------
 
@@ -2316,8 +2317,8 @@ subroutine MOM_RealizeFields(state, nfields, field_defs, tag, ice_ocean_boundary
   ! local variables
   integer                     :: i
   type(ESMF_Field)            :: field
-  real(ESMF_KIND_R8), pointer :: fldptr1d(:)   ! for mesh
-  real(ESMF_KIND_R8), pointer :: fldptr2d(:,:) ! for grid
+  real(ESMF_KIND_R8, wp), pointer :: fldptr1d(:)   ! for mesh
+  real(ESMF_KIND_R8, wp), pointer :: fldptr2d(:,:) ! for grid
   character(len=*),parameter  :: subname='(MOM_cap:MOM_RealizeFields)'
   !--------------------------------------------------------
 
@@ -2354,7 +2355,7 @@ subroutine MOM_RealizeFields(state, nfields, field_defs, tag, ice_ocean_boundary
             ! initialize fldptr to zero
             call ESMF_FieldGet(field, farrayPtr=fldptr2d, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            fldptr2d(:,:) = 0.0
+            fldptr2d(:,:) = 0.0_wp
           endif
 
         else if (present(mesh)) then
@@ -2368,7 +2369,7 @@ subroutine MOM_RealizeFields(state, nfields, field_defs, tag, ice_ocean_boundary
             ! initialize fldptr to zero
             call ESMF_FieldGet(field, farrayPtr=fldptr2d, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            fldptr2d(:,:) = 0.0
+            fldptr2d(:,:) = 0.0_wp
           else
             field = ESMF_FieldCreate(mesh=mesh, typekind=ESMF_TYPEKIND_R8, meshloc=ESMF_MESHLOC_ELEMENT, &
                  name=field_defs(i)%shortname, rc=rc)
@@ -2377,7 +2378,7 @@ subroutine MOM_RealizeFields(state, nfields, field_defs, tag, ice_ocean_boundary
             ! initialize fldptr to zero
             call ESMF_FieldGet(field, farrayPtr=fldptr1d, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            fldptr1d(:) = 0.0
+            fldptr1d(:) = 0.0_wp
           endif
         endif
       endif
@@ -2441,7 +2442,7 @@ contains  !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     ! initialize fldptr to zero
     call ESMF_FieldGet(field, farrayPtr=fldptr2d, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    fldptr2d(:,:) = 0.0
+    fldptr2d(:,:) = 0.0_wp
 
   end subroutine SetScalarField
 

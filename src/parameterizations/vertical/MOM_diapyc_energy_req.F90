@@ -15,6 +15,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_variables,     only : thermo_var_ptrs
 use MOM_verticalGrid,  only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public diapyc_energy_req_init, diapyc_energy_req_calc, diapyc_energy_req_test, diapyc_energy_req_end
@@ -28,9 +30,9 @@ public diapyc_energy_req_init, diapyc_energy_req_calc, diapyc_energy_req_test, d
 type, public :: diapyc_energy_req_CS ; private
   logical :: initialized = .false. !< A variable that is here because empty
                                !! structures are not permitted by some compilers.
-  real :: test_Kh_scaling      !< A scaling factor for the diapycnal diffusivity [nondim]
-  real :: ColHt_scaling        !< A scaling factor for the column height change correction term [nondim]
-  real :: VonKar               !< The von Karman coefficient as used in this module [nondim]
+  real(wp) :: test_Kh_scaling      !< A scaling factor for the diapycnal diffusivity [nondim]
+  real(wp) :: ColHt_scaling        !< A scaling factor for the column height change correction term [nondim]
+  real(wp) :: VonKar               !< The von Karman coefficient as used in this module [nondim]
   logical :: use_test_Kh_profile !< If true, use the internal test diffusivity profile in place of
                                !! any that might be passed in as an argument.
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
@@ -52,33 +54,33 @@ subroutine diapyc_energy_req_test(h_3d, dt, tv, G, GV, US, CS, Kd_int)
   type(ocean_grid_type),          intent(in)    :: G    !< The ocean's grid structure.
   type(verticalGrid_type),        intent(in)    :: GV   !< The ocean's vertical grid structure.
   type(unit_scale_type),          intent(in)    :: US   !< A dimensional unit scaling type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,GV%ke), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed,GV%ke), &
                                   intent(in)    :: h_3d !< Layer thickness before entrainment [H ~> m or kg m-2].
   type(thermo_var_ptrs),          intent(inout) :: tv   !< A structure containing pointers to any
                                                         !! available thermodynamic fields.
                                                         !! Absent fields have NULL ptrs.
-  real,                           intent(in)    :: dt   !< The amount of time covered by this call [T ~> s].
+  real(wp),                           intent(in)    :: dt   !< The amount of time covered by this call [T ~> s].
   type(diapyc_energy_req_CS),     pointer       :: CS   !< This module's control structure.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,GV%ke+1), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed,GV%ke+1), &
                         optional, intent(in)    :: Kd_int !< Interface diffusivities [H Z T-1 ~> m2 s-1 or kg m-1 s-1]
 
   ! Local variables
-  real, dimension(GV%ke) :: &
+  real(wp), dimension(GV%ke) :: &
     T0, S0, &   ! T0 & S0 are columns of initial temperatures and salinities [C ~> degC] and [S ~> ppt].
     h_col, &    ! h_col is a column of thicknesses h at tracer points [H ~> m or kg m-2].
     dz_col      ! dz_col is a column of vertical distances across layers at tracer points [Z ~> m]
-  real, dimension( G%isd:G%ied,GV%ke) :: &
+  real(wp), dimension( G%isd:G%ied,GV%ke) :: &
     dz_2d        ! A 2-d slice of the vertical distance across layers [Z ~> m]
-  real, dimension(GV%ke+1) :: &
+  real(wp), dimension(GV%ke+1) :: &
     Kd, &        ! A column of diapycnal diffusivities at interfaces [H Z T-1 ~> m2 s-1 or kg m-1 s-1].
     h_top, h_bot ! Distances from the top or bottom [H ~> m or kg m-2].
-  real :: dz_h_int  ! The ratio of the vertical distances across the layers surrounding an interface
+  real(wp) :: dz_h_int  ! The ratio of the vertical distances across the layers surrounding an interface
                  ! over the layer thicknesses [H Z-1 ~> nondim or kg m-3]
-  real :: ustar  ! The local friction velocity [Z T-1 ~> m s-1]
-  real :: absf   ! The absolute value of the Coriolis parameter [T-1 ~> s-1]
-  real :: htot   ! The sum of the thicknesses [H ~> m or kg m-2].
-  real :: energy_Kd ! The energy used by diapycnal mixing [R Z L2 T-3 ~> W m-2].
-  real :: tmp1  ! A temporary array [H2 ~> m2 or kg2 m-4]
+  real(wp) :: ustar  ! The local friction velocity [Z T-1 ~> m s-1]
+  real(wp) :: absf   ! The absolute value of the Coriolis parameter [T-1 ~> s-1]
+  real(wp) :: htot   ! The sum of the thicknesses [H ~> m or kg m-2].
+  real(wp) :: energy_Kd ! The energy used by diapycnal mixing [R Z L2 T-3 ~> W m-2].
+  real(wp) :: tmp1  ! A temporary array [H2 ~> m2 or kg2 m-4]
   integer :: i, j, k, is, ie, js, je, nz
   logical :: may_print
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -93,7 +95,7 @@ subroutine diapyc_energy_req_test(h_3d, dt, tv, G, GV, US, CS, Kd_int)
   do j=js,je
     call thickness_to_dz(h_3d, tv, dz_2d, j, G, GV)
 
-    do i=is,ie ; if (G%mask2dT(i,j) > 0.0) then
+    do i=is,ie ; if (G%mask2dT(i,j) > 0.0_wp) then
 
       do k=1,nz
         T0(k) = tv%T(i,j,k) ; S0(k) = tv%S(i,j,k)
@@ -104,21 +106,21 @@ subroutine diapyc_energy_req_test(h_3d, dt, tv, G, GV, US, CS, Kd_int)
       if (present(Kd_int) .and. .not.CS%use_test_Kh_profile) then
         do k=1,nz+1 ; Kd(K) = CS%test_Kh_scaling*Kd_int(i,j,K) ; enddo
       else
-        htot = 0.0 ; h_top(1) = 0.0
+        htot = 0.0_wp ; h_top(1) = 0.0_wp
         do k=1,nz
           h_top(K+1) = h_top(K) + h_col(k)
         enddo
         htot = h_top(nz+1)
 
-        h_bot(nz+1) = 0.0
+        h_bot(nz+1) = 0.0_wp
         do k=nz,1,-1
           h_bot(K) = h_bot(K+1) + h_col(k)
         enddo
 
-        ustar = 0.01*US%m_to_Z*US%T_to_s ! Change this to being an input parameter?
-        absf = 0.25*((abs(G%CoriolisBu(I-1,J-1)) + abs(G%CoriolisBu(I,J))) + &
+        ustar = 0.01_wp*US%m_to_Z*US%T_to_s ! Change this to being an input parameter?
+        absf = 0.25_wp*((abs(G%CoriolisBu(I-1,J-1)) + abs(G%CoriolisBu(I,J))) + &
                      (abs(G%CoriolisBu(I-1,J-1)) + abs(G%CoriolisBu(I,J))))
-        Kd(1) = 0.0 ; Kd(nz+1) = 0.0
+        Kd(1) = 0.0_wp ; Kd(nz+1) = 0.0_wp
         if (GV%Boussinesq) then
           do K=2,nz
             tmp1 = h_top(K) * h_bot(K)
@@ -154,16 +156,16 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
   type(ocean_grid_type),    intent(in)    :: G    !< The ocean's grid structure.
   type(verticalGrid_type),  intent(in)    :: GV   !< The ocean's vertical grid structure.
   type(unit_scale_type),    intent(in)    :: US   !< A dimensional unit scaling type
-  real, dimension(GV%ke),   intent(in)    :: h_in !< Layer thickness before entrainment,
+  real(wp), dimension(GV%ke),   intent(in)    :: h_in !< Layer thickness before entrainment,
                                                   !! [H ~> m or kg m-2]
-  real, dimension(GV%ke),   intent(in)    :: dz_in !< Vertical distance across layers before
+  real(wp), dimension(GV%ke),   intent(in)    :: dz_in !< Vertical distance across layers before
                                                   !! entrainment [Z ~> m]
-  real, dimension(GV%ke),   intent(in)    :: T_in !< The layer temperatures [C ~> degC].
-  real, dimension(GV%ke),   intent(in)    :: S_in !< The layer salinities [S ~> ppt].
-  real, dimension(GV%ke+1), intent(in)    :: Kd   !< The interfaces diapycnal diffusivities
+  real(wp), dimension(GV%ke),   intent(in)    :: T_in !< The layer temperatures [C ~> degC].
+  real(wp), dimension(GV%ke),   intent(in)    :: S_in !< The layer salinities [S ~> ppt].
+  real(wp), dimension(GV%ke+1), intent(in)    :: Kd   !< The interfaces diapycnal diffusivities
                                                   !! [H Z T-1 ~> m2 s-1 or kg m-1 s-1].
-  real,                     intent(in)    :: dt   !< The amount of time covered by this call [T ~> s].
-  real,                     intent(out)   :: energy_Kd !< The column-integrated rate of energy
+  real(wp),                     intent(in)    :: dt   !< The amount of time covered by this call [T ~> s].
+  real(wp),                     intent(out)   :: energy_Kd !< The column-integrated rate of energy
                                                   !! consumption by diapycnal diffusion [R Z L2 T-3 ~> W m-2].
   type(thermo_var_ptrs),    intent(inout) :: tv   !< A structure containing pointers to any
                                                   !! available thermodynamic fields.
@@ -180,7 +182,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 ! The various estimates are taken because they will later be used as templates
 ! for other bits of code.
 
-  real, dimension(GV%ke) :: &
+  real(wp), dimension(GV%ke) :: &
     p_lay, &    ! Average pressure of a layer [R L2 T-2 ~> Pa].
     dSV_dT, &   ! Partial derivative of specific volume with temperature [R-1 C-1 ~> m3 kg-1 degC-1].
     dSV_dS, &   ! Partial derivative of specific volume with salinity [R-1 S-1 ~> m3 kg-1 ppt-1].
@@ -240,13 +242,13 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
                 ! ensure positive definiteness [Z ~> m]
   ! Note that the following arrays have extra (ficticious) layers above or below the
   ! water column for code convenience
-  real, dimension(0:GV%ke+1) :: &
+  real(wp), dimension(0:GV%ke+1) :: &
     Te, Se      ! Running incomplete estimates of the new temperatures and salinities [C ~> degC] and [S ~> ppt]
-  real, dimension(0:GV%ke) :: &
+  real(wp), dimension(0:GV%ke) :: &
     Te_a, Se_a  ! Running incomplete estimates of the new temperatures and salinities [C ~> degC] and [S ~> ppt]
-  real, dimension(GV%ke+1) :: &
+  real(wp), dimension(GV%ke+1) :: &
     Te_b, Se_b  ! Running incomplete estimates of the new temperatures and salinities [C ~> degC] and [S ~> ppt]
-  real, dimension(GV%ke+1) :: &
+  real(wp), dimension(GV%ke+1) :: &
     pres, &     ! Interface pressures [R L2 T-2 ~> Pa].
     pres_Z, &   ! The hydrostatic interface pressure, which is used to relate
                 ! the changes in column thickness to the energy that is radiated
@@ -261,34 +263,34 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
                 ! tridiagonal solver [H ~> m or kg m-2].
     Kd_so_far   ! The value of Kddt_h that has been applied already in
                 ! calculating the energy changes [H ~> m or kg m-2].
-  real, dimension(GV%ke+1,4) :: &
+  real(wp), dimension(GV%ke+1,4) :: &
     PE_chg_k, &     ! The integrated potential energy change within a timestep due
                     ! to the diffusivity at interface K for 4 different orders of
                     ! accumulating the diffusivities [R Z L2 T-2 ~> J m-2].
     ColHt_cor_k     ! The correction to the potential energy change due to
                     ! changes in the net column height [R Z L2 T-2 ~> J m-2].
-  real :: b1        ! b1 is used by the tridiagonal solver [H-1 ~> m-1 or m2 kg-1].
-  real :: Kd0       ! The value of Kddt_h that has already been applied [H ~> m or kg m-2].
-  real :: dKd       ! The change in the value of Kddt_h [H ~> m or kg m-2].
-  real :: h_neglect ! A thickness that is so small it is usually lost
+  real(wp) :: b1        ! b1 is used by the tridiagonal solver [H-1 ~> m-1 or m2 kg-1].
+  real(wp) :: Kd0       ! The value of Kddt_h that has already been applied [H ~> m or kg m-2].
+  real(wp) :: dKd       ! The change in the value of Kddt_h [H ~> m or kg m-2].
+  real(wp) :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [H ~> m or kg m-2].
-  real :: Kddt_h_guess ! A guess of the final value of Kddt_h [H ~> m or kg m-2].
-  real :: dMass     ! The mass per unit area within a layer [R Z ~> kg m-2].
-  real :: dPres     ! The hydrostatic pressure change across a layer [R L2 T-2 ~> Pa].
-  real :: rho_here  ! The in-situ density [R ~> kg m-3].
-  real :: PE_change ! The change in column potential energy from applying Kddt_h at the
+  real(wp) :: Kddt_h_guess ! A guess of the final value of Kddt_h [H ~> m or kg m-2].
+  real(wp) :: dMass     ! The mass per unit area within a layer [R Z ~> kg m-2].
+  real(wp) :: dPres     ! The hydrostatic pressure change across a layer [R L2 T-2 ~> Pa].
+  real(wp) :: rho_here  ! The in-situ density [R ~> kg m-3].
+  real(wp) :: PE_change ! The change in column potential energy from applying Kddt_h at the
                     ! present interface [R L2 Z T-2 ~> J m-2].
-  real :: ColHt_cor ! The correction to PE_chg that is made due to a net
+  real(wp) :: ColHt_cor ! The correction to PE_chg that is made due to a net
                     ! change in the column height [R L2 Z T-2 ~> J m-2].
-  real :: htot      ! A running sum of thicknesses [H ~> m or kg m-2].
-  real :: dztot     ! A running sum of vertical distances across layers [Z ~> m]
+  real(wp) :: htot      ! A running sum of thicknesses [H ~> m or kg m-2].
+  real(wp) :: dztot     ! A running sum of vertical distances across layers [Z ~> m]
   logical :: do_print
 
   ! The following are a bunch of diagnostic arrays for debugging purposes.
-  real, dimension(GV%ke) :: &
+  real(wp), dimension(GV%ke) :: &
     Ta, Tb, &   ! Copies of temperature profiles for debugging [C ~> degC]
     Sa, Sb      ! Copies of salinity profiles for debugging [S ~> ppt]
-  real, dimension(GV%ke+1) :: &
+  real(wp), dimension(GV%ke+1) :: &
     dPEa_dKd, dPEa_dKd_est, &   ! Estimates of the partial derivative of the column potential energy
                                 ! change with Kddt_h  [R Z L2 T-2 H-1 ~> J m-3 or J kg-1].
     dPEb_dKd, dPEb_dKd_est, &   ! Estimates of the partial derivative of the column potential energy
@@ -299,13 +301,13 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     dPEa_dKd_trunc, dPEb_dKd_trunc ! Estimates of the truncation error in estimates of the partial
                                 ! derivative of the column potential energy change with
                                 ! Kddt_h  [R Z L2 T-2 H-1 ~> J m-3 or J kg-1].
-  real :: PE_chg_tot1A, PE_chg_tot2A ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
-  real :: PE_chg_tot1B, PE_chg_tot2B ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
-  real :: PE_chg_tot1C, PE_chg_tot2C ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
-  real :: PE_chg_tot1D, PE_chg_tot2D ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
-  real :: T_chg_totA, T_chg_totB ! Vertically integrated temperature changes [C H ~> degC m or degC kg m-2]
-  real :: T_chg_totC, T_chg_totD ! Vertically integrated temperature changes [C H ~> degC m or degC kg m-2]
-  real :: PE_chg(6) ! The potential energy change within the first few iterations [R Z L2 T-2 ~> J m-2]
+  real(wp) :: PE_chg_tot1A, PE_chg_tot2A ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
+  real(wp) :: PE_chg_tot1B, PE_chg_tot2B ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
+  real(wp) :: PE_chg_tot1C, PE_chg_tot2C ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
+  real(wp) :: PE_chg_tot1D, PE_chg_tot2D ! Changes in column potential energy [R Z L2 T-2 ~> J m-2]
+  real(wp) :: T_chg_totA, T_chg_totB ! Vertically integrated temperature changes [C H ~> degC m or degC kg m-2]
+  real(wp) :: T_chg_totC, T_chg_totD ! Vertically integrated temperature changes [C H ~> degC m or degC kg m-2]
+  real(wp) :: PE_chg(6) ! The potential energy change within the first few iterations [R Z L2 T-2 ~> J m-2]
 
   integer :: k, nz, itt, k_cent
   logical :: surface_BL, bottom_BL, central, halves, debug
@@ -319,12 +321,12 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
   do_print = .false. ; if (present(may_print) .and. present(CS)) do_print = may_print
 
-  dPEa_dKd(:) = 0.0 ; dPEa_dKd_est(:) = 0.0 ; dPEa_dKd_err(:) = 0.0
-  dPEa_dKd_err_norm(:) = 0.0 ; dPEa_dKd_trunc(:) = 0.0
-  dPEb_dKd(:) = 0.0 ; dPEb_dKd_est(:) = 0.0 ; dPEb_dKd_err(:) = 0.0
-  dPEb_dKd_err_norm(:) = 0.0 ; dPEb_dKd_trunc(:) = 0.0
+  dPEa_dKd(:) = 0.0_wp ; dPEa_dKd_est(:) = 0.0_wp ; dPEa_dKd_err(:) = 0.0_wp
+  dPEa_dKd_err_norm(:) = 0.0_wp ; dPEa_dKd_trunc(:) = 0.0_wp
+  dPEb_dKd(:) = 0.0_wp ; dPEb_dKd_est(:) = 0.0_wp ; dPEb_dKd_err(:) = 0.0_wp
+  dPEb_dKd_err_norm(:) = 0.0_wp ; dPEb_dKd_trunc(:) = 0.0_wp
 
-  htot = 0.0 ; dztot = 0.0 ; pres(1) = 0.0 ; pres_Z(1) = 0.0 ; Z_int(1) = 0.0
+  htot = 0.0_wp ; dztot = 0.0_wp ; pres(1) = 0.0_wp ; pres_Z(1) = 0.0_wp ; Z_int(1) = 0.0_wp
   do k=1,nz
     T0(k) = T_in(k) ; S0(k) = S_in(k)
     h_tr(k) = h_in(k)
@@ -333,27 +335,27 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     dztot = dztot + dz_tr(k)
     pres(K+1) = pres(K) + (GV%g_Earth * GV%H_to_RZ) * h_tr(k)
     pres_Z(K+1) = pres(K+1)
-    p_lay(k) = 0.5*(pres(K) + pres(K+1))
+    p_lay(k) = 0.5_wp*(pres(K) + pres(K+1))
     Z_int(K+1) = Z_int(K) - h_tr(k)
   enddo
   do k=1,nz
-    h_tr(k) = max(h_tr(k), 1e-15*htot)
-    dz_tr(k) = max(dz_tr(k), 1e-15*dztot)
+    h_tr(k) = max(h_tr(k), 1e-15_wp*htot)
+    dz_tr(k) = max(dz_tr(k), 1e-15_wp*dztot)
   enddo
 
   ! Introduce a diffusive flux variable, Kddt_h(K) = ea(k) = eb(k-1)
 
-  Kddt_h(1) = 0.0 ; Kddt_h(nz+1) = 0.0
+  Kddt_h(1) = 0.0_wp ; Kddt_h(nz+1) = 0.0_wp
   do K=2,nz
-    Kddt_h(K) = min(dt * Kd(k) / (0.5*(dz_tr(k-1) + dz_tr(k))), 1e3*dztot)
+    Kddt_h(K) = min(dt * Kd(k) / (0.5_wp*(dz_tr(k-1) + dz_tr(k))), 1e3_wp*dztot)
   enddo
 
   ! Zero out the temperature and salinity estimates in the extra (ficticious) layers.
   ! The actual values set here are irrelevant (so long as they are not NaNs) because they
   ! are always multiplied by a zero value of Kddt_h reflecting the no-flux boundary condition.
-  Te(0) = 0.0 ; Se(0) = 0.0 ; Te(nz+1) = 0.0 ; Se(nz+1) = 0.0
-  Te_a(0) = 0.0 ; Se_a(0) = 0.0
-  Te_b(nz+1) = 0.0 ; Se_b(nz+1) = 0.0
+  Te(0) = 0.0_wp ; Se(0) = 0.0_wp ; Te(nz+1) = 0.0_wp ; Se(nz+1) = 0.0_wp
+  Te_a(0) = 0.0_wp ; Se_a(0) = 0.0_wp
+  Te_b(nz+1) = 0.0_wp ; Se_b(nz+1) = 0.0_wp
 
   ! Solve the tridiagonal equations for new temperatures.
 
@@ -362,15 +364,15 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
   do k=1,nz
     dMass = GV%H_to_RZ * h_tr(k)
     dPres = (GV%g_Earth * GV%H_to_RZ) * h_tr(k)
-    dT_to_dPE(k) = (dMass * (pres(K) + 0.5*dPres)) * dSV_dT(k)
-    dS_to_dPE(k) = (dMass * (pres(K) + 0.5*dPres)) * dSV_dS(k)
+    dT_to_dPE(k) = (dMass * (pres(K) + 0.5_wp*dPres)) * dSV_dT(k)
+    dS_to_dPE(k) = (dMass * (pres(K) + 0.5_wp*dPres)) * dSV_dS(k)
     dT_to_dColHt(k) = dMass * dSV_dT(k) * CS%ColHt_scaling
     dS_to_dColHt(k) = dMass * dSV_dS(k) * CS%ColHt_scaling
   enddo
 
 !  PE_chg_k(1) = 0.0 ; PE_chg_k(nz+1) = 0.0
   ! PEchg(:) = 0.0
-  PE_chg_k(:,:) = 0.0 ; ColHt_cor_k(:,:) = 0.0
+  PE_chg_k(:,:) = 0.0_wp ; ColHt_cor_k(:,:) = 0.0_wp
 
   if (surface_BL) then  ! This version is appropriate for a surface boundary layer.
 
@@ -396,7 +398,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       ! Find the energy change due to a guess at the strength of diffusion at interface K.
 
       Kddt_h_guess = Kddt_h(K)
-      call find_PE_chg(0.0, Kddt_h_guess, hp_a(k-1), hp_b(k), &
+      call find_PE_chg(0.0_wp, Kddt_h_guess, hp_a(k-1), hp_b(k), &
                        Th_a(k-1), Sh_a(k-1), Th_b(k), Sh_b(k), &
                        dT_to_dPE_a(k-1), dS_to_dPE_a(k-1), dT_to_dPE_b(k), dS_to_dPE_b(k), &
                        pres_Z(K), dT_to_dColHt_a(k-1), dS_to_dColHt_a(k-1), &
@@ -406,9 +408,9 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
       if (debug) then
         do itt=1,5
-          Kddt_h_guess = (1.0+0.01*(itt-3))*Kddt_h(K)
+          Kddt_h_guess = (1.0_wp+0.01_wp*(itt-3))*Kddt_h(K)
 
-          call find_PE_chg(0.0, Kddt_h_guess, hp_a(k-1), hp_b(k), &
+          call find_PE_chg(0.0_wp, Kddt_h_guess, hp_a(k-1), hp_b(k), &
                            Th_a(k-1), Sh_a(k-1), Th_b(k), Sh_b(k), &
                            dT_to_dPE_a(k-1), dS_to_dPE_a(k-1), dT_to_dPE_b(k), dS_to_dPE_b(k), &
                            pres_Z(K), dT_to_dColHt_a(k-1), dS_to_dColHt_a(k-1), &
@@ -416,19 +418,19 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
                            PE_chg=PE_chg(itt))
         enddo
         ! Compare with a 4th-order finite difference estimate.
-        dPEa_dKd_est(k) = (4.0*(PE_chg(4)-Pe_chg(2))/(0.02*Kddt_h(K)) - &
-                               (PE_chg(5)-Pe_chg(1))/(0.04*Kddt_h(K))) / 3.0
-        dPEa_dKd_trunc(k) = (PE_chg(4)-Pe_chg(2))/(0.02*Kddt_h(K)) - &
-                            (PE_chg(5)-Pe_chg(1))/(0.04*Kddt_h(K))
+        dPEa_dKd_est(k) = (4.0_wp*(PE_chg(4)-Pe_chg(2))/(0.02_wp*Kddt_h(K)) - &
+                               (PE_chg(5)-Pe_chg(1))/(0.04_wp*Kddt_h(K))) / 3.0_wp
+        dPEa_dKd_trunc(k) = (PE_chg(4)-Pe_chg(2))/(0.02_wp*Kddt_h(K)) - &
+                            (PE_chg(5)-Pe_chg(1))/(0.04_wp*Kddt_h(K))
         dPEa_dKd_err(k) = (dPEa_dKd_est(k) - dPEa_dKd(k))
         dPEa_dKd_err_norm(k) = (dPEa_dKd_est(k) - dPEa_dKd(k)) / &
-                              (abs(dPEa_dKd_est(k)) + abs(dPEa_dKd(k)) + 1e-100*US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                              (abs(dPEa_dKd_est(k)) + abs(dPEa_dKd(k)) + 1e-100_wp*US%RZ_to_kg_m2*US%L_T_to_m_s**2)
       endif
 
       !   At this point, the final value of Kddt_h(K) is known, so the estimated
       ! properties for layer k-1 can be calculated.
 
-      b1 = 1.0 / (hp_a(k-1) + Kddt_h(K))
+      b1 = 1.0_wp / (hp_a(k-1) + Kddt_h(K))
       c1_a(K) = Kddt_h(K) * b1
       Te(k-1) = b1 * (h_tr(k-1) * T0(k-1) + Kddt_h(K-1) * Te(k-2))
       Se(k-1) = b1 * (h_tr(k-1) * S0(k-1) + Kddt_h(K-1) * Se(k-2))
@@ -441,7 +443,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
     enddo
 
-    b1 = 1.0 / (hp_a(nz))
+    b1 = 1.0_wp / (hp_a(nz))
     Tf(nz) = b1 * (h_tr(nz) * T0(nz) + Kddt_h(nz) * Te(nz-1))
     Sf(nz) = b1 * (h_tr(nz) * S0(nz) + Kddt_h(nz) * Se(nz-1))
 
@@ -452,7 +454,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
     if (debug) then
       do k=1,nz ; Ta(k) = Tf(k) ; Sa(k) = Sf(k) ; enddo
-      PE_chg_tot1A = 0.0 ; PE_chg_tot2A = 0.0 ; T_chg_totA = 0.0
+      PE_chg_tot1A = 0.0_wp ; PE_chg_tot2A = 0.0_wp ; T_chg_totA = 0.0_wp
       do k=1,nz
         PE_chg_tot1A = PE_chg_tot1A + (dT_to_dPE(k) * (Tf(k) - T0(k)) + &
                                        dS_to_dPE(k) * (Sf(k) - S0(k)))
@@ -488,7 +490,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       ! Find the energy change due to a guess at the strength of diffusion at interface K.
       Kddt_h_guess = Kddt_h(K)
 
-      call find_PE_chg(0.0, Kddt_h_guess, hp_a(k-1), hp_b(k), &
+      call find_PE_chg(0.0_wp, Kddt_h_guess, hp_a(k-1), hp_b(k), &
                        Th_a(k-1), Sh_a(k-1), Th_b(k), Sh_b(k), &
                        dT_to_dPE_a(k-1), dS_to_dPE_a(k-1), dT_to_dPE_b(k), dS_to_dPE_b(k), &
                        pres_Z(K), dT_to_dColHt_a(k-1), dS_to_dColHt_a(k-1), &
@@ -499,9 +501,9 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       if (debug) then
         ! Compare with a 4th-order finite difference estimate.
         do itt=1,5
-          Kddt_h_guess = (1.0+0.01*(itt-3))*Kddt_h(K)
+          Kddt_h_guess = (1.0_wp+0.01_wp*(itt-3))*Kddt_h(K)
 
-          call find_PE_chg(0.0, Kddt_h_guess, hp_a(k-1), hp_b(k), &
+          call find_PE_chg(0.0_wp, Kddt_h_guess, hp_a(k-1), hp_b(k), &
                            Th_a(k-1), Sh_a(k-1), Th_b(k), Sh_b(k), &
                            dT_to_dPE_a(k-1), dS_to_dPE_a(k-1), dT_to_dPE_b(k), dS_to_dPE_b(k), &
                            pres_Z(K), dT_to_dColHt_a(k-1), dS_to_dColHt_a(k-1), &
@@ -509,19 +511,19 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
                            PE_chg=PE_chg(itt))
         enddo
 
-        dPEb_dKd_est(k) = (4.0*(PE_chg(4)-Pe_chg(2))/(0.02*Kddt_h(K)) - &
-                               (PE_chg(5)-Pe_chg(1))/(0.04*Kddt_h(K))) / 3.0
-        dPEb_dKd_trunc(k) = (PE_chg(4)-Pe_chg(2))/(0.02*Kddt_h(K)) - &
-                            (PE_chg(5)-Pe_chg(1))/(0.04*Kddt_h(K))
+        dPEb_dKd_est(k) = (4.0_wp*(PE_chg(4)-Pe_chg(2))/(0.02_wp*Kddt_h(K)) - &
+                               (PE_chg(5)-Pe_chg(1))/(0.04_wp*Kddt_h(K))) / 3.0_wp
+        dPEb_dKd_trunc(k) = (PE_chg(4)-Pe_chg(2))/(0.02_wp*Kddt_h(K)) - &
+                            (PE_chg(5)-Pe_chg(1))/(0.04_wp*Kddt_h(K))
         dPEb_dKd_err(k) = (dPEb_dKd_est(k) - dPEb_dKd(k))
         dPEb_dKd_err_norm(k) = (dPEb_dKd_est(k) - dPEb_dKd(k)) / &
-                              (abs(dPEb_dKd_est(k)) + abs(dPEb_dKd(k)) + 1e-100*US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                              (abs(dPEb_dKd_est(k)) + abs(dPEb_dKd(k)) + 1e-100_wp*US%RZ_to_kg_m2*US%L_T_to_m_s**2)
       endif
 
       !   At this point, the final value of Kddt_h(K) is known, so the estimated
       ! properties for layer k can be calculated.
 
-      b1 = 1.0 / (hp_b(k) + Kddt_h(K))
+      b1 = 1.0_wp / (hp_b(k) + Kddt_h(K))
       c1_b(K) = Kddt_h(K) * b1
 
       Te(k) = b1 * (h_tr(k) * T0(k) + Kddt_h(K+1) * Te(k+1))
@@ -535,7 +537,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
     enddo
 
-    b1 = 1.0 / (hp_b(1))
+    b1 = 1.0_wp / (hp_b(1))
     Tf(1) = b1 * (h_tr(1) * T0(1) + Kddt_h(2) * Te(2))
     Sf(1) = b1 * (h_tr(1) * S0(1) + Kddt_h(2) * Se(2))
 
@@ -546,7 +548,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
     if (debug) then
       do k=1,nz ; Tb(k) = Tf(k) ; Sb(k) = Sf(k) ; enddo
-      PE_chg_tot1B = 0.0 ; PE_chg_tot2B = 0.0 ; T_chg_totB = 0.0
+      PE_chg_tot1B = 0.0_wp ; PE_chg_tot2B = 0.0_wp ; T_chg_totB = 0.0_wp
       do k=1,nz
         PE_chg_tot1B = PE_chg_tot1B + (dT_to_dPE(k) * (Tf(k) - T0(k)) + &
                                        dS_to_dPE(k) * (Sf(k) - S0(k)))
@@ -571,16 +573,16 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     enddo
 
     ! Calculate the dependencies on layers above.
-    Kddt_h_a(1) = 0.0
+    Kddt_h_a(1) = 0.0_wp
     do K=2,nz  ! Loop over interior interfaces.
       ! First calculate some terms that are independent of the change in Kddt_h(K).
-      Kd0 = 0.0  ! This might need to be changed - it is the already applied value of Kddt_h(K).
+      Kd0 = 0.0_wp  ! This might need to be changed - it is the already applied value of Kddt_h(K).
 
       Th_a(k-1) = h_tr(k-1) * T0(k-1) + Kddt_h(K-1) * Te_a(k-2)
       Sh_a(k-1) = h_tr(k-1) * S0(k-1) + Kddt_h(K-1) * Se_a(k-2)
       Th_b(k) = h_tr(k) * T0(k) ; Sh_b(k) = h_tr(k) * S0(k)
 
-      Kddt_h_a(K) = 0.0 ; if (K < K_cent) Kddt_h_a(K) = Kddt_h(K)
+      Kddt_h_a(K) = 0.0_wp ; if (K < K_cent) Kddt_h_a(K) = Kddt_h(K)
       dKd = Kddt_h_a(K)
 
       call find_PE_chg(Kd0, dKd, hp_a(k-1), hp_b(k), &
@@ -592,7 +594,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       PE_chg_k(K,3) = PE_change
       ColHt_cor_k(K,3) = ColHt_cor
 
-      b1 = 1.0 / (hp_a(k-1) + Kddt_h_a(K))
+      b1 = 1.0_wp / (hp_a(k-1) + Kddt_h_a(K))
       c1_a(K) = Kddt_h_a(K) * b1
 
       Te_a(k-1) = b1 * (h_tr(k-1) * T0(k-1) + Kddt_h_a(K-1) * Te_a(k-2))
@@ -606,10 +608,10 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     enddo
 
     ! Calculate the dependencies on layers below.
-    Kddt_h_b(nz+1) = 0.0
+    Kddt_h_b(nz+1) = 0.0_wp
     do K=nz,2,-1  ! Loop over interior interfaces.
       ! First calculate some terms that are independent of the change in Kddt_h(K).
-      Kd0 = 0.0  ! This might need to be changed - it is the already applied value of Kddt_h(K).
+      Kd0 = 0.0_wp  ! This might need to be changed - it is the already applied value of Kddt_h(K).
 
       Th_a(k-1) = h_tr(k-1) * T0(k-1) ; Sh_a(k-1) = h_tr(k-1) * S0(k-1)
 !     Th_a(k-1) = h_tr(k-1) * T0(k-1) + Kddt_h(K-1) * Te_a(k-2)
@@ -618,7 +620,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       Th_b(k) = h_tr(k) * T0(k) + Kddt_h(K+1) * Te_b(k+1)
       Sh_b(k) = h_tr(k) * S0(k) + Kddt_h(K+1) * Se_b(k+1)
 
-      Kddt_h_b(K) = 0.0 ; if (K > K_cent) Kddt_h_b(K) = Kddt_h(K)
+      Kddt_h_b(K) = 0.0_wp ; if (K > K_cent) Kddt_h_b(K) = Kddt_h(K)
       dKd = Kddt_h_b(K)
 
       call find_PE_chg(Kd0, dKd, hp_a(k-1), hp_b(k), &
@@ -630,7 +632,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       PE_chg_k(K,3) = PE_chg_k(K,3) + PE_change
       ColHt_cor_k(K,3) = ColHt_cor_k(K,3) + ColHt_cor
 
-      b1 = 1.0 / (hp_b(k) + Kddt_h_b(K))
+      b1 = 1.0_wp / (hp_b(k) + Kddt_h_b(K))
       c1_b(K) = Kddt_h_b(K) * b1
 
       Te_b(k) = b1 * (h_tr(k) * T0(k) + Kddt_h_b(K+1) * Te_b(k+1))
@@ -648,7 +650,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     K = K_cent
 
     ! First calculate some terms that are independent of the change in Kddt_h(K).
-    Kd0 = 0.0  ! This might need to be changed - it is the already applied value of Kddt_h(K).
+    Kd0 = 0.0_wp  ! This might need to be changed - it is the already applied value of Kddt_h(K).
 
     Th_a(k-1) = h_tr(k-1) * T0(k-1) + Kddt_h(K-1) * Te_a(k-2)
     Sh_a(k-1) = h_tr(k-1) * S0(k-1) + Kddt_h(K-1) * Se_a(k-2)
@@ -679,7 +681,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     !   Tf(K_cent)   = Te_up(K_cent) + c1_b(K_cent)*Tf(K_cent-1)
     ! but further exploiting the expressions for c1_a and c1_b to avoid
     ! subtraction in the denominator, and use only a single division.
-    b1 = 1.0 / (hp_a(k-1)*hp_b(k) + Kddt_h(K)*(hp_a(k-1) + hp_b(k)))
+    b1 = 1.0_wp / (hp_a(k-1)*hp_b(k) + Kddt_h(K)*(hp_a(k-1) + hp_b(k)))
     Tf(k-1) = ((hp_b(k) + Kddt_h(K)) * Th_a(k-1) + Kddt_h(K) * Th_b(k) ) * b1
     Sf(k-1) = ((hp_b(k) + Kddt_h(K)) * Sh_a(k-1) + Kddt_h(K) * Sh_b(k) ) * b1
     Tf(k) = (Kddt_h(K) * Th_a(k-1) + (hp_a(k-1) + Kddt_h(K)) * Th_b(k) ) * b1
@@ -700,7 +702,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     enddo
 
     if (debug) then
-      PE_chg_tot1C = 0.0 ; PE_chg_tot2C = 0.0 ; T_chg_totC = 0.0
+      PE_chg_tot1C = 0.0_wp ; PE_chg_tot2C = 0.0_wp ; T_chg_totC = 0.0_wp
       do k=1,nz
         PE_chg_tot1C = PE_chg_tot1C + (dT_to_dPE(k) * (Tf(k) - T0(k)) + &
                                        dS_to_dPE(k) * (Sf(k) - S0(k)))
@@ -724,7 +726,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       dT_to_dColHt_b(k) = dT_to_dColHt(k) ; dS_to_dColHt_b(k) = dS_to_dColHt(k)
     enddo
     do K=1,nz+1
-      Kd_so_far(K) = 0.0
+      Kd_so_far(K) = 0.0_wp
     enddo
 
     ! Calculate the dependencies on layers above.
@@ -736,7 +738,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
       Sh_a(k-1) = h_tr(k-1) * S0(k-1) + Kd_so_far(K-1) * Se(k-2)
       Th_b(k) = h_tr(k) * T0(k) ; Sh_b(k) = h_tr(k) * S0(k)
 
-      dKd = 0.5 * Kddt_h(K) - Kd_so_far(K)
+      dKd = 0.5_wp * Kddt_h(K) - Kd_so_far(K)
 
       call find_PE_chg(Kd0, dKd, hp_a(k-1), hp_b(k), &
                        Th_a(k-1), Sh_a(k-1), Th_b(k), Sh_b(k), &
@@ -750,7 +752,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
       Kd_so_far(K) = Kd_so_far(K) + dKd
 
-      b1 = 1.0 / (hp_a(k-1) + Kd_so_far(K))
+      b1 = 1.0_wp / (hp_a(k-1) + Kd_so_far(K))
       c1_a(K) = Kd_so_far(K) * b1
 
       Te(k-1) = b1 * (h_tr(k-1) * T0(k-1) + Kd_so_far(K-1) * Te(k-2))
@@ -788,7 +790,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
       Kd_so_far(K) = Kd_so_far(K) + dKd
 
-      b1 = 1.0 / (hp_b(k) + Kd_so_far(K))
+      b1 = 1.0_wp / (hp_b(k) + Kd_so_far(K))
       c1_b(K) = Kd_so_far(K) * b1
 
       Te(k) = b1 * (h_tr(k) * T0(k) + Kd_so_far(K+1) * Te(k+1))
@@ -804,7 +806,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
     ! Now update the other layer working down from the top to determine the
     ! final temperatures and salinities.
-    b1 = 1.0 / (hp_b(1))
+    b1 = 1.0_wp / (hp_b(1))
     Tf(1) = b1 * (h_tr(1) * T0(1) + Kddt_h(2) * Te(2))
     Sf(1) = b1 * (h_tr(1) * S0(1) + Kddt_h(2) * Se(2))
     do k=2,nz
@@ -813,7 +815,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     enddo
 
     if (debug) then
-      PE_chg_tot1D = 0.0 ; PE_chg_tot2D = 0.0 ; T_chg_totD = 0.0
+      PE_chg_tot1D = 0.0_wp ; PE_chg_tot2D = 0.0_wp ; T_chg_totD = 0.0_wp
       do k=1,nz
         PE_chg_tot1D = PE_chg_tot1D + (dT_to_dPE(k) * (Tf(k) - T0(k)) + &
                                        dS_to_dPE(k) * (Sf(k) - S0(k)))
@@ -826,7 +828,7 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
 
   endif
 
-  energy_Kd = 0.0 ; do K=2,nz ; energy_Kd = energy_Kd + PE_chg_k(K,1) ; enddo
+  energy_Kd = 0.0_wp ; do K=2,nz ; energy_Kd = energy_Kd + PE_chg_k(K,1) ; enddo
   energy_Kd = energy_Kd / dt
 
   if (do_print) then
@@ -847,24 +849,24 @@ subroutine diapyc_energy_req_calc(h_in, dz_in, T_in, S_in, Kd, energy_Kd, dt, tv
     if (CS%id_S0>0) call post_data(CS%id_S0, S0, CS%diag)
     if (CS%id_Sf>0) call post_data(CS%id_Sf, Sf, CS%diag)
     if (CS%id_N2_0>0) then
-      N2(1) = 0.0 ; N2(nz+1) = 0.0
+      N2(1) = 0.0_wp ; N2(nz+1) = 0.0_wp
       do K=2,nz
-        call calculate_density(0.5*(T0(k-1) + T0(k)), 0.5*(S0(k-1) + S0(k)), &
+        call calculate_density(0.5_wp*(T0(k-1) + T0(k)), 0.5_wp*(S0(k-1) + S0(k)), &
                                pres(K), rho_here, tv%eqn_of_state)
-        N2(K) = (GV%g_Earth_Z_T2 * rho_here / (0.5*(dz_tr(k-1) + dz_tr(k)))) * &
-                ( 0.5*(dSV_dT(k-1) + dSV_dT(k)) * (T0(k-1) - T0(k)) + &
-                  0.5*(dSV_dS(k-1) + dSV_dS(k)) * (S0(k-1) - S0(k)) )
+        N2(K) = (GV%g_Earth_Z_T2 * rho_here / (0.5_wp*(dz_tr(k-1) + dz_tr(k)))) * &
+                ( 0.5_wp*(dSV_dT(k-1) + dSV_dT(k)) * (T0(k-1) - T0(k)) + &
+                  0.5_wp*(dSV_dS(k-1) + dSV_dS(k)) * (S0(k-1) - S0(k)) )
       enddo
       call post_data(CS%id_N2_0, N2, CS%diag)
     endif
     if (CS%id_N2_f>0) then
-      N2(1) = 0.0 ; N2(nz+1) = 0.0
+      N2(1) = 0.0_wp ; N2(nz+1) = 0.0_wp
       do K=2,nz
-        call calculate_density(0.5*(Tf(k-1) + Tf(k)), 0.5*(Sf(k-1) + Sf(k)), &
+        call calculate_density(0.5_wp*(Tf(k-1) + Tf(k)), 0.5_wp*(Sf(k-1) + Sf(k)), &
                                pres(K), rho_here, tv%eqn_of_state)
-        N2(K) = (GV%g_Earth_Z_T2 * rho_here / (0.5*(dz_tr(k-1) + dz_tr(k)))) * &
-                ( 0.5*(dSV_dT(k-1) + dSV_dT(k)) * (Tf(k-1) - Tf(k)) + &
-                  0.5*(dSV_dS(k-1) + dSV_dS(k)) * (Sf(k-1) - Sf(k)) )
+        N2(K) = (GV%g_Earth_Z_T2 * rho_here / (0.5_wp*(dz_tr(k-1) + dz_tr(k)))) * &
+                ( 0.5_wp*(dSV_dT(k-1) + dSV_dT(k)) * (Tf(k-1) - Tf(k)) + &
+                  0.5_wp*(dSV_dS(k-1) + dSV_dS(k)) * (Sf(k-1) - Sf(k)) )
       enddo
       call post_data(CS%id_N2_f, N2, CS%diag)
     endif
@@ -878,92 +880,92 @@ subroutine find_PE_chg(Kddt_h0, dKddt_h, hp_a, hp_b, Th_a, Sh_a, Th_b, Sh_b, &
                        dT_to_dPE_a, dS_to_dPE_a, dT_to_dPE_b, dS_to_dPE_b, &
                        pres_Z, dT_to_dColHt_a, dS_to_dColHt_a, dT_to_dColHt_b, dS_to_dColHt_b, &
                        PE_chg, dPEc_dKd, dPE_max, dPEc_dKd_0, PE_ColHt_cor)
-  real, intent(in)  :: Kddt_h0  !< The previously used diffusivity at an interface times
+  real(wp), intent(in)  :: Kddt_h0  !< The previously used diffusivity at an interface times
                                 !! the time step and  divided by the average of the
                                 !! thicknesses around the interface [H ~> m or kg m-2].
-  real, intent(in)  :: dKddt_h  !< The trial change in the diffusivity at an interface times
+  real(wp), intent(in)  :: dKddt_h  !< The trial change in the diffusivity at an interface times
                                 !! the time step and  divided by the average of the
                                 !! thicknesses around the interface [H ~> m or kg m-2].
-  real, intent(in)  :: hp_a     !< The effective pivot thickness of the layer above the
+  real(wp), intent(in)  :: hp_a     !< The effective pivot thickness of the layer above the
                                 !! interface, given by h_k plus a term that
                                 !! is a fraction (determined from the tridiagonal solver) of
                                 !! Kddt_h for the interface above [H ~> m or kg m-2].
-  real, intent(in)  :: hp_b     !< The effective pivot thickness of the layer below the
+  real(wp), intent(in)  :: hp_b     !< The effective pivot thickness of the layer below the
                                 !! interface, given by h_k plus a term that
                                 !! is a fraction (determined from the tridiagonal solver) of
                                 !! Kddt_h for the interface above [H ~> m or kg m-2].
-  real, intent(in)  :: Th_a     !< An effective temperature times a thickness in the layer
+  real(wp), intent(in)  :: Th_a     !< An effective temperature times a thickness in the layer
                                 !! above, including implicit mixing effects with other
                                 !! yet higher layers [C H ~> degC m or degC kg m-2].
-  real, intent(in)  :: Sh_a     !< An effective salinity times a thickness in the layer
+  real(wp), intent(in)  :: Sh_a     !< An effective salinity times a thickness in the layer
                                 !! above, including implicit mixing effects with other
                                 !! yet higher layers [S H ~> ppt m or ppt kg m-2].
-  real, intent(in)  :: Th_b     !< An effective temperature times a thickness in the layer
+  real(wp), intent(in)  :: Th_b     !< An effective temperature times a thickness in the layer
                                 !! below, including implicit mixing effects with other
                                 !! yet lower layers [C H ~> degC m or degC kg m-2].
-  real, intent(in)  :: Sh_b     !< An effective salinity times a thickness in the layer
+  real(wp), intent(in)  :: Sh_b     !< An effective salinity times a thickness in the layer
                                 !! below, including implicit mixing effects with other
                                 !! yet lower layers [S H ~> ppt m or ppt kg m-2].
-  real, intent(in)  :: dT_to_dPE_a !< A factor (pres_lay*mass_lay*dSpec_vol/dT) relating
+  real(wp), intent(in)  :: dT_to_dPE_a !< A factor (pres_lay*mass_lay*dSpec_vol/dT) relating
                                 !! a layer's temperature change to the change in column potential
                                 !! energy, including all implicit diffusive changes in the
                                 !! temperatures of all the layers above [R Z L2 T-2 C-1 ~> J m-2 degC-1].
-  real, intent(in)  :: dS_to_dPE_a !< A factor (pres_lay*mass_lay*dSpec_vol/dS) relating
+  real(wp), intent(in)  :: dS_to_dPE_a !< A factor (pres_lay*mass_lay*dSpec_vol/dS) relating
                                 !! a layer's salinity change to the change in column potential
                                 !! energy, including all implicit diffusive changes in the
                                 !! salinities of all the layers above [R Z L2 T-2 S-1 ~> J m-2 ppt-1].
-  real, intent(in)  :: dT_to_dPE_b !< A factor (pres_lay*mass_lay*dSpec_vol/dT) relating
+  real(wp), intent(in)  :: dT_to_dPE_b !< A factor (pres_lay*mass_lay*dSpec_vol/dT) relating
                                 !! a layer's temperature change to the change in column potential
                                 !! energy, including all implicit diffusive changes in the
                                 !! temperatures of all the layers below [R Z L2 T-2 C-1 ~> J m-2 degC-1].
-  real, intent(in)  :: dS_to_dPE_b !< A factor (pres_lay*mass_lay*dSpec_vol/dS) relating
+  real(wp), intent(in)  :: dS_to_dPE_b !< A factor (pres_lay*mass_lay*dSpec_vol/dS) relating
                                 !! a layer's salinity change to the change in column potential
                                 !! energy, including all implicit diffusive changes in the
                                 !! salinities of all the layers below [R Z L2 T-2 S-1 ~> J m-2 ppt-1].
-  real, intent(in)  :: pres_Z   !< The hydrostatic interface pressure, which relates
+  real(wp), intent(in)  :: pres_Z   !< The hydrostatic interface pressure, which relates
                                 !! the changes in column thickness to the energy that is radiated
                                 !! as gravity waves and unavailable to drive mixing [R L2 T-2 ~> J m-3].
-  real, intent(in)  :: dT_to_dColHt_a !< A factor (mass_lay*dSColHtc_vol/dT) relating
+  real(wp), intent(in)  :: dT_to_dColHt_a !< A factor (mass_lay*dSColHtc_vol/dT) relating
                                 !! a layer's temperature change to the change in column
                                 !! height, including all implicit diffusive changes
                                 !! in the temperatures of all the layers above [Z C-1 ~> m degC-1].
-  real, intent(in)  :: dS_to_dColHt_a !< A factor (mass_lay*dSColHtc_vol/dS) relating
+  real(wp), intent(in)  :: dS_to_dColHt_a !< A factor (mass_lay*dSColHtc_vol/dS) relating
                                 !! a layer's salinity change to the change in column
                                 !! height, including all implicit diffusive changes
                                 !! in the salinities of all the layers above [Z S-1 ~> m ppt-1].
-  real, intent(in)  :: dT_to_dColHt_b !< A factor (mass_lay*dSColHtc_vol/dT) relating
+  real(wp), intent(in)  :: dT_to_dColHt_b !< A factor (mass_lay*dSColHtc_vol/dT) relating
                                 !! a layer's temperature change to the change in column
                                 !! height, including all implicit diffusive changes
                                 !! in the temperatures of all the layers below [Z C-1 ~> m degC-1].
-  real, intent(in)  :: dS_to_dColHt_b !< A factor (mass_lay*dSColHtc_vol/dS) relating
+  real(wp), intent(in)  :: dS_to_dColHt_b !< A factor (mass_lay*dSColHtc_vol/dS) relating
                                 !! a layer's salinity change to the change in column
                                 !! height, including all implicit diffusive changes
                                 !! in the salinities of all the layers below [Z S-1 ~> m ppt-1].
 
-  real, intent(out) :: PE_chg   !< The change in column potential energy from applying
+  real(wp), intent(out) :: PE_chg   !< The change in column potential energy from applying
                                 !! Kddt_h at the present interface [R Z L2 T-2 ~> J m-2].
-  real, optional, intent(out) :: dPEc_dKd !< The partial derivative of PE_chg with Kddt_h,
+  real(wp), optional, intent(out) :: dPEc_dKd !< The partial derivative of PE_chg with Kddt_h,
                                           !! [R Z L2 T-2 H-1 ~> J m-3 or J kg-1].
-  real, optional, intent(out) :: dPE_max  !< The maximum change in column potential energy that could
+  real(wp), optional, intent(out) :: dPE_max  !< The maximum change in column potential energy that could
                                           !! be realized by applying a huge value of Kddt_h at the
                                           !! present interface [R Z L2 T-2 ~> J m-2].
-  real, optional, intent(out) :: dPEc_dKd_0 !< The partial derivative of PE_chg with Kddt_h in the
+  real(wp), optional, intent(out) :: dPEc_dKd_0 !< The partial derivative of PE_chg with Kddt_h in the
                                             !! limit where Kddt_h = 0 [R Z L2 T-2 H-1 ~> J m-3 or J kg-1].
-  real, optional, intent(out) :: PE_ColHt_cor  !< The correction to PE_chg that is made due to a net
+  real(wp), optional, intent(out) :: PE_ColHt_cor  !< The correction to PE_chg that is made due to a net
                                             !! change in the column height [R Z L2 T-2 ~> J m-2].
 
   ! Local variables
-  real :: hps  ! The sum of the two effective pivot thicknesses [H ~> m or kg m-2].
-  real :: bdt1 ! A product of the two pivot thicknesses plus a diffusive term [H2 ~> m2 or kg2 m-4].
-  real :: dT_c ! The core term in the expressions for the temperature changes [C H2 ~> degC m2 or degC kg2 m-4].
-  real :: dS_c ! The core term in the expressions for the salinity changes [S H2 ~> ppt m2 or ppt kg2 m-4].
-  real :: PEc_core ! The diffusivity-independent core term in the expressions
+  real(wp) :: hps  ! The sum of the two effective pivot thicknesses [H ~> m or kg m-2].
+  real(wp) :: bdt1 ! A product of the two pivot thicknesses plus a diffusive term [H2 ~> m2 or kg2 m-4].
+  real(wp) :: dT_c ! The core term in the expressions for the temperature changes [C H2 ~> degC m2 or degC kg2 m-4].
+  real(wp) :: dS_c ! The core term in the expressions for the salinity changes [S H2 ~> ppt m2 or ppt kg2 m-4].
+  real(wp) :: PEc_core ! The diffusivity-independent core term in the expressions
                    ! for the potential energy changes [H3 R Z L2 T-2 ~> J m or J kg3 m-8].
-  real :: ColHt_core ! The diffusivity-independent core term in the expressions
+  real(wp) :: ColHt_core ! The diffusivity-independent core term in the expressions
                      ! for the column height changes [H3 Z ~> m4 or kg3 m-5].
-  real :: ColHt_chg  ! The change in the column height [Z ~> m].
-  real :: y1_3 ! A local temporary term in [H-3 ~> m-3 or m6 kg-3].
-  real :: y1_4 ! A local temporary term in [H-4 ~> m-4 or m8 kg-4].
+  real(wp) :: ColHt_chg  ! The change in the column height [Z ~> m].
+  real(wp) :: y1_3 ! A local temporary term in [H-3 ~> m-3 or m6 kg-3].
+  real(wp) :: y1_4 ! A local temporary term in [H-4 ~> m-4 or m8 kg-4].
 
   !   The expression for the change in potential energy used here is derived
   ! from the expression for the final estimates of the changes in temperature
@@ -987,32 +989,32 @@ subroutine find_PE_chg(Kddt_h0, dKddt_h, hp_a, hp_b, Th_a, Sh_a, Th_b, Sh_b, &
   y1_3 = dKddt_h / (bdt1 * (bdt1 + dKddt_h * hps))
   PE_chg = PEc_core * y1_3
   ColHt_chg = ColHt_core * y1_3
-  if (ColHt_chg < 0.0) PE_chg = PE_chg - pres_Z * ColHt_chg
+  if (ColHt_chg < 0.0_wp) PE_chg = PE_chg - pres_Z * ColHt_chg
 
-  if (present(PE_ColHt_cor)) PE_ColHt_cor = -pres_Z * min(ColHt_chg, 0.0)
+  if (present(PE_ColHt_cor)) PE_ColHt_cor = -pres_Z * min(ColHt_chg, 0.0_wp)
 
   if (present(dPEc_dKd)) then
     ! Find the derivative of the potential energy change with dKddt_h.
-    y1_4 = 1.0 / (bdt1 + dKddt_h * hps)**2
+    y1_4 = 1.0_wp / (bdt1 + dKddt_h * hps)**2
     dPEc_dKd = PEc_core * y1_4
     ColHt_chg = ColHt_core * y1_4
-    if (ColHt_chg < 0.0) dPEc_dKd = dPEc_dKd - pres_Z * ColHt_chg
+    if (ColHt_chg < 0.0_wp) dPEc_dKd = dPEc_dKd - pres_Z * ColHt_chg
   endif
 
   if (present(dPE_max)) then
     ! This expression is the limit of PE_chg for infinite dKddt_h.
-    y1_3 = 1.0 / (bdt1 * hps)
+    y1_3 = 1.0_wp / (bdt1 * hps)
     dPE_max = PEc_core * y1_3
     ColHt_chg = ColHt_core * y1_3
-    if (ColHt_chg < 0.0) dPE_max = dPE_max - pres_Z * ColHt_chg
+    if (ColHt_chg < 0.0_wp) dPE_max = dPE_max - pres_Z * ColHt_chg
   endif
 
   if (present(dPEc_dKd_0)) then
     ! This expression is the limit of dPEc_dKd for dKddt_h = 0.
-    y1_4 = 1.0 / bdt1**2
+    y1_4 = 1.0_wp / bdt1**2
     dPEc_dKd_0 = PEc_core * y1_4
     ColHt_chg = ColHt_core * y1_4
-    if (ColHt_chg < 0.0) dPEc_dKd_0 = dPEc_dKd_0 - pres_Z * ColHt_chg
+    if (ColHt_chg < 0.0_wp) dPEc_dKd_0 = dPEc_dKd_0 - pres_Z * ColHt_chg
   endif
 
 end subroutine find_PE_chg
@@ -1042,16 +1044,16 @@ subroutine diapyc_energy_req_init(Time, G, GV, US, param_file, diag, CS)
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "ENERGY_REQ_KH_SCALING", CS%test_Kh_scaling, &
                  "A scaling factor for the diapycnal diffusivity used in "//&
-                 "testing the energy requirements.", default=1.0, units="nondim")
+                 "testing the energy requirements.", default=1.0_wp, units="nondim")
   call get_param(param_file, mdl, "ENERGY_REQ_COL_HT_SCALING", CS%ColHt_scaling, &
                  "A scaling factor for the column height change correction "//&
-                 "used in testing the energy requirements.", default=1.0, units="nondim")
+                 "used in testing the energy requirements.", default=1.0_wp, units="nondim")
   call get_param(param_file, mdl, "ENERGY_REQ_USE_TEST_PROFILE", CS%use_test_Kh_profile, &
                  "If true, use the internal test diffusivity profile in "//&
                  "place of any that might be passed in as an argument.", default=.false.)
   call get_param(param_file, mdl, 'VON_KARMAN_CONST', CS%vonKar, &
                  'The value the von Karman constant as used for mixed layer viscosity.', &
-                 units='nondim', default=0.41)
+                 units='nondim', default=0.41_wp)
 
   CS%id_ERt = register_diag_field('ocean_model', 'EnReqTest_ERt', diag%axesZi, Time, &
                  "Diffusivity Energy Requirements, top-down", &

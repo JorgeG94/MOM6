@@ -26,6 +26,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : surface, thermo_var_ptrs
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -39,9 +41,9 @@ type, public :: pseudo_salt_tracer_CS ; private
   type(tracer_type), pointer :: tr_ptr !< pointer to tracer inside Tr_reg
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the MOM tracer registry
-  real, pointer :: ps(:,:,:) => NULL()   !< The array of pseudo-salt tracer used in this
+  real(wp), pointer :: ps(:,:,:) => NULL()   !< The array of pseudo-salt tracer used in this
                                          !! subroutine [ppt]
-  real, allocatable :: diff(:,:,:)       !< The difference between the pseudo-salt
+  real(wp), allocatable :: diff(:,:,:)       !< The difference between the pseudo-salt
                                          !! tracer and the real salt [ppt].
   logical :: pseudo_salt_may_reinit = .true. !< Hard coding since this should not matter
 
@@ -73,7 +75,7 @@ function register_pseudo_salt_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
   character(len=48)  :: var_name ! The variable's name.
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [ppt]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! The tracer concentration [ppt]
   logical :: register_pseudo_salt_tracer
   integer :: isd, ied, jsd, jed, nz
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nz = GV%ke
@@ -87,7 +89,7 @@ function register_pseudo_salt_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
 
-  allocate(CS%ps(isd:ied,jsd:jed,nz), source=0.0)
+  allocate(CS%ps(isd:ied,jsd:jed,nz), source=0.0_wp)
 
   CS%tr_desc = var_desc(trim("pseudo_salt"), "psu", &
                      "Pseudo salt passive tracer", caller=mdl)
@@ -115,7 +117,7 @@ subroutine initialize_pseudo_salt_tracer(restart, day, G, GV, US, h, diag, OBC, 
   type(ocean_grid_type),              intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),              intent(in) :: US    !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_ctrl),            target, intent(in) :: diag !< A structure that is used to regulate
                                                          !! diagnostic output
@@ -155,7 +157,7 @@ subroutine initialize_pseudo_salt_tracer(restart, day, G, GV, US, h, diag, OBC, 
 
   CS%id_psd = register_diag_field("ocean_model", "pseudo_salt_diff", CS%diag%axesTL, &
         day, "Difference between pseudo salt passive tracer and salt tracer", "psu")
-  if (.not.allocated(CS%diff)) allocate(CS%diff(isd:ied,jsd:jed,nz), source=0.0)
+  if (.not.allocated(CS%diff)) allocate(CS%diff(isd:ied,jsd:jed,nz), source=0.0_wp)
 
 end subroutine initialize_pseudo_salt_tracer
 
@@ -164,29 +166,29 @@ subroutine pseudo_salt_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G
               KPP_CSp, nonLocalTrans, evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G     !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV    !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea    !< The amount of fluid entrained from the layer above
                                                !! during this call [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb    !< The amount of fluid entrained from the layer below
                                                !! during this call [H ~> m or kg m-2]
   type(forcing),           intent(in) :: fluxes !< A structure containing thermodynamic and
                                                !! tracer forcing fields
-  real,                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt    !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US    !< A dimensional unit scaling type
   type(pseudo_salt_tracer_CS), pointer :: CS   !< The control structure returned by a previous
                                                !! call to register_pseudo_salt_tracer
   type(thermo_var_ptrs),   intent(in) :: tv    !< A structure pointing to various thermodynamic variables
   logical,                 intent(in) :: debug !< If true calculate checksums
   type(KPP_CS),  optional, pointer    :: KPP_CSp  !< KPP control structure
-  real,          optional, intent(in)   :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in)   :: nonLocalTrans(:,:,:) !< Non-local transport [nondim]
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                                !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                                !! fluxes can be applied [H ~> m or kg m-2]
 
   !   This subroutine applies diapycnal diffusion and any other column
@@ -196,16 +198,16 @@ subroutine pseudo_salt_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G
   !     h_new(k) = h_old(k) + ea(k) - eb(k-1) + eb(k) - ea(k+1)
 
   ! Local variables
-  real :: net_salt_rate(SZI_(G),SZJ_(G)) ! Net salt flux into the ocean
+  real(wp) :: net_salt_rate(SZI_(G),SZJ_(G)) ! Net salt flux into the ocean
                               ! [ppt H T-1 ~> ppt m s-1 or ppt kg m-2 s-1]
-  real :: net_salt(SZI_(G),SZJ_(G)) ! Net salt flux into the ocean integrated over
+  real(wp) :: net_salt(SZI_(G),SZJ_(G)) ! Net salt flux into the ocean integrated over
                               ! a timestep [ppt H ~> ppt m or ppt kg m-2]
-  real :: htot(SZI_(G))       ! Total ocean depth [H ~> m or kg m-2]
-  real :: FluxRescaleDepth    ! Minimum total ocean depth at which fluxes start to be scaled
+  real(wp) :: htot(SZI_(G))       ! Total ocean depth [H ~> m or kg m-2]
+  real(wp) :: FluxRescaleDepth    ! Minimum total ocean depth at which fluxes start to be scaled
                               ! away [H ~> m or kg m-2]
-  real :: Ih_limit            ! Inverse of FluxRescaleDepth or 0 for no limiting [H-1 ~> m-1 or m2 kg-1]
-  real :: scale               ! Scale scales away fluxes if depth < FluxRescaleDepth [nondim]
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp) :: Ih_limit            ! Inverse of FluxRescaleDepth or 0 for no limiting [H-1 ~> m-1 or m2 kg-1]
+  real(wp) :: scale               ! Scale scales away fluxes if depth < FluxRescaleDepth [nondim]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
@@ -218,21 +220,21 @@ subroutine pseudo_salt_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G
     call hchksum(CS%ps,"pseudo_salt pre pseudo-salt vertdiff", G%HI)
   endif
 
-  FluxRescaleDepth = max( GV%Angstrom_H, 1.e-30*GV%m_to_H )
-  Ih_limit  = 0.0 ; if (FluxRescaleDepth > 0.0) Ih_limit  = 1.0 / FluxRescaleDepth
+  FluxRescaleDepth = max( GV%Angstrom_H, 1.e-30_wp*GV%m_to_H )
+  Ih_limit  = 0.0_wp ; if (FluxRescaleDepth > 0.0_wp) Ih_limit  = 1.0_wp / FluxRescaleDepth
 
   ! Compute KPP nonlocal term if necessary
   if (present(KPP_CSp)) then
     if (associated(KPP_CSp) .and. present(nonLocalTrans)) then
       ! Determine the salt flux, including limiting for small total ocean depths.
-      net_salt_rate(:,:) = 0.0
+      net_salt_rate(:,:) = 0.0_wp
       if (associated(fluxes%salt_flux)) then
         do j=js,je
           do i=is,ie ; htot(i) = h_old(i,j,1) ; enddo
           do k=2,nz ; do i=is,ie ; htot(i) = htot(i) + h_old(i,j,k) ; enddo ; enddo
           do i=is,ie
-            scale = 1.0 ; if ((Ih_limit > 0.0) .and. (htot(i)*Ih_limit < 1.0)) scale = htot(i)*Ih_limit
-            net_salt_rate(i,j) = (scale * (1000.0 * fluxes%salt_flux(i,j))) * GV%RZ_to_H
+            scale = 1.0_wp ; if ((Ih_limit > 0.0_wp) .and. (htot(i)*Ih_limit < 1.0_wp)) scale = htot(i)*Ih_limit
+            net_salt_rate(i,j) = (scale * (1000.0_wp * fluxes%salt_flux(i,j))) * GV%RZ_to_H
           enddo
         enddo
       endif
@@ -246,13 +248,13 @@ subroutine pseudo_salt_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G
     ! This option uses applyTracerBoundaryFluxesInOut, usually in ALE mode
 
     ! Determine the time-integrated salt flux, including limiting for small total ocean depths.
-    net_Salt(:,:) = 0.0
+    net_Salt(:,:) = 0.0_wp
     do j=js,je
       do i=is,ie ; htot(i) = h_old(i,j,1) ; enddo
       do k=2,nz ; do i=is,ie ; htot(i) = htot(i) + h_old(i,j,k) ; enddo ; enddo
       do i=is,ie
-        scale = 1.0 ; if ((Ih_limit > 0.0) .and. (htot(i)*Ih_limit < 1.0)) scale = htot(i)*Ih_limit
-        net_salt(i,j) = (scale * dt * (1000.0 * fluxes%salt_flux(i,j))) * GV%RZ_to_H
+        scale = 1.0_wp ; if ((Ih_limit > 0.0_wp) .and. (htot(i)*Ih_limit < 1.0_wp)) scale = htot(i)*Ih_limit
+        net_salt(i,j) = (scale * dt * (1000.0_wp * fluxes%salt_flux(i,j))) * GV%RZ_to_H
       enddo
     enddo
 
@@ -286,7 +288,7 @@ end subroutine pseudo_salt_tracer_column_physics
 function pseudo_salt_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),              intent(in)    :: G      !< The ocean's grid structure
   type(verticalGrid_type),            intent(in)    :: GV     !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h  !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h  !< Layer thicknesses [H ~> m or kg m-2]
   type(EFP_type), dimension(:),       intent(out)   :: stocks !< The mass-weighted integrated amount of each
                                                               !! tracer, in kg times concentration units [kg conc]
   type(pseudo_salt_tracer_CS),        pointer       :: CS     !< The control structure returned by a previous
@@ -326,7 +328,7 @@ subroutine pseudo_salt_tracer_surface_state(sfc_state, h, G, GV, CS)
   type(verticalGrid_type), intent(in)    :: GV !< The ocean's vertical grid structure
   type(surface),           intent(inout) :: sfc_state !< A structure containing fields that
                                                !! describe the surface state of the ocean
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h  !< Layer thickness [H ~> m or kg m-2]
   type(pseudo_salt_tracer_CS),  pointer  :: CS !< The control structure returned by a previous
                                                !! call to register_pseudo_salt_tracer

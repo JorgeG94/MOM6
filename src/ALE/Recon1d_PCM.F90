@@ -5,6 +5,8 @@ module Recon1d_PCM
 
 use Recon1d_type, only : Recon1d, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public PCM
@@ -56,7 +58,7 @@ contains
 subroutine init(this, n, h_neglect, check)
   class(PCM),        intent(out) :: this      !< This reconstruction
   integer,           intent(in)  :: n         !< Number of cells in this column
-  real, optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H].
+  real(wp), optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H].
                                               !! Not used by PCM.
   logical, optional, intent(in)  :: check     !< If true, enable some consistency checking
 
@@ -72,8 +74,8 @@ end subroutine init
 !> Calculate a 1D PCM reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(PCM), intent(inout) :: this !< This reconstruction
-  real,       intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,       intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),       intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),       intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
@@ -86,31 +88,31 @@ subroutine reconstruct(this, h, u)
 end subroutine reconstruct
 
 !> Value of PCM reconstruction at a point in cell k [A]
-real function f(this, k, x)
+real(wp) function f(this, k, x)
   class(PCM), intent(in) :: this !< This reconstruction
   integer,    intent(in) :: k    !< Cell number
-  real,       intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp),       intent(in) :: x    !< Non-dimensional position within element [nondim]
 
   f = this%u_mean(k)
 
 end function f
 
 !> Derivative of PCM reconstruction at a point in cell k [A]
-real function dfdx(this, k, x)
+real(wp) function dfdx(this, k, x)
   class(PCM), intent(in) :: this !< This reconstruction
   integer,    intent(in) :: k    !< Cell number
-  real,       intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp),       intent(in) :: x    !< Non-dimensional position within element [nondim]
 
-  dfdx = 0.
+  dfdx = 0._wp
 
 end function dfdx
 
 !> Average between xa and xb for cell k of a 1D PCM reconstruction [A]
-real function average(this, k, xa, xb)
+real(wp) function average(this, k, xa, xb)
   class(PCM), intent(in) :: this !< This reconstruction
   integer,    intent(in) :: k    !< Cell number
-  real,       intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-  real,       intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+  real(wp),       intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+  real(wp),       intent(in) :: xb   !< End of averaging interval on element (0 to 1)
 
   average = xb + xa ! no-op to avoid compiler warnings about unused dummy argument
   average = this%u_mean(k)
@@ -128,15 +130,15 @@ end subroutine destroy
 !> Checks the PCM reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(PCM), intent(in) :: this !< This reconstruction
-  real,       intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,       intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),       intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),       intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
   check_reconstruction = .false.
 
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
 end function check_reconstruction
@@ -148,7 +150,7 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,    intent(in)    :: stdout  !< I/O channel for stdout
   integer,    intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -160,31 +162,31 @@ logical function unit_tests(this, verbose, stdout, stderr)
   call test%test( this%n /= 3, 'Setting number of levels')
   allocate( um(3), ul(3), ur(3) )
 
-  call this%reconstruct( (/2.,2.,2./), (/1.,3.,5./) )
-  call test%real_arr(3, this%u_mean, (/1.,3.,5./), 'Setting cell values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp/) )
+  call test%real_arr(3, this%u_mean, (/1._wp,3._wp,5._wp/), 'Setting cell values')
 
   do k = 1, 3
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/1.,3.,5./), 'Evaluation on left edge')
-  call test%real_arr(3, um, (/1.,3.,5./), 'Evaluation in center')
-  call test%real_arr(3, ur, (/1.,3.,5./), 'Evaluation on right edge')
+  call test%real_arr(3, ul, (/1._wp,3._wp,5._wp/), 'Evaluation on left edge')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Evaluation in center')
+  call test%real_arr(3, ur, (/1._wp,3._wp,5._wp/), 'Evaluation on right edge')
 
   do k = 1, 3
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(3, ul, (/0.,0.,0./), 'dfdx on left edge')
-  call test%real_arr(3, um, (/0.,0.,0./), 'dfdx in center')
-  call test%real_arr(3, ur, (/0.,0.,0./), 'dfdx on right edge')
+  call test%real_arr(3, ul, (/0._wp,0._wp,0._wp/), 'dfdx on left edge')
+  call test%real_arr(3, um, (/0._wp,0._wp,0._wp/), 'dfdx in center')
+  call test%real_arr(3, ur, (/0._wp,0._wp,0._wp/), 'dfdx on right edge')
 
   do k = 1, 3
-    um(k) = this%average(k, 0.5, 0.75)
+    um(k) = this%average(k, 0.5_wp, 0.75_wp)
   enddo
-  call test%real_arr(3, um, (/1.,3.,5./), 'Return interval average')
+  call test%real_arr(3, um, (/1._wp,3._wp,5._wp/), 'Return interval average')
 
   unit_tests = test%summarize('PCM:unit_tests')
 

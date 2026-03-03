@@ -15,6 +15,8 @@ use MOM_time_manager,   only : time_type, time_type_to_real
 use MOM_unit_scaling,   only : unit_scale_type
 use MOM_verticalGrid,   only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -28,11 +30,11 @@ public register_shelfwave_OBC, shelfwave_OBC_end
 
 !> Control structure for shelfwave open boundaries.
 type, public :: shelfwave_OBC_CS ; private
-  real :: my_amp        !< Amplitude of the open boundary current inflows [L T-1 ~> m s-1]
-  real :: kk            !< Cross-shore wavenumber [km-1] or [m-1]
-  real :: ll            !< Longshore wavenumber [km-1] or [m-1]
-  real :: alpha         !< Exponential decay rate in the y-direction [km-1] or [m-1]
-  real :: omega         !< Frequency of the shelf wave [T-1 ~> s-1]
+  real(wp) :: my_amp        !< Amplitude of the open boundary current inflows [L T-1 ~> m s-1]
+  real(wp) :: kk            !< Cross-shore wavenumber [km-1] or [m-1]
+  real(wp) :: ll            !< Longshore wavenumber [km-1] or [m-1]
+  real(wp) :: alpha         !< Exponential decay rate in the y-direction [km-1] or [m-1]
+  real(wp) :: omega         !< Frequency of the shelf wave [T-1 ~> s-1]
   logical :: shelfwave_correct_amplitude !< If true, SHELFWAVE_AMPLITUDE gives the actual inflow
                         !! velocity, rather than giving an overall scaling factor for the flow.
 end type shelfwave_OBC_CS
@@ -49,15 +51,15 @@ function register_shelfwave_OBC(param_file, CS, G, US, OBC_Reg)
   logical                              :: register_shelfwave_OBC
 
   ! Local variables
-  real :: PI      ! The ratio of the circumference of a circle to its diameter [nondim]
+  real(wp) :: PI      ! The ratio of the circumference of a circle to its diameter [nondim]
   character(len=32)  :: casename = "shelfwave"       !< This case's name.
-  real :: jj      ! Cross-shore wave mode [nondim]
-  real :: f0      ! Coriolis parameter [T-1 ~> s-1]
-  real :: Lx      ! Long-shore length scale of bathymetry [km] or [m]
-  real :: Ly      ! Cross-shore length scale [km] or [m]
-  real :: default_amp  ! The default velocity amplitude [m s-1] or amplitude scaling factor [nondim]
+  real(wp) :: jj      ! Cross-shore wave mode [nondim]
+  real(wp) :: f0      ! Coriolis parameter [T-1 ~> s-1]
+  real(wp) :: Lx      ! Long-shore length scale of bathymetry [km] or [m]
+  real(wp) :: Ly      ! Cross-shore length scale [km] or [m]
+  real(wp) :: default_amp  ! The default velocity amplitude [m s-1] or amplitude scaling factor [nondim]
 
-  PI = 4.0*atan(1.0)
+  PI = 4.0_wp*atan(1.0_wp)
 
   if (associated(CS)) then
     call MOM_error(WARNING, "register_shelfwave_OBC called with an "// &
@@ -69,26 +71,26 @@ function register_shelfwave_OBC(param_file, CS, G, US, OBC_Reg)
   ! Register the tracer for horizontal advection & diffusion.
   call register_OBC(casename, param_file, OBC_Reg)
   call get_param(param_file, mdl, "F_0", f0, &
-                 default=0.0, units="s-1", scale=US%T_to_s, do_not_log=.true.)
+                 default=0.0_wp, units="s-1", scale=US%T_to_s, do_not_log=.true.)
   call get_param(param_file, mdl,"SHELFWAVE_X_WAVELENGTH", Lx, &
                  "Length scale of shelfwave in x-direction.",&
-                 units=G%x_ax_unit_short, default=100.)
+                 units=G%x_ax_unit_short, default=100._wp)
   call get_param(param_file, mdl, "SHELFWAVE_Y_LENGTH_SCALE", Ly, &
                  "Length scale of exponential dropoff of topography in the y-direction.", &
-                 units=G%y_ax_unit_short, default=50.)
+                 units=G%y_ax_unit_short, default=50._wp)
   call get_param(param_file, mdl, "SHELFWAVE_Y_MODE", jj, &
                  "Cross-shore wave mode.",               &
-                 units="nondim", default=1.)
+                 units="nondim", default=1._wp)
   call get_param(param_file, mdl, "SHELFWAVE_CORRECT_AMPLITUDE", CS%shelfwave_correct_amplitude, &
                  "If true, SHELFWAVE_AMPLITUDE gives the actual inflow velocity, rather than giving "//&
                  "an overall scaling factor for the flow.", default=.true.)
-  default_amp = 1.0 ; if (CS%shelfwave_correct_amplitude) default_amp = 0.1
+  default_amp = 1.0_wp ; if (CS%shelfwave_correct_amplitude) default_amp = 0.1_wp
   call get_param(param_file, mdl, "SHELFWAVE_AMPLITUDE", CS%my_amp, &
                  "Amplitude of the open boundary current inflows in the shelfwave configuration.", &
                  units="m s-1", default=default_amp, scale=US%m_s_to_L_T)
 
-  CS%alpha = 1. / Ly
-  CS%ll = 2. * PI / Lx
+  CS%alpha = 1._wp / Ly
+  CS%ll = 2._wp * PI / Lx
   CS%kk = jj * PI / G%len_lat
   CS%omega = 2 * CS%alpha * f0 * CS%ll / &
              (CS%kk*CS%kk + CS%alpha*CS%alpha + CS%ll*CS%ll)
@@ -108,25 +110,25 @@ end subroutine shelfwave_OBC_end
 !> Initialization of topography.
 subroutine shelfwave_initialize_topography( D, G, param_file, max_depth, US )
   type(dyn_horgrid_type),          intent(in)  :: G !< The dynamic horizontal grid type
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+  real(wp), dimension(G%isd:G%ied,G%jsd:G%jed), &
                                    intent(out) :: D !< Ocean bottom depth [Z ~> m]
   type(param_file_type),           intent(in)  :: param_file !< Parameter file structure
-  real,                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
+  real(wp),                            intent(in)  :: max_depth !< Maximum model depth [Z ~> m]
   type(unit_scale_type),           intent(in)  :: US !< A dimensional unit scaling type
 
   ! Local variables
-  real      :: y    ! Position relative to the southern boundary [km] or [m] or [degrees_N]
-  real      :: rLy  ! Exponential decay rate of the topography [km-1] or [m-1] or [degrees_N-1]
-  real      :: Ly   ! Exponential decay lengthscale of the topography [km] or [m] or [degrees_N]
-  real      :: H0   ! The minimum depth of the ocean [Z ~> m]
+  real(wp)      :: y    ! Position relative to the southern boundary [km] or [m] or [degrees_N]
+  real(wp)      :: rLy  ! Exponential decay rate of the topography [km-1] or [m-1] or [degrees_N-1]
+  real(wp)      :: Ly   ! Exponential decay lengthscale of the topography [km] or [m] or [degrees_N]
+  real(wp)      :: H0   ! The minimum depth of the ocean [Z ~> m]
   integer   :: i, j
 
   call get_param(param_file, mdl,"SHELFWAVE_Y_LENGTH_SCALE", Ly, &
-                 units=G%y_ax_unit_short, default=50., do_not_log=.true.)
+                 units=G%y_ax_unit_short, default=50._wp, do_not_log=.true.)
   call get_param(param_file, mdl,"MINIMUM_DEPTH", H0, &
-                 units="m", default=10., scale=US%m_to_Z, do_not_log=.true.)
+                 units="m", default=10._wp, scale=US%m_to_Z, do_not_log=.true.)
 
-  rLy = 0. ; if (Ly>0.) rLy = 1. / Ly
+  rLy = 0._wp ; if (Ly>0._wp) rLy = 1._wp / Ly
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     ! Compute normalized zonal coordinates (x,y=0 at center of domain)
@@ -145,18 +147,18 @@ subroutine shelfwave_set_OBC_data(OBC, CS, G, GV, US, h, Time)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure.
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h !< layer thickness [H ~> m or kg m-2]
   type(time_type),         intent(in) :: Time !< model time.
 
   ! The following variables are used to set up the transport in the shelfwave example.
-  real :: time_sec ! The time in the run [T ~> s]
-  real :: cos_wt, sin_wt ! Cosine and sine associated with the propagating x-direction structure [nondim]
-  real :: cos_ky, sin_ky ! Cosine and sine associated with the y-direction structure [nondim]
-  real :: x   ! Position relative to the western boundary [km] or [m] or [degrees_E]
-  real :: y   ! Position relative to the southern boundary [km] or [m] or [degrees_N]
-  real :: I_yscale  ! A factor to give the correct inflow velocity [km-1] or [m-1] or [degrees_N-1] or
+  real(wp) :: time_sec ! The time in the run [T ~> s]
+  real(wp) :: cos_wt, sin_wt ! Cosine and sine associated with the propagating x-direction structure [nondim]
+  real(wp) :: cos_ky, sin_ky ! Cosine and sine associated with the y-direction structure [nondim]
+  real(wp) :: x   ! Position relative to the western boundary [km] or [m] or [degrees_E]
+  real(wp) :: y   ! Position relative to the southern boundary [km] or [m] or [degrees_N]
+  real(wp) :: I_yscale  ! A factor to give the correct inflow velocity [km-1] or [m-1] or [degrees_N-1] or
                     ! to compensate for the variable units of the y-coordinate [km axis_unit-1], usually 1 [nondim]
-  real :: my_amp    ! Amplitude of the open boundary current inflows, including sign changes
+  real(wp) :: my_amp    ! Amplitude of the open boundary current inflows, including sign changes
                     ! to account for grid rotation [L T-1 ~> m s-1]
   integer :: i, j, is, ie, js, je, n
   integer :: turns    ! Number of index quarter turns
@@ -170,11 +172,11 @@ subroutine shelfwave_set_OBC_data(OBC, CS, G, GV, US, h, Time)
   time_sec = US%s_to_T*time_type_to_real(Time)
   if (CS%shelfwave_correct_amplitude) then
     ! This makes the units and edge value of normal_vel_bt the same as my_amp.
-    I_yscale = 1.0 / CS%kk
+    I_yscale = 1.0_wp / CS%kk
   else ! This preserves the previous answers.
-    if (G%grid_unit_to_L == 0.0) call MOM_error(FATAL, &
+    if (G%grid_unit_to_L == 0.0_wp) call MOM_error(FATAL, &
           "shelfwave_set_OBC_data requires the use of Cartesian coordinates.")
-    I_yscale = (1.0e3 * US%m_to_L) / G%grid_unit_to_L
+    I_yscale = (1.0e3_wp * US%m_to_L) / G%grid_unit_to_L
   endif
   do n = 1, OBC%number_of_segments
     segment => OBC%segment(n)

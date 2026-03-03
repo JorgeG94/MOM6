@@ -9,6 +9,7 @@ module marbl_interface
     use marbl_interface_public_types, only : marbl_diagnostics_type
     use marbl_interface_public_types, only : marbl_domain_type
     use marbl_interface_public_types, only : marbl_output_for_GCM_type
+    use MOM_datatypes, only : wp
     implicit none
     private ! Only want marbl_interface_class to be public, not supporting functions
 
@@ -28,11 +29,11 @@ module marbl_interface
         type(marbl_diagnostics_type)    :: interior_tendency_diags        !< dummy diagnostics
         type(marbl_output_for_GCM_type) :: surface_flux_output            !< dummy output
         type(marbl_output_for_GCM_type) :: interior_tendency_output       !< dummy output
-        real, allocatable :: tracers(:,:)  !< dummy tracer array
-        real, allocatable :: tracers_at_surface(:,:)  !< dummy tracer surface array
-        real, allocatable :: bot_flux_to_tend(:)      !< dummy array for bot flux to tendency wgts
-        real, allocatable :: surface_fluxes(:,:)  !< dummy fluxes
-        real, allocatable :: interior_tendencies(:,:)  !< dummy tendencies
+        real(wp), allocatable :: tracers(:,:)  !< dummy tracer array
+        real(wp), allocatable :: tracers_at_surface(:,:)  !< dummy tracer surface array
+        real(wp), allocatable :: bot_flux_to_tend(:)      !< dummy array for bot flux to tendency wgts
+        real(wp), allocatable :: surface_fluxes(:,:)  !< dummy fluxes
+        real(wp), allocatable :: interior_tendencies(:,:)  !< dummy tendencies
        contains
         procedure, public  :: put_setting                !< dummy put_setting routine
         procedure, public  :: get_setting                !< dummy get_setting routine
@@ -82,9 +83,9 @@ contains
         integer,                      intent(in)    :: gcm_num_levels
         integer,                      intent(in)    :: gcm_num_PAR_subcols
         integer,                      intent(in)    :: gcm_num_elements_surface_flux
-        real,                         intent(in)    :: gcm_delta_z(gcm_num_levels)
-        real,                         intent(in)    :: gcm_zw(gcm_num_levels)
-        real,                         intent(in)    :: gcm_zt(gcm_num_levels)
+        real(wp),                         intent(in)    :: gcm_delta_z(gcm_num_levels)
+        real(wp),                         intent(in)    :: gcm_zw(gcm_num_levels)
+        real(wp),                         intent(in)    :: gcm_zt(gcm_num_levels)
         character(len=*),             intent(in)    :: unit_system_opt
         logical,                      intent(in)    :: lgcm_has_global_ops
 

@@ -3,6 +3,7 @@ module numerical_testing_type
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
+use MOM_datatypes, only : wp
 implicit none ; private
 
 public testing
@@ -28,7 +29,7 @@ type :: testing
   !> If true, ignore fails until ignore_fail=.false.
   logical :: ignore_fail = .false.
   !> Record instances that fail
-  integer :: ifailed(100) = 0.
+  integer :: ifailed(100) = 0._wp
   !> Record label of first instance that failed
   character(len=:), allocatable :: label_first_fail
 
@@ -127,17 +128,17 @@ end function summarize
 !! If a difference is measured, display results to stdout and stderr
 subroutine real_scalar(this, u_test, u_true, label, tol, robits, ignore)
   class(testing),  intent(inout) :: this   !< This testing class
-  real,               intent(in) :: u_test !< Value to test [A]
-  real,               intent(in) :: u_true !< Value to test against (correct answer) [A]
+  real(wp),               intent(in) :: u_test !< Value to test [A]
+  real(wp),               intent(in) :: u_true !< Value to test against (correct answer) [A]
   character(len=*),   intent(in) :: label  !< Message
-  real,     optional, intent(in) :: tol    !< The tolerance for differences between u and u_true [A]
+  real(wp),     optional, intent(in) :: tol    !< The tolerance for differences between u and u_true [A]
   integer,  optional, intent(in) :: robits !< Number of bits of round-off to allow
   logical,  optional, intent(in) :: ignore !< If present and true, ignore a fail
   ! Local variables
   logical :: this_test, ignore_this_fail
-  real :: tolerance, err ! Tolerance and error [A]
+  real(wp) :: tolerance, err ! Tolerance and error [A]
 
-  tolerance = 0.0
+  tolerance = 0.0_wp
   if (present(tol)) tolerance = tol
   ignore_this_fail = this%ignore_fail
   if (present(ignore)) ignore_this_fail = ignore
@@ -176,18 +177,18 @@ end subroutine real_scalar
 subroutine real_arr(this, n, u_test, u_true, label, tol, robits, ignore)
   class(testing),  intent(inout) :: this   !< This testing class
   integer,            intent(in) :: n      !< Number of cells in u
-  real, dimension(n), intent(in) :: u_test !< Values to test [A]
-  real, dimension(n), intent(in) :: u_true !< Values to test against (correct answer) [A]
+  real(wp), dimension(n), intent(in) :: u_test !< Values to test [A]
+  real(wp), dimension(n), intent(in) :: u_true !< Values to test against (correct answer) [A]
   character(len=*),   intent(in) :: label  !< Message
-  real,     optional, intent(in) :: tol    !< The tolerance for differences between u and u_true [A]
+  real(wp),     optional, intent(in) :: tol    !< The tolerance for differences between u and u_true [A]
   integer,  optional, intent(in) :: robits !< Number of bits of round-off to allow
   logical,  optional, intent(in) :: ignore !< If present and true, ignore a fail
   ! Local variables
   integer :: k
   logical :: this_test, ignore_this_fail
-  real :: tolerance, err ! Tolerance and error [A]
+  real(wp) :: tolerance, err ! Tolerance and error [A]
 
-  tolerance = 0.0
+  tolerance = 0.0_wp
   if (present(tol)) tolerance = tol
   ignore_this_fail = this%ignore_fail
   if (present(ignore)) ignore_this_fail = ignore
@@ -207,7 +208,7 @@ subroutine real_arr(this, n, u_test, u_true, label, tol, robits, ignore)
       if (present(robits)) tolerance = abs(u_true(k)) * float(robits) * epsilon(err)
       err = u_test(k) - u_true(k)
       if ( ( abs(err) > tolerance .and. ignore_this_fail ) .or. &
-           ( abs(err) > 0. .and. abs(err) <= tolerance ) ) then
+           ( abs(err) > 0._wp .and. abs(err) <= tolerance ) ) then
         write(this%stdout,'(i4,1p2e24.16,a,1pe24.16,a)') k, u_test(k), u_true(k), &
                          ' err=', err, ' <--- IGNORING'
       elseif (abs(err) > tolerance) then
@@ -308,28 +309,28 @@ logical function numerical_testing_type_unit_tests(verbose)
   test%state = .false. ! reset
 
   ! Check that %real_scalar(a,a,...) leaves %state unchanged
-  call test%real_scalar(1., 1., "real_scalar(s,s) should pass", robits=0, tol=0.)
+  call test%real_scalar(1._wp, 1._wp, "real_scalar(s,s) should pass", robits=0, tol=0._wp)
   call tester%test(test%state, "test%real_scalar(s,s)")
 
   ! Check that %real_scalar(a,b,...,ignore=.true.) leaves %state unchanged
-  call test%real_scalar(1., 2., "real_scalar(s,t) should fail but be ignored", ignore=.true.)
+  call test%real_scalar(1._wp, 2._wp, "real_scalar(s,t) should fail but be ignored", ignore=.true.)
   call tester%test(test%state, "test%real_scalar(s,t,ignore)")
 
   ! Check that %real_scalar(a,a,...) sets %state
-  call test%real_scalar(1., 2., "s != t should fail")
+  call test%real_scalar(1._wp, 2._wp, "s != t should fail")
   call tester%test(.not. test%state, "test%real_scalar(s,t)")
   test%state = .false. ! reset
 
   ! Check that %real_arr(a,a,...) leaves %state unchanged
-  call test%real_arr(2, (/1.,2./), (/1.,2./), "real_arr(a,a) should pass", robits=0, tol=0.)
+  call test%real_arr(2, (/1._wp,2._wp/), (/1._wp,2._wp/), "real_arr(a,a) should pass", robits=0, tol=0._wp)
   call tester%test(test%state, "test%real_arr(a,a)")
 
   ! Check that %real_arr(a,b,...,ignore=.true.) leaves %state unchanged
-  call test%real_arr(2, (/1.,2./), (/3.,4./), "real_arr(a,b) should fail but be ignored", ignore=.true.)
+  call test%real_arr(2, (/1._wp,2._wp/), (/3._wp,4._wp/), "real_arr(a,b) should fail but be ignored", ignore=.true.)
   call tester%test(test%state, "test%real_arr(a,b,ignore)")
 
   ! Check that %real_arr(a,b,...) sets %state
-  call test%real_arr(2, (/1.,2./), (/3.,4./), "real(a,b) should fail")
+  call test%real_arr(2, (/1._wp,2._wp/), (/3._wp,4._wp/), "real(a,b) should fail")
   call tester%test(.not. test%state, "test%real_arr(a,b)")
   test%state = .false. ! reset
 

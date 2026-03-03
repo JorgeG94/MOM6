@@ -5,6 +5,8 @@ module Recon1d_type
 
 use numerical_testing_type, only : testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public Recon1d
@@ -14,8 +16,8 @@ public testing
 type, abstract :: Recon1d
 
   integer :: n = 0 !< Number of cells in column
-  real, allocatable, dimension(:) :: u_mean !< Cell mean [A]
-  real :: h_neglect = 0. !< A negligibly small width used in cell reconstructions in the same units as h [H]
+  real(wp), allocatable, dimension(:) :: u_mean !< Cell mean [A]
+  real(wp) :: h_neglect = 0._wp !< A negligibly small width used in cell reconstructions in the same units as h [H]
   logical :: check = .false. !< If true, enable some consistency checking
 
   logical :: debug = .false. !< If true, dump info as calculations are made (do not enable)
@@ -69,50 +71,50 @@ interface
 
   !> Initialize a 1D reconstruction for n cells
   subroutine i_init(this, n, h_neglect, check)
-    import :: Recon1d
+    import :: Recon1d, wp
     class(Recon1d),    intent(out) :: this !< This reconstruction
     integer,           intent(in)  :: n    !< Number of cells in this column
-    real, optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+    real(wp), optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
     logical, optional, intent(in)  :: check !< If true, enable some consistency checking
   end subroutine i_init
 
   !> Calculate a 1D reconstructions based on h(:) and u(:)
   subroutine i_reconstruct(this, h, u)
-    import :: Recon1d
+    import :: Recon1d, wp
     class(Recon1d), intent(inout) :: this !< This reconstruction
-    real,           intent(in)    :: h(*) !< Grid spacing (thickness), typically in [H]
-    real,           intent(in)    :: u(*) !< Cell mean values [A]
+    real(wp),           intent(in)    :: h(*) !< Grid spacing (thickness), typically in [H]
+    real(wp),           intent(in)    :: u(*) !< Cell mean values [A]
   end subroutine i_reconstruct
 
   !> Average between xa and xb for cell k of a 1D reconstruction [A]
   !!
   !! It is assumed that 0<=xa<=1, 0<=xb<=1, and xa<=xb
-  real function i_average(this, k, xa, xb)
-    import :: Recon1d
+  real(wp) function i_average(this, k, xa, xb)
+    import :: Recon1d, wp
     class(Recon1d), intent(in) :: this !< This reconstruction
     integer,        intent(in) :: k    !< Cell number
-    real,           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-    real,           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+    real(wp),           intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+    real(wp),           intent(in) :: xb   !< End of averaging interval on element (0 to 1)
   end function i_average
 
   !> Point-wise value of reconstruction [A]
   !!
   !! THe function is only valid for 0 <= x <= 1. x is effectively clipped to this range.
-  real function i_f(this, k, x)
-    import :: Recon1d
+  real(wp) function i_f(this, k, x)
+    import :: Recon1d, wp
     class(Recon1d), intent(in) :: this !< This reconstruction
     integer,        intent(in) :: k    !< Cell number
-    real,           intent(in) :: x    !< Non-dimensional position within element [nondim]
+    real(wp),           intent(in) :: x    !< Non-dimensional position within element [nondim]
   end function i_f
 
   !> Point-wise value of derivative reconstruction [A]
   !!
   !! THe function is only valid for 0 <= x <= 1. x is effectively clipped to this range.
-  real function i_dfdx(this, k, x)
-    import :: Recon1d
+  real(wp) function i_dfdx(this, k, x)
+    import :: Recon1d, wp
     class(Recon1d), intent(in) :: this !< This reconstruction
     integer,        intent(in) :: k    !< Cell number
-    real,           intent(in) :: x    !< Non-dimensional position within element [nondim]
+    real(wp),           intent(in) :: x    !< Non-dimensional position within element [nondim]
   end function i_dfdx
 
   !> Returns true if some inconsistency is detected, false otherwise
@@ -120,10 +122,10 @@ interface
   !! The nature of "consistency" is defined by the implementations
   !! and might be no-ops.
   logical function i_check_reconstruction(this, h, u)
-    import :: Recon1d
+    import :: Recon1d, wp
     class(Recon1d), intent(in) :: this !< This reconstruction
-    real,           intent(in) :: h(*) !< Grid spacing (thickness), typically in [H]
-    real,           intent(in) :: u(*) !< Cell mean values [A]
+    real(wp),           intent(in) :: h(*) !< Grid spacing (thickness), typically in [H]
+    real(wp),           intent(in) :: u(*) !< Cell mean values [A]
   end function i_check_reconstruction
 
   !> Deallocate a 1D reconstruction
@@ -134,19 +136,19 @@ interface
 
   !> Second interface to init(), or to parent init()
   subroutine i_init_parent(this, n, h_neglect, check)
-    import :: Recon1d
+    import :: Recon1d, wp
     class(Recon1d), intent(out) :: this !< This reconstruction
     integer,        intent(in)  :: n    !< Number of cells in this column
-    real, optional, intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+    real(wp), optional, intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
     logical, optional, intent(in)  :: check !< If true, enable some consistency checking
   end subroutine i_init_parent
 
   !> Second interface to reconstruct(), or to parent reconstruct()
   subroutine i_reconstruct_parent(this, h, u)
-    import :: Recon1d
+    import :: Recon1d, wp
     class(Recon1d), intent(inout) :: this !< This reconstruction
-    real,           intent(in)    :: h(*) !< Grid spacing (thickness), typically in [H]
-    real,           intent(in)    :: u(*) !< Cell mean values [A]
+    real(wp),           intent(in)    :: h(*) !< Grid spacing (thickness), typically in [H]
+    real(wp),           intent(in)    :: u(*) !< Cell mean values [A]
   end subroutine i_reconstruct_parent
 
   !> Runs reconstruction unit tests and returns True for any fails, False otherwise
@@ -174,26 +176,26 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
                                    isrc_start, isrc_end, isrc_max, isub_src, &
                                    u_sub, uh_sub, u02_err)
   class(Recon1d), intent(in) :: this !< 1-D reconstruction type
-  real,    intent(in)  :: h0(*)  !< Source grid widths (size n0) [H]
-  real,    intent(in)  :: u0(*)  !< Source grid widths (size n0) [H]
+  real(wp),    intent(in)  :: h0(*)  !< Source grid widths (size n0) [H]
+  real(wp),    intent(in)  :: u0(*)  !< Source grid widths (size n0) [H]
   integer, intent(in)  :: n1      !< Number of cells in target grid
-  real,    intent(in)  :: h_sub(*) !< Overlapping sub-cell thicknesses, h_sub [H]
+  real(wp),    intent(in)  :: h_sub(*) !< Overlapping sub-cell thicknesses, h_sub [H]
   integer, intent(in)  :: isrc_start(*) !< Index of first sub-cell within each source cell
   integer, intent(in)  :: isrc_end(*) !< Index of last sub-cell within each source cell
   integer, intent(in)  :: isrc_max(*) !< Index of thickest sub-cell within each source cell
   integer, intent(in)  :: isub_src(*) !< Index of source cell for each sub-cell
-  real,    intent(out) :: u_sub(*) !< Sub-cell cell averages (size n1) [A]
-  real,    intent(out) :: uh_sub(*) !< Sub-cell cell integrals (size n1) [A H]
-  real,    intent(out) :: u02_err !< Integrated reconstruction error estimates [A H]
+  real(wp),    intent(out) :: u_sub(*) !< Sub-cell cell averages (size n1) [A]
+  real(wp),    intent(out) :: uh_sub(*) !< Sub-cell cell integrals (size n1) [A H]
+  real(wp),    intent(out) :: u02_err !< Integrated reconstruction error estimates [A H]
   ! Local variables
   integer :: i_sub ! Index of sub-cell
   integer :: i0 ! Index into h0(1:n0), source column
   integer :: i_max ! Used to record which sub-cell is the largest contribution of a source cell
-  real :: dh_max ! Used to record which sub-cell is the largest contribution of a source cell [H]
-  real :: xa, xb ! Non-dimensional position within a source cell (0..1) [nondim]
-  real :: dh ! The width of the sub-cell [H]
-  real :: duh ! The total amount of accumulated stuff (u*h) [A H]
-  real :: dh0_eff ! Running sum of source cell thickness [H]
+  real(wp) :: dh_max ! Used to record which sub-cell is the largest contribution of a source cell [H]
+  real(wp) :: xa, xb ! Non-dimensional position within a source cell (0..1) [nondim]
+  real(wp) :: dh ! The width of the sub-cell [H]
+  real(wp) :: duh ! The total amount of accumulated stuff (u*h) [A H]
+  real(wp) :: dh0_eff ! Running sum of source cell thickness [H]
   integer :: i0_last_thick_cell, n0
 ! real :: u0_min(this%n), u0_max(this%n) ! Min/max of u0 for each source cell [A]
 ! real :: ul,ur ! Left/right edge values [A]
@@ -206,15 +208,15 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
 !   ur = this%f(i0, 1.)
 !   u0_min(i0) = min(ul, ur)
 !   u0_max(i0) = max(ul, ur)
-    if (h0(i0)>0.) i0_last_thick_cell = i0
+    if (h0(i0)>0._wp) i0_last_thick_cell = i0
   enddo
 
   ! Loop over each sub-cell to calculate average/integral values within each sub-cell.
   ! Uses: h_sub, isub_src, h0_eff
   ! Sets: u_sub, uh_sub
-  xa = 0.
-  dh0_eff = 0.
-  u02_err = 0.
+  xa = 0._wp
+  dh0_eff = 0._wp
+  u02_err = 0._wp
   do i_sub = 1, n0+n1
 
     ! Sub-cell thickness from loop above
@@ -227,12 +229,12 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
     ! Integral is over distance dh but expressed in terms of non-dimensional
     ! positions with source cell from xa to xb  (0 <= xa <= xb <= 1).
     dh0_eff = dh0_eff + dh ! Cumulative thickness within the source cell
-    if (h0(i0)>0.) then
+    if (h0(i0)>0._wp) then
       xb = dh0_eff / h0(i0) ! This expression yields xa <= xb <= 1.0
-      xb = min(1., xb) ! This is only needed when the total target column is wider than the source column
+      xb = min(1._wp, xb) ! This is only needed when the total target column is wider than the source column
       u_sub(i_sub) = this%average( i0, xa, xb )
     else ! Vanished cell
-      xb = 1.
+      xb = 1._wp
       u_sub(i_sub) = u0(i0)
     endif
 !   u_sub(i_sub) = max( u_sub(i_sub), u0_min(i0) )
@@ -241,8 +243,8 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
 
     if (isub_src(i_sub+1) /= i0) then
       ! If the next sub-cell is in a different source cell, reset the position counters
-      dh0_eff = 0.
-      xa = 0.
+      dh0_eff = 0._wp
+      xa = 0._wp
     else
       xa = xb ! Next integral will start at end of last
     endif
@@ -258,12 +260,12 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
   ! Integral is over distance dh but expressed in terms of non-dimensional
   ! positions with source cell from xa to xb  (0 <= xa <= xb <= 1).
   dh0_eff = dh0_eff + dh ! Cumulative thickness within the source cell
-  if (h0(i0)>0.) then
+  if (h0(i0)>0._wp) then
     xb = dh0_eff / h0(i0) ! This expression yields xa <= xb <= 1.0
-    xb = min(1., xb) ! This is only needed when the total target column is wider than the source column
+    xb = min(1._wp, xb) ! This is only needed when the total target column is wider than the source column
     u_sub(i_sub) = this%average( i0, xa, xb )
   else ! Vanished cell
-    xb = 1.
+    xb = 1._wp
     u_sub(i_sub) = u0(i0)
   endif
 ! u_sub(i_sub) = max( u_sub(i_sub), u0_min(i0) )
@@ -278,9 +280,9 @@ subroutine remap_to_sub_grid(this, h0, u0, n1, h_sub, &
   do i0 = 1, i0_last_thick_cell
     i_max = isrc_max(i0)
     dh_max = h_sub(i_max)
-    if (dh_max > 0.) then
+    if (dh_max > 0._wp) then
       ! duh will be the sum of sub-cell integrals within the source cell except for the thickest sub-cell.
-      duh = 0.
+      duh = 0._wp
       do i_sub = isrc_start(i0), isrc_end(i0)
         if (i_sub /= i_max) duh = duh + uh_sub(i_sub)
       enddo

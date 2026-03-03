@@ -35,6 +35,8 @@ use fms_affinity_mod, only : fms_affinity_init, fms_affinity_set, fms_affinity_g
 ! The `group_pass_type` fields are never accessed, so we keep it as an FMS type
 use mpp_domains_mod, only : group_pass_type => mpp_group_update_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 ! These types are inherited from mpp, but are treated as opaque here.
@@ -172,7 +174,7 @@ contains
 !> pass_var_3d does a halo update for a three-dimensional array.
 subroutine pass_var_3d(array, MOM_dom, sideflag, complete, position, halo, &
                        clock)
-  real, dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -218,7 +220,7 @@ end subroutine pass_var_3d
 
 !> pass_var_2d does a halo update for a two-dimensional array.
 subroutine pass_var_2d(array, MOM_dom, sideflag, complete, position, halo, inner_halo, clock)
-  real, dimension(:,:),  intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:),  intent(inout) :: array    !< The array which is having its halos points
                                                    !! exchanged.
   type(MOM_domain_type), intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                    !! needed to determine where data should be sent.
@@ -243,7 +245,7 @@ subroutine pass_var_2d(array, MOM_dom, sideflag, complete, position, halo, inner
                                                    !! started then stopped to time this routine.
 
   ! Local variables
-  real, allocatable, dimension(:,:) :: tmp
+  real(wp), allocatable, dimension(:,:) :: tmp
   integer :: pos, i_halo, j_halo
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
   integer :: i, j, isfw, iefw, isfe, iefe, jsfs, jefs, jsfn, jefn
@@ -338,7 +340,7 @@ end subroutine pass_var_2d
 !> pass_var_start_2d starts a halo update for a two-dimensional array.
 function pass_var_start_2d(array, MOM_dom, sideflag, position, complete, halo, &
                            clock)
-  real, dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -383,7 +385,7 @@ end function pass_var_start_2d
 !> pass_var_start_3d starts a halo update for a three-dimensional array.
 function pass_var_start_3d(array, MOM_dom, sideflag, position, complete, halo, &
                            clock)
-  real, dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -431,7 +433,7 @@ subroutine pass_var_complete_2d(id_update, array, MOM_dom, sideflag, position, h
   integer,                intent(in)    :: id_update !< The integer id of this update which has
                                                     !! been returned from a previous call to
                                                     !! pass_var_start.
-  real, dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -474,7 +476,7 @@ subroutine pass_var_complete_3d(id_update, array, MOM_dom, sideflag, position, h
   integer,                intent(in)    :: id_update !< The integer id of this update which has
                                                     !! been returned from a previous call to
                                                     !! pass_var_start.
-  real, dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -515,10 +517,10 @@ end subroutine pass_var_complete_3d
 !! representing the components of a two-dimensional horizontal vector.
 subroutine pass_vector_2d(u_cmpt, v_cmpt, MOM_dom, direction, stagger, complete, halo, &
                           clock)
-  real, dimension(:,:),  intent(inout) :: u_cmpt    !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:),  intent(inout) :: u_cmpt    !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:),  intent(inout) :: v_cmpt    !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:),  intent(inout) :: v_cmpt    !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type), intent(inout) :: MOM_dom   !< The MOM_domain_type containing the mpp_domain
@@ -576,10 +578,10 @@ end subroutine pass_vector_2d
 !! possibly turn optional cpu clocks on or off.
 subroutine fill_vector_symmetric_edges_2d(u_cmpt, v_cmpt, MOM_dom, stagger, scalar, &
                                           clock)
-  real, dimension(:,:),  intent(inout) :: u_cmpt  !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:),  intent(inout) :: u_cmpt  !< The nominal zonal (u) component of the vector
                                                   !! pair which is having its halos points
                                                   !! exchanged.
-  real, dimension(:,:),  intent(inout) :: v_cmpt  !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:),  intent(inout) :: v_cmpt  !< The nominal meridional (v) component of the
                                                   !! vector pair which is having its halos points
                                                   !! exchanged.
   type(MOM_domain_type), intent(inout) :: MOM_dom !< The MOM_domain_type containing the mpp_domain
@@ -596,7 +598,7 @@ subroutine fill_vector_symmetric_edges_2d(u_cmpt, v_cmpt, MOM_dom, stagger, scal
   integer :: stagger_local
   integer :: dirflag
   integer :: i, j, isc, iec, jsc, jec, isd, ied, jsd, jed, IscB, IecB, JscB, JecB
-  real, allocatable, dimension(:) :: sbuff_x, sbuff_y, wbuff_x, wbuff_y
+  real(wp), allocatable, dimension(:) :: sbuff_x, sbuff_y, wbuff_x, wbuff_y
 
   if (.not. MOM_dom%symmetric) then
       return
@@ -623,7 +625,7 @@ subroutine fill_vector_symmetric_edges_2d(u_cmpt, v_cmpt, MOM_dom, stagger, scal
 
   if (stagger_local == CGRID_NE) then
     allocate(wbuff_x(jsc:jec)) ; allocate(sbuff_y(isc:iec))
-    wbuff_x(:) = 0.0 ; sbuff_y(:) = 0.0
+    wbuff_x(:) = 0.0_wp ; sbuff_y(:) = 0.0_wp
     call mpp_get_boundary(u_cmpt, v_cmpt, MOM_dom%mpp_domain, flags=dirflag, &
                           wbufferx=wbuff_x, sbuffery=sbuff_y, &
                           gridtype=CGRID_NE)
@@ -637,7 +639,7 @@ subroutine fill_vector_symmetric_edges_2d(u_cmpt, v_cmpt, MOM_dom, stagger, scal
   elseif  (stagger_local == BGRID_NE) then
     allocate(wbuff_x(JscB:JecB)) ; allocate(sbuff_x(IscB:IecB))
     allocate(wbuff_y(JscB:JecB)) ; allocate(sbuff_y(IscB:IecB))
-    wbuff_x(:) = 0.0 ; wbuff_y(:) = 0.0 ; sbuff_x(:) = 0.0 ; sbuff_y(:) = 0.0
+    wbuff_x(:) = 0.0_wp ; wbuff_y(:) = 0.0_wp ; sbuff_x(:) = 0.0_wp ; sbuff_y(:) = 0.0_wp
     call mpp_get_boundary(u_cmpt, v_cmpt, MOM_dom%mpp_domain, flags=dirflag, &
                           wbufferx=wbuff_x, sbufferx=sbuff_x, &
                           wbuffery=wbuff_y, sbuffery=sbuff_y, &
@@ -660,10 +662,10 @@ end subroutine fill_vector_symmetric_edges_2d
 !! representing the components of a three-dimensional horizontal vector.
 subroutine pass_vector_3d(u_cmpt, v_cmpt, MOM_dom, direction, stagger, complete, halo, &
                           clock)
-  real, dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
@@ -718,10 +720,10 @@ end subroutine pass_vector_3d
 !! representing the components of a two-dimensional horizontal vector.
 function pass_vector_start_2d(u_cmpt, v_cmpt, MOM_dom, direction, stagger, complete, halo, &
                               clock)
-  real, dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
@@ -775,10 +777,10 @@ end function pass_vector_start_2d
 !! representing the components of a three-dimensional horizontal vector.
 function pass_vector_start_3d(u_cmpt, v_cmpt, MOM_dom, direction, stagger, complete, halo, &
                               clock)
-  real, dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
@@ -834,10 +836,10 @@ subroutine pass_vector_complete_2d(id_update, u_cmpt, v_cmpt, MOM_dom, direction
   integer,                intent(in)    :: id_update !< The integer id of this update which has been
                                                     !! returned from a previous call to
                                                     !! pass_var_start.
-  real, dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
@@ -888,10 +890,10 @@ subroutine pass_vector_complete_3d(id_update, u_cmpt, v_cmpt, MOM_dom, direction
   integer,                intent(in)    :: id_update !< The integer id of this update which has been
                                                     !! returned from a previous call to
                                                     !! pass_var_start.
-  real, dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
@@ -941,7 +943,7 @@ subroutine create_var_group_pass_2d(group, array, MOM_dom, sideflag, position, &
   type(group_pass_type),  intent(inout) :: group    !< The data type that store information for
                                                     !! group update. This data will be used in
                                                     !! do_group_pass.
-  real, dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:),   intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -986,7 +988,7 @@ subroutine create_var_group_pass_3d(group, array, MOM_dom, sideflag, position, h
   type(group_pass_type),  intent(inout) :: group    !< The data type that store information for
                                                     !! group update. This data will be used in
                                                     !! do_group_pass.
-  real, dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
+  real(wp), dimension(:,:,:), intent(inout) :: array    !< The array which is having its halos points
                                                     !! exchanged.
   type(MOM_domain_type),  intent(inout) :: MOM_dom  !< The MOM_domain_type containing the mpp_domain
                                                     !! needed to determine where data should be
@@ -1031,10 +1033,10 @@ subroutine create_vector_group_pass_2d(group, u_cmpt, v_cmpt, MOM_dom, direction
   type(group_pass_type),  intent(inout) :: group    !< The data type that store information for
                                                     !! group update. This data will be used in
                                                     !! do_group_pass.
-  real, dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:),   intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:),   intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
 
@@ -1087,10 +1089,10 @@ subroutine create_vector_group_pass_3d(group, u_cmpt, v_cmpt, MOM_dom, direction
   type(group_pass_type),  intent(inout) :: group    !< The data type that store information for
                                                     !! group update. This data will be used in
                                                     !! do_group_pass.
-  real, dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
+  real(wp), dimension(:,:,:), intent(inout) :: u_cmpt   !< The nominal zonal (u) component of the vector
                                                     !! pair which is having its halos points
                                                     !! exchanged.
-  real, dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
+  real(wp), dimension(:,:,:), intent(inout) :: v_cmpt   !< The nominal meridional (v) component of the
                                                     !! vector pair which is having its halos points
                                                     !! exchanged.
 
@@ -1148,7 +1150,7 @@ subroutine do_group_pass(group, MOM_dom, clock)
                                                     !! sent.
   integer,     optional, intent(in)    :: clock     !< The handle for a cpu time clock that should be
                                                     !! started then stopped to time this routine.
-  real :: d_type
+  real(wp) :: d_type
 
   if (present(clock)) then ; if (clock>0) call cpu_clock_begin(clock) ; endif
 
@@ -1169,7 +1171,7 @@ subroutine start_group_pass(group, MOM_dom, clock)
   integer,     optional, intent(in)    :: clock    !< The handle for a cpu time clock that should be
                                                    !! started then stopped to time this routine.
 
-  real                                 :: d_type
+  real(wp)                                 :: d_type
 
   if (present(clock)) then ; if (clock>0) call cpu_clock_begin(clock) ; endif
 
@@ -1189,7 +1191,7 @@ subroutine complete_group_pass(group, MOM_dom, clock)
                                                    !! sent.
   integer,     optional, intent(in)    :: clock    !< The handle for a cpu time clock that should be
                                                    !! started then stopped to time this routine.
-  real                                 :: d_type
+  real(wp)                                 :: d_type
 
   if (present(clock)) then ; if (clock>0) call cpu_clock_begin(clock) ; endif
 
@@ -1204,10 +1206,10 @@ end subroutine complete_group_pass
 subroutine redistribute_array_2d(Domain1, array1, Domain2, array2, complete)
   type(domain2d), &
            intent(in)  :: Domain1 !< The MOM domain from which to extract information.
-  real, dimension(:,:), intent(in) :: array1 !< The array from which to extract information.
+  real(wp), dimension(:,:), intent(in) :: array1 !< The array from which to extract information.
   type(domain2d), &
            intent(in)  :: Domain2 !< The MOM domain receiving information.
-  real, dimension(:,:), intent(out) :: array2 !< The array receiving information.
+  real(wp), dimension(:,:), intent(out) :: array2 !< The array receiving information.
   logical, optional, intent(in) :: complete  !< If true, finish communication before proceeding.
 
   ! Local variables
@@ -1223,10 +1225,10 @@ end subroutine redistribute_array_2d
 subroutine redistribute_array_3d(Domain1, array1, Domain2, array2, complete)
   type(domain2d), &
            intent(in)  :: Domain1 !< The MOM domain from which to extract information.
-  real, dimension(:,:,:), intent(in) :: array1 !< The array from which to extract information.
+  real(wp), dimension(:,:,:), intent(in) :: array1 !< The array from which to extract information.
   type(domain2d), &
            intent(in)  :: Domain2 !< The MOM domain receiving information.
-  real, dimension(:,:,:), intent(out) :: array2 !< The array receiving information.
+  real(wp), dimension(:,:,:), intent(out) :: array2 !< The array receiving information.
   logical, optional, intent(in) :: complete  !< If true, finish communication before proceeding.
 
   ! Local variables
@@ -1242,10 +1244,10 @@ end subroutine redistribute_array_3d
 subroutine redistribute_array_4d(Domain1, array1, Domain2, array2, complete)
   type(domain2d), &
            intent(in)  :: Domain1 !< The MOM domain from which to extract information.
-  real, dimension(:,:,:,:), intent(in) :: array1 !< The array from which to extract information.
+  real(wp), dimension(:,:,:,:), intent(in) :: array1 !< The array from which to extract information.
   type(domain2d), &
            intent(in)  :: Domain2 !< The MOM domain receiving information.
-  real, dimension(:,:,:,:), intent(out) :: array2 !< The array receiving information.
+  real(wp), dimension(:,:,:,:), intent(out) :: array2 !< The array receiving information.
   logical, optional, intent(in) :: complete  !< If true, finish communication before proceeding.
 
   ! Local variables
@@ -1261,9 +1263,9 @@ end subroutine redistribute_array_4d
 !> Rescale the values of a 4-D array in its computational domain by a constant factor
 subroutine rescale_comp_data_4d(domain, array, scale, zero_zeros)
   type(MOM_domain_type),    intent(in)    :: domain !< MOM domain from which to extract information
-  real, dimension(:,:,:,:), intent(inout) :: array  !< The array which is having the data in its
+  real(wp), dimension(:,:,:,:), intent(inout) :: array  !< The array which is having the data in its
                                                     !! computational domain rescaled
-  real,                     intent(in)    :: scale  !< A scaling factor by which to multiply the
+  real(wp),                     intent(in)    :: scale  !< A scaling factor by which to multiply the
                                                     !! values in the computational domain of array
   logical,        optional, intent(in)    :: zero_zeros !< If present and true, convert negative zeros
                                                     !! into ordinary signless zeros.
@@ -1272,16 +1274,16 @@ subroutine rescale_comp_data_4d(domain, array, scale, zero_zeros)
 
   unsign_zeros = .false. ; if (present(zero_zeros)) unsign_zeros = zero_zeros
 
-  if ((scale == 1.0) .and. (.not.unsign_zeros)) return
+  if ((scale == 1.0_wp) .and. (.not.unsign_zeros)) return
 
   call get_simple_array_i_ind(domain, size(array,1), is, ie)
   call get_simple_array_j_ind(domain, size(array,2), js, je)
-  if (scale /= 1.0) &
+  if (scale /= 1.0_wp) &
     array(is:ie,js:je,:,:) = scale*array(is:ie,js:je,:,:)
 
   if (unsign_zeros) then ! Convert negative zeros into zeros
     do m=1,size(array,4) ; do k=1,size(array,3) ; do j=js,je ; do i=is,ie
-      if (array(i,j,k,m) == 0.0) array(i,j,k,m) = 0.0
+      if (array(i,j,k,m) == 0.0_wp) array(i,j,k,m) = 0.0_wp
     enddo ; enddo ; enddo ; enddo
   endif
 
@@ -1290,9 +1292,9 @@ end subroutine rescale_comp_data_4d
 !> Rescale the values of a 3-D array in its computational domain by a constant factor
 subroutine rescale_comp_data_3d(domain, array, scale, zero_zeros)
   type(MOM_domain_type),  intent(in)    :: domain !< MOM domain from which to extract information
-  real, dimension(:,:,:), intent(inout) :: array  !< The array which is having the data in its
+  real(wp), dimension(:,:,:), intent(inout) :: array  !< The array which is having the data in its
                                                   !! computational domain rescaled
-  real,                   intent(in)    :: scale  !< A scaling factor by which to multiply the
+  real(wp),                   intent(in)    :: scale  !< A scaling factor by which to multiply the
                                                   !! values in the computational domain of array
   logical,      optional, intent(in)    :: zero_zeros !< If present and true, convert negative zeros
                                                   !! into ordinary signless zeros.
@@ -1301,16 +1303,16 @@ subroutine rescale_comp_data_3d(domain, array, scale, zero_zeros)
 
   unsign_zeros = .false. ; if (present(zero_zeros)) unsign_zeros = zero_zeros
 
-  if ((scale == 1.0) .and. (.not.unsign_zeros)) return
+  if ((scale == 1.0_wp) .and. (.not.unsign_zeros)) return
 
   call get_simple_array_i_ind(domain, size(array,1), is, ie)
   call get_simple_array_j_ind(domain, size(array,2), js, je)
-  if (scale /= 1.0) &
+  if (scale /= 1.0_wp) &
     array(is:ie,js:je,:) = scale*array(is:ie,js:je,:)
 
   if (unsign_zeros) then ! Convert negative zeros into zeros
     do k=1,size(array,3) ; do j=js,je ; do i=is,ie
-      if (array(i,j,k) == 0.0) array(i,j,k) = 0.0
+      if (array(i,j,k) == 0.0_wp) array(i,j,k) = 0.0_wp
     enddo ; enddo ; enddo
   endif
 
@@ -1319,9 +1321,9 @@ end subroutine rescale_comp_data_3d
 !> Rescale the values of a 2-D array in its computational domain by a constant factor
 subroutine rescale_comp_data_2d(domain, array, scale, zero_zeros)
   type(MOM_domain_type), intent(in)    :: domain !< MOM domain from which to extract information
-  real, dimension(:,:),  intent(inout) :: array  !< The array which is having the data in its
+  real(wp), dimension(:,:),  intent(inout) :: array  !< The array which is having the data in its
                                                  !! computational domain rescaled
-  real,                  intent(in)    :: scale  !< A scaling factor by which to multiply the
+  real(wp),                  intent(in)    :: scale  !< A scaling factor by which to multiply the
                                                  !! values in the computational domain of array
   logical,      optional, intent(in)   :: zero_zeros !< If present and true, convert negative zeros
                                                   !! into ordinary signless zeros.
@@ -1330,16 +1332,16 @@ subroutine rescale_comp_data_2d(domain, array, scale, zero_zeros)
 
   unsign_zeros = .false. ; if (present(zero_zeros)) unsign_zeros = zero_zeros
 
-  if ((scale == 1.0) .and. (.not.unsign_zeros)) return
+  if ((scale == 1.0_wp) .and. (.not.unsign_zeros)) return
 
   call get_simple_array_i_ind(domain, size(array,1), is, ie)
   call get_simple_array_j_ind(domain, size(array,2), js, je)
-  if (scale /= 1.0) &
+  if (scale /= 1.0_wp) &
     array(is:ie,js:je) = scale*array(is:ie,js:je)
 
   if (unsign_zeros) then ! Convert negative zeros into zeros
     do j=js,je ; do i=is,ie
-      if (array(i,j) == 0.0) array(i,j) = 0.0
+      if (array(i,j) == 0.0_wp) array(i,j) = 0.0_wp
     enddo ; enddo
   endif
 
@@ -2026,8 +2028,8 @@ end subroutine broadcast_domain
 !> Broadcast an entire 2-d array from the root processor to all others.
 subroutine global_field(domain, local, global)
   type(domain2d),       intent(inout) :: domain !< The domain2d type that describes the decomposition
-  real, dimension(:,:), intent(in)    :: local  !< The portion of the array on the local PE
-  real, dimension(:,:), intent(out)   :: global !< The whole global array
+  real(wp), dimension(:,:), intent(in)    :: local  !< The portion of the array on the local PE
+  real(wp), dimension(:,:), intent(out)   :: global !< The whole global array
 
   call mpp_global_field(domain, local, global)
 end subroutine global_field

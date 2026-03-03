@@ -13,6 +13,8 @@ use MOM_io,            only : field_exists, file_exists, MOM_read_data
 use MOM_time_manager,  only : set_date, time_type, time_type_to_real, operator(-)
 use MOM_unit_scaling,  only : unit_scale_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public calc_tidal_forcing, tidal_forcing_init, tidal_forcing_end
@@ -26,10 +28,10 @@ integer, parameter :: MAX_CONSTITUENTS = 10 !< The maximum number of tidal
                                             !! constituents that could be used.
 !> Simple type to store astronomical longitudes used to calculate tidal phases.
 type, public :: astro_longitudes
-  real :: s  !< Mean longitude of moon [rad]
-  real :: h  !< Mean longitude of sun [rad]
-  real :: p  !< Mean longitude of lunar perigee [rad]
-  real :: N  !< Longitude of ascending node [rad]
+  real(wp) :: s  !< Mean longitude of moon [rad]
+  real(wp) :: h  !< Mean longitude of sun [rad]
+  real(wp) :: p  !< Mean longitude of lunar perigee [rad]
+  real(wp) :: N  !< Longitude of ascending node [rad]
 end type astro_longitudes
 
 !> The control structure for the MOM_tidal_forcing module
@@ -43,11 +45,11 @@ type, public :: tidal_forcing_CS ; private
                       !! equilibrium tide. Set to false if providing tidal phases
                       !! that have already been shifted by the
                       !! astronomical/equilibrium argument.
-  real    :: sal_scalar = 0.0 !< The constant of proportionality between self-attraction and
+  real(wp)    :: sal_scalar = 0.0_wp !< The constant of proportionality between self-attraction and
                       !! loading (SAL) geopotential anomaly and total geopotential geopotential
                       !! anomalies. This is only used if USE_PREVIOUS_TIDES is true. [nondim].
   integer :: nc       !< The number of tidal constituents in use.
-  real, dimension(MAX_CONSTITUENTS) :: &
+  real(wp), dimension(MAX_CONSTITUENTS) :: &
     freq, &           !< The frequency of a tidal constituent [rad T-1 ~> rad s-1].
     phase0, &         !< The phase of a tidal constituent at time 0 [rad].
     amp, &            !< The amplitude of a tidal constituent at time 0 [Z ~> m].
@@ -58,7 +60,7 @@ type, public :: tidal_forcing_CS ; private
   type(time_type) :: time_ref !< Reference time (t = 0) used to calculate tidal forcing.
   type(astro_longitudes) :: tidal_longitudes !< Astronomical longitudes used to calculate
                                    !! tidal phases at t = 0.
-  real, allocatable :: &
+  real(wp), allocatable :: &
     sin_struct(:,:,:), &    !< The sine based structures that can be associated with
                             !! the astronomical forcing [nondim].
     cos_struct(:,:,:), &    !< The cosine based structures that can be associated with
@@ -91,24 +93,24 @@ subroutine astro_longitudes_init(time_ref, longitudes)
   type(astro_longitudes), intent(out) :: longitudes  !> Lunar and solar longitudes at time_ref.
 
   ! Local variables
-  real :: D                                          !> Time since the reference date [days]
-  real :: T                                          !> Time in Julian centuries [centuries]
-  real, parameter :: PI = 4.0 * atan(1.0)            !> 3.14159... [nondim]
+  real(wp) :: D                                          !> Time since the reference date [days]
+  real(wp) :: T                                          !> Time in Julian centuries [centuries]
+  real(wp), parameter :: PI = 4.0_wp * atan(1.0_wp)            !> 3.14159... [nondim]
 
   ! Find date at time_ref in days since midnight at the start of 1900-01-01
-  D = time_type_to_real(time_ref - set_date(1900, 1, 1, 0, 0, 0)) / (24.0 * 3600.0)
+  D = time_type_to_real(time_ref - set_date(1900, 1, 1, 0, 0, 0)) / (24.0_wp * 3600.0_wp)
   ! Time since 1900-01-01 in Julian centuries
   ! Kowalik and Luick use 36526, but Schureman uses 36525 which I think is correct.
-  T = D / 36525.0
+  T = D / 36525.0_wp
   ! Calculate longitudes, including converting to radians on [0, 2pi)
   ! s: Mean longitude of moon
-  longitudes%s = mod((277.0248 + 481267.8906 * T) + 0.0011 * (T**2), 360.0) * PI / 180.0
+  longitudes%s = mod((277.0248_wp + 481267.8906_wp * T) + 0.0011_wp * (T**2), 360.0_wp) * PI / 180.0_wp
   ! h: Mean longitude of sun
-  longitudes%h = mod((280.1895 + 36000.7689 * T) + 3.0310e-4 * (T**2), 360.0) * PI / 180.0
+  longitudes%h = mod((280.1895_wp + 36000.7689_wp * T) + 3.0310e-4_wp * (T**2), 360.0_wp) * PI / 180.0_wp
   ! p: Mean longitude of lunar perigee
-  longitudes%p = mod((334.3853 + 4069.0340 * T) - 0.0103 * (T**2), 360.0) * PI / 180.0
+  longitudes%p = mod((334.3853_wp + 4069.0340_wp * T) - 0.0103_wp * (T**2), 360.0_wp) * PI / 180.0_wp
   ! n: Longitude of ascending node
-  longitudes%N = mod((259.1568 - 1934.142 * T) + 0.0021 * (T**2), 360.0) * PI / 180.0
+  longitudes%N = mod((259.1568_wp - 1934.142_wp * T) + 0.0021_wp * (T**2), 360.0_wp) * PI / 180.0_wp
 end subroutine astro_longitudes_init
 
 !> Calculates the equilibrium phase argument for the given tidal
@@ -118,26 +120,26 @@ end subroutine astro_longitudes_init
 function eq_phase(constit, longitudes)
   character (len=2), intent(in) :: constit !> Name of constituent (e.g., M2).
   type(astro_longitudes), intent(in) :: longitudes   !> Mean longitudes calculated using astro_longitudes_init
-  real, parameter :: PI = 4.0 * atan(1.0)  !> 3.14159... [nondim]
-  real :: eq_phase                         !> The equilibrium phase argument for the constituent [rad].
+  real(wp), parameter :: PI = 4.0_wp * atan(1.0_wp)  !> 3.14159... [nondim]
+  real(wp) :: eq_phase                         !> The equilibrium phase argument for the constituent [rad].
 
   select case (constit)
     case ("M2")
       eq_phase = 2 * (longitudes%h - longitudes%s)
     case ("S2")
-      eq_phase = 0.0
+      eq_phase = 0.0_wp
     case ("N2")
       eq_phase = (- 3 * longitudes%s + 2 * longitudes%h) + longitudes%p
     case ("K2")
       eq_phase = 2 * longitudes%h
     case ("K1")
-      eq_phase = longitudes%h + PI / 2.0
+      eq_phase = longitudes%h + PI / 2.0_wp
     case ("O1")
-      eq_phase = (- 2 * longitudes%s + longitudes%h) - PI / 2.0
+      eq_phase = (- 2 * longitudes%s + longitudes%h) - PI / 2.0_wp
     case ("P1")
-      eq_phase = - longitudes%h - PI / 2.0
+      eq_phase = - longitudes%h - PI / 2.0_wp
     case ("Q1")
-      eq_phase = ((- 3 * longitudes%s + longitudes%h) + longitudes%p) - PI / 2.0
+      eq_phase = ((- 3 * longitudes%s + longitudes%h) + longitudes%p) - PI / 2.0_wp
     case ("MF")
       eq_phase = 2 * longitudes%s
     case ("MM")
@@ -151,29 +153,29 @@ end function eq_phase
 !! Values used here are from previous versions of MOM.
 function tidal_frequency(constit)
   character (len=2), intent(in) :: constit !> Constituent to look up
-  real :: tidal_frequency                  !> Angular frequency [rad s-1]
+  real(wp) :: tidal_frequency                  !> Angular frequency [rad s-1]
 
   select case (constit)
     case ("M2")
-      tidal_frequency = 1.4051890e-4
+      tidal_frequency = 1.4051890e-4_wp
     case ("S2")
-      tidal_frequency = 1.4544410e-4
+      tidal_frequency = 1.4544410e-4_wp
     case ("N2")
-      tidal_frequency = 1.3787970e-4
+      tidal_frequency = 1.3787970e-4_wp
     case ("K2")
-      tidal_frequency = 1.4584234e-4
+      tidal_frequency = 1.4584234e-4_wp
     case ("K1")
-      tidal_frequency = 0.7292117e-4
+      tidal_frequency = 0.7292117e-4_wp
     case ("O1")
-      tidal_frequency = 0.6759774e-4
+      tidal_frequency = 0.6759774e-4_wp
     case ("P1")
-      tidal_frequency = 0.7252295e-4
+      tidal_frequency = 0.7252295e-4_wp
     case ("Q1")
-      tidal_frequency = 0.6495854e-4
+      tidal_frequency = 0.6495854e-4_wp
     case ("MF")
-      tidal_frequency = 0.053234e-4
+      tidal_frequency = 0.053234e-4_wp
     case ("MM")
-      tidal_frequency = 0.026392e-4
+      tidal_frequency = 0.026392e-4_wp
     case default
       call MOM_error(FATAL, "tidal_frequency: unrecognized constituent")
   end select
@@ -184,44 +186,44 @@ end function tidal_frequency
 !! "Modern Theory and Practice of Tide Analysis and Tidal Power", 2019.
 subroutine nodal_fu(constit, nodelon, fn, un)
   character (len=2), intent(in)  :: constit !> Tidal constituent to find modulation for.
-  real,              intent(in)  :: nodelon !> Longitude of ascending node [rad], which
+  real(wp),              intent(in)  :: nodelon !> Longitude of ascending node [rad], which
                                             !! can be calculated using astro_longitudes_init.
-  real,              intent(out) :: fn      !> Amplitude modulation [nondim]
-  real,              intent(out) :: un      !> Phase modulation [rad]
+  real(wp),              intent(out) :: fn      !> Amplitude modulation [nondim]
+  real(wp),              intent(out) :: un      !> Phase modulation [rad]
 
-  real, parameter :: RADIANS = 4.0 * atan(1.0) / 180.0  !> Converts degrees to radians [nondim]
+  real(wp), parameter :: RADIANS = 4.0_wp * atan(1.0_wp) / 180.0_wp  !> Converts degrees to radians [nondim]
 
   select case (constit)
     case ("M2")
-      fn = 1.0 - 0.037 * cos(nodelon)
-      un = -2.1 * RADIANS * sin(nodelon)
+      fn = 1.0_wp - 0.037_wp * cos(nodelon)
+      un = -2.1_wp * RADIANS * sin(nodelon)
     case ("S2")
-      fn = 1.0  ! Solar S2 has no amplitude modulation.
-      un = 0.0  ! S2 has no phase modulation.
+      fn = 1.0_wp  ! Solar S2 has no amplitude modulation.
+      un = 0.0_wp  ! S2 has no phase modulation.
     case ("N2")
-      fn = 1.0 - 0.037 * cos(nodelon)
-      un = -2.1 * RADIANS * sin(nodelon)
+      fn = 1.0_wp - 0.037_wp * cos(nodelon)
+      un = -2.1_wp * RADIANS * sin(nodelon)
     case ("K2")
-      fn = 1.024 + 0.286 * cos(nodelon)
-      un = -17.7 * RADIANS * sin(nodelon)
+      fn = 1.024_wp + 0.286_wp * cos(nodelon)
+      un = -17.7_wp * RADIANS * sin(nodelon)
     case ("K1")
-      fn = 1.006 + 0.115 * cos(nodelon)
-      un = -8.9 * RADIANS * sin(nodelon)
+      fn = 1.006_wp + 0.115_wp * cos(nodelon)
+      un = -8.9_wp * RADIANS * sin(nodelon)
     case ("O1")
-      fn = 1.009 + 0.187 * cos(nodelon)
-      un = 10.8 * RADIANS * sin(nodelon)
+      fn = 1.009_wp + 0.187_wp * cos(nodelon)
+      un = 10.8_wp * RADIANS * sin(nodelon)
     case ("P1")
-      fn = 1.0  ! P1 has no amplitude modulation.
-      un = 0.0  ! P1 has no phase modulation.
+      fn = 1.0_wp  ! P1 has no amplitude modulation.
+      un = 0.0_wp  ! P1 has no phase modulation.
     case ("Q1")
-      fn = 1.009 + 0.187 * cos(nodelon)
-      un = 10.8 * RADIANS * sin(nodelon)
+      fn = 1.009_wp + 0.187_wp * cos(nodelon)
+      un = 10.8_wp * RADIANS * sin(nodelon)
     case ("MF")
-      fn = 1.043 + 0.414 * cos(nodelon)
-      un = -23.7 * RADIANS * sin(nodelon)
+      fn = 1.043_wp + 0.414_wp * cos(nodelon)
+      un = -23.7_wp * RADIANS * sin(nodelon)
     case ("MM")
-      fn = 1.0 - 0.130 * cos(nodelon)
-      un = 0.0  ! MM has no phase modulation.
+      fn = 1.0_wp - 0.130_wp * cos(nodelon)
+      un = 0.0_wp  ! MM has no phase modulation.
     case default
       call MOM_error(FATAL, "nodal_fu: unrecognized constituent")
   end select
@@ -241,14 +243,14 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
   type(tidal_forcing_CS), intent(inout) :: CS   !< Tidal forcing control structure
 
   ! Local variables
-  real, dimension(SZI_(G), SZJ_(G)) :: &
+  real(wp), dimension(SZI_(G), SZJ_(G)) :: &
     phase, &          ! The phase of some tidal constituent [radians].
     lat_rad, lon_rad  ! Latitudes and longitudes of h-points [radians].
-  real :: deg_to_rad  ! A conversion factor from degrees to radians [radian degree-1]
-  real, dimension(MAX_CONSTITUENTS) :: freq_def ! Default frequency for each tidal constituent [rad s-1]
-  real, dimension(MAX_CONSTITUENTS) :: phase0_def ! Default reference phase for each tidal constituent [rad]
-  real, dimension(MAX_CONSTITUENTS) :: amp_def  ! Default amplitude for each tidal constituent [m]
-  real, dimension(MAX_CONSTITUENTS) :: love_def ! Default love number for each constituent [nondim]
+  real(wp) :: deg_to_rad  ! A conversion factor from degrees to radians [radian degree-1]
+  real(wp), dimension(MAX_CONSTITUENTS) :: freq_def ! Default frequency for each tidal constituent [rad s-1]
+  real(wp), dimension(MAX_CONSTITUENTS) :: phase0_def ! Default reference phase for each tidal constituent [rad]
+  real(wp), dimension(MAX_CONSTITUENTS) :: amp_def  ! Default amplitude for each tidal constituent [m]
+  real(wp), dimension(MAX_CONSTITUENTS) :: love_def ! Default love number for each constituent [nondim]
   integer, dimension(3) :: tide_ref_date !< Reference date (t = 0) for tidal forcing.
   integer, dimension(3) :: nodal_ref_date !< Reference date for calculating nodal modulation for tidal forcing.
   logical :: use_M2, use_S2, use_N2, use_K2, use_K1, use_O1, use_P1, use_Q1
@@ -277,20 +279,20 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
 
   ! Set up the spatial structure functions for the diurnal, semidiurnal, and
   ! low-frequency tidal components.
-  allocate(CS%sin_struct(isd:ied,jsd:jed,3), source=0.0)
-  allocate(CS%cos_struct(isd:ied,jsd:jed,3), source=0.0)
-  deg_to_rad = 4.0*ATAN(1.0)/180.0
+  allocate(CS%sin_struct(isd:ied,jsd:jed,3), source=0.0_wp)
+  allocate(CS%cos_struct(isd:ied,jsd:jed,3), source=0.0_wp)
+  deg_to_rad = 4.0_wp*ATAN(1.0_wp)/180.0_wp
   do j=js-1,je+1 ; do i=is-1,ie+1
     lat_rad(i,j) = G%geoLatT(i,j)*deg_to_rad
     lon_rad(i,j) = G%geoLonT(i,j)*deg_to_rad
   enddo ; enddo
   do j=js-1,je+1 ; do i=is-1,ie+1
-    CS%sin_struct(i,j,1) = -sin(2.0*lat_rad(i,j)) * sin(lon_rad(i,j))
-    CS%cos_struct(i,j,1) =  sin(2.0*lat_rad(i,j)) * cos(lon_rad(i,j))
-    CS%sin_struct(i,j,2) = -cos(lat_rad(i,j))**2 * sin(2.0*lon_rad(i,j))
-    CS%cos_struct(i,j,2) =  cos(lat_rad(i,j))**2 * cos(2.0*lon_rad(i,j))
-    CS%sin_struct(i,j,3) =  0.0
-    CS%cos_struct(i,j,3) = (0.5-1.5*sin(lat_rad(i,j))**2)
+    CS%sin_struct(i,j,1) = -sin(2.0_wp*lat_rad(i,j)) * sin(lon_rad(i,j))
+    CS%cos_struct(i,j,1) =  sin(2.0_wp*lat_rad(i,j)) * cos(lon_rad(i,j))
+    CS%sin_struct(i,j,2) = -cos(lat_rad(i,j))**2 * sin(2.0_wp*lon_rad(i,j))
+    CS%cos_struct(i,j,2) =  cos(lat_rad(i,j))**2 * cos(2.0_wp*lon_rad(i,j))
+    CS%sin_struct(i,j,3) =  0.0_wp
+    CS%cos_struct(i,j,3) = (0.5_wp-1.5_wp*sin(lat_rad(i,j))**2)
   enddo ; enddo
 
   call get_param(param_file, mdl, "TIDE_M2", use_M2, &
@@ -361,7 +363,7 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
     call get_param(param_file, mdl, "SAL_SCALAR_VALUE", CS%sal_scalar, "The constant of "//&
                    "proportionality between self-attraction and loading (SAL) geopotential "//&
                    "anomaly and barotropic geopotential anomalies. This is only used if "//&
-                   "SAL_SCALAR_APPROX is true or USE_PREVIOUS_TIDES is true.", default=0.0, &
+                   "SAL_SCALAR_APPROX is true or USE_PREVIOUS_TIDES is true.", default=0.0_wp, &
                    units="m m-1", do_not_log=(.not.CS%use_tidal_sal_prev), &
                    old_name='TIDE_SAL_SCALAR_VALUE')
 
@@ -408,52 +410,52 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
   c=0
   if (use_M2) then
     c=c+1 ; CS%const_name(c) = "M2" ; CS%struct(c) = 2
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.242334 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.242334_wp ! Default amplitude in m.
   endif
 
   if (use_S2) then
     c=c+1 ; CS%const_name(c) = "S2" ; CS%struct(c) = 2
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.112743 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.112743_wp ! Default amplitude in m.
   endif
 
   if (use_N2) then
     c=c+1 ; CS%const_name(c) = "N2" ; CS%struct(c) = 2
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.046397 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.046397_wp ! Default amplitude in m.
   endif
 
   if (use_K2) then
     c=c+1 ; CS%const_name(c) = "K2" ; CS%struct(c) = 2
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.030684 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.030684_wp ! Default amplitude in m.
   endif
 
   if (use_K1) then
     c=c+1 ; CS%const_name(c) = "K1" ; CS%struct(c) = 1
-    CS%love_no(c) = 0.736 ; amp_def(c) = 0.141565 ! Default amplitude in m.
+    CS%love_no(c) = 0.736_wp ; amp_def(c) = 0.141565_wp ! Default amplitude in m.
   endif
 
   if (use_O1) then
     c=c+1 ; CS%const_name(c) = "O1" ; CS%struct(c) = 1
-    CS%love_no(c) = 0.695 ; amp_def(c) = 0.100661 ! Default amplitude in m.
+    CS%love_no(c) = 0.695_wp ; amp_def(c) = 0.100661_wp ! Default amplitude in m.
   endif
 
   if (use_P1) then
     c=c+1 ; CS%const_name(c) = "P1" ; CS%struct(c) = 1
-    CS%love_no(c) = 0.706 ; amp_def(c) = 0.046848 ! Default amplitude in m.
+    CS%love_no(c) = 0.706_wp ; amp_def(c) = 0.046848_wp ! Default amplitude in m.
   endif
 
   if (use_Q1) then
     c=c+1 ; CS%const_name(c) = "Q1" ; CS%struct(c) = 1
-    CS%love_no(c) = 0.695 ; amp_def(c) = 0.019273 ! Default amplitude in m.
+    CS%love_no(c) = 0.695_wp ; amp_def(c) = 0.019273_wp ! Default amplitude in m.
   endif
 
   if (use_MF) then
     c=c+1 ; CS%const_name(c) = "MF" ; CS%struct(c) = 3
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.042041 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.042041_wp ! Default amplitude in m.
   endif
 
   if (use_MM) then
     c=c+1 ; CS%const_name(c) = "MM" ; CS%struct(c) = 3
-    CS%love_no(c) = 0.693 ; amp_def(c) = 0.022191 ! Default amplitude in m.
+    CS%love_no(c) = 0.693_wp ; amp_def(c) = 0.022191_wp ! Default amplitude in m.
   endif
 
   ! Set defaults for all included constituents
@@ -461,11 +463,11 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
   do c=1,nc
     freq_def(c) = tidal_frequency(CS%const_name(c))
     love_def(c) = CS%love_no(c)
-    CS%phase0(c) = 0.0
+    CS%phase0(c) = 0.0_wp
     if (CS%use_eq_phase) then
       phase0_def(c) = eq_phase(CS%const_name(c), CS%tidal_longitudes)
     else
-      phase0_def(c) = 0.0
+      phase0_def(c) = 0.0_wp
     endif
   enddo
 
@@ -557,8 +559,8 @@ subroutine tidal_forcing_init(Time, G, US, param_file, CS)
     if (add_nodal_terms) then
       call nodal_fu(trim(CS%const_name(c)), nodal_longitudes%N, CS%tide_fn(c), CS%tide_un(c))
     else
-      CS%tide_fn(c) = 1.0
-      CS%tide_un(c) = 0.0
+      CS%tide_fn(c) = 1.0_wp
+      CS%tide_un(c) = 0.0_wp
     endif
   enddo
 
@@ -572,8 +574,8 @@ subroutine find_in_files(filenames, varname, array, G, scale)
   character(len=*), dimension(:),   intent(in)  :: filenames !< The names of the files to search for the named variable
   character(len=*),                 intent(in)  :: varname   !< The name of the variable to read
   type(ocean_grid_type),            intent(in)  :: G         !< The ocean's grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: array     !< The array to fill with the data [arbitrary]
-  real,                   optional, intent(in)  :: scale     !< A factor by which to rescale the array to translate it
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: array     !< The array to fill with the data [arbitrary]
+  real(wp),                   optional, intent(in)  :: scale     !< A factor by which to rescale the array to translate it
                                                              !! into its desired units [arbitrary]
   ! Local variables
   integer :: nf
@@ -604,18 +606,18 @@ end subroutine find_in_files
 subroutine calc_tidal_forcing(Time, e_tide_eq, e_tide_sal, G, US, CS)
   type(ocean_grid_type),            intent(in)  :: G          !< The ocean's grid structure.
   type(time_type),                  intent(in)  :: Time       !< The time for the caluculation.
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_eq  !< The geopotential height anomalies
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_eq  !< The geopotential height anomalies
                                                               !! due to the equilibrium tides [Z ~> m].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_sal !< The geopotential height anomalies
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_sal !< The geopotential height anomalies
                                                               !! due to the tidal SAL [Z ~> m].
   type(unit_scale_type),            intent(in)  :: US         !< A dimensional unit scaling type
   type(tidal_forcing_CS),           intent(in)  :: CS         !< The control structure returned by a
                                                               !! previous call to tidal_forcing_init.
 
   ! Local variables
-  real :: now       ! The relative time compared with the tidal reference [T ~> s]
-  real :: amp_cosomegat, amp_sinomegat ! The tidal amplitudes times the components of phase [Z ~> m]
-  real :: cosomegat, sinomegat ! The components of the phase [nondim]
+  real(wp) :: now       ! The relative time compared with the tidal reference [T ~> s]
+  real(wp) :: amp_cosomegat, amp_sinomegat ! The tidal amplitudes times the components of phase [Z ~> m]
+  real(wp) :: cosomegat, sinomegat ! The components of the phase [nondim]
   integer :: i, j, c, m, is, ie, js, je, Isq, Ieq, Jsq, Jeq
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -623,8 +625,8 @@ subroutine calc_tidal_forcing(Time, e_tide_eq, e_tide_sal, G, US, CS)
   call cpu_clock_begin(id_clock_tides)
 
   do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-    e_tide_eq(i,j) = 0.0
-    e_tide_sal(i,j) = 0.0
+    e_tide_eq(i,j) = 0.0_wp
+    e_tide_sal(i,j) = 0.0_wp
   enddo ; enddo
 
   if (CS%nc == 0) then
@@ -671,24 +673,24 @@ end subroutine calc_tidal_forcing
 subroutine calc_tidal_forcing_legacy(Time, e_sal, e_sal_tide, e_tide_eq, e_tide_sal, G, US, CS)
   type(ocean_grid_type),            intent(in)  :: G          !< The ocean's grid structure.
   type(time_type),                  intent(in)  :: Time       !< The time for the caluculation.
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: e_sal      !< The self-attraction and loading fields
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(in)  :: e_sal      !< The self-attraction and loading fields
                                                               !! calculated previously used to
                                                               !! initialized e_sal_tide [Z ~> m].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: e_sal_tide !< The total geopotential height anomalies
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: e_sal_tide !< The total geopotential height anomalies
                                                               !! due to both SAL and tidal forcings [Z ~> m].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_eq  !< The geopotential height anomalies
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_eq  !< The geopotential height anomalies
                                                               !! due to the equilibrium tides [Z ~> m].
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_sal !< The geopotential height anomalies
+  real(wp), dimension(SZI_(G),SZJ_(G)), intent(out) :: e_tide_sal !< The geopotential height anomalies
                                                               !! due to the tidal SAL [Z ~> m].
   type(unit_scale_type),            intent(in)  :: US         !< A dimensional unit scaling type
   type(tidal_forcing_CS),           intent(in)  :: CS         !< The control structure returned by a
                                                               !! previous call to tidal_forcing_init.
 
   ! Local variables
-  real :: now       ! The relative time compared with the tidal reference [T ~> s]
-  real :: amp_cosomegat, amp_sinomegat ! The tidal amplitudes times the components of phase [Z ~> m]
-  real :: cosomegat, sinomegat ! The components of the phase [nondim]
-  real :: amp_cossin ! A temporary field that adds cosines and sines [nondim]
+  real(wp) :: now       ! The relative time compared with the tidal reference [T ~> s]
+  real(wp) :: amp_cosomegat, amp_sinomegat ! The tidal amplitudes times the components of phase [Z ~> m]
+  real(wp) :: cosomegat, sinomegat ! The components of the phase [nondim]
+  real(wp) :: amp_cossin ! A temporary field that adds cosines and sines [nondim]
   integer :: i, j, c, m, is, ie, js, je, Isq, Ieq, Jsq, Jeq
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -696,9 +698,9 @@ subroutine calc_tidal_forcing_legacy(Time, e_sal, e_sal_tide, e_tide_eq, e_tide_
   call cpu_clock_begin(id_clock_tides)
 
   do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
-    e_sal_tide(i,j) = 0.0
-    e_tide_eq(i,j) = 0.0
-    e_tide_sal(i,j) = 0.0
+    e_sal_tide(i,j) = 0.0_wp
+    e_tide_eq(i,j) = 0.0_wp
+    e_tide_sal(i,j) = 0.0_wp
   enddo ; enddo
 
   if (CS%nc == 0) then

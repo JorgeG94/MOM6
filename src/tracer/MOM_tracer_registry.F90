@@ -24,6 +24,8 @@ use MOM_unit_scaling,  only : unit_scale_type
 use MOM_verticalGrid,  only : verticalGrid_type
 use MOM_tracer_types,  only : tracer_type, tracer_registry_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -61,7 +63,7 @@ subroutine register_tracer(tr_ptr, Reg, param_file, HI, GV, name, longname, unit
   type(hor_index_type),           intent(in)    :: HI           !< horizontal index type
   type(verticalGrid_type),        intent(in)    :: GV           !< ocean vertical grid structure
   type(tracer_registry_type),     pointer       :: Reg          !< pointer to the tracer registry
-  real, dimension(SZI_(HI),SZJ_(HI),SZK_(GV)), &
+  real(wp), dimension(SZI_(HI),SZJ_(HI),SZK_(GV)), &
                                   target        :: tr_ptr       !< target or pointer to the tracer array [CU ~> conc]
   type(param_file_type), intent(in)             :: param_file   !< file to parse for model parameter values
   character(len=*),     optional, intent(in)    :: name         !< Short tracer name
@@ -75,48 +77,48 @@ subroutine register_tracer(tr_ptr, Reg, param_file, HI, GV, name, longname, unit
   character(len=*),     optional, intent(in)    :: net_surfflux_longname !< Long name for net_surfflux diag
   type(vardesc),        optional, intent(in)    :: tr_desc      !< A structure with metadata about the tracer
 
-  real,                 optional, intent(in)    :: OBC_inflow   !< the tracer for all inflows via OBC for which OBC_in_u
+  real(wp),                 optional, intent(in)    :: OBC_inflow   !< the tracer for all inflows via OBC for which OBC_in_u
                                                                 !! or OBC_in_v are not specified [CU ~> conc]
-  real, dimension(:,:,:), optional, pointer     :: OBC_in_u     !< tracer at inflows through u-faces of
+  real(wp), dimension(:,:,:), optional, pointer     :: OBC_in_u     !< tracer at inflows through u-faces of
                                                                 !! tracer cells [CU ~> conc]
-  real, dimension(:,:,:), optional, pointer     :: OBC_in_v     !< tracer at inflows through v-faces of
+  real(wp), dimension(:,:,:), optional, pointer     :: OBC_in_v     !< tracer at inflows through v-faces of
                                                                 !! tracer cells [CU ~> conc]
 
   ! The following are probably not necessary if registry_diags is present and true.
-  real, dimension(:,:,:), optional, pointer     :: ad_x         !< diagnostic x-advective flux
+  real(wp), dimension(:,:,:), optional, pointer     :: ad_x         !< diagnostic x-advective flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:,:), optional, pointer     :: ad_y         !< diagnostic y-advective flux
+  real(wp), dimension(:,:,:), optional, pointer     :: ad_y         !< diagnostic y-advective flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:,:), optional, pointer     :: df_x         !< diagnostic x-diffusive flux
+  real(wp), dimension(:,:,:), optional, pointer     :: df_x         !< diagnostic x-diffusive flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:,:), optional, pointer     :: df_y         !< diagnostic y-diffusive flux
+  real(wp), dimension(:,:,:), optional, pointer     :: df_y         !< diagnostic y-diffusive flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:),   optional, pointer     :: ad_2d_x      !< vert sum of diagnostic x-advect flux
+  real(wp), dimension(:,:),   optional, pointer     :: ad_2d_x      !< vert sum of diagnostic x-advect flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:),   optional, pointer     :: ad_2d_y      !< vert sum of diagnostic y-advect flux
+  real(wp), dimension(:,:),   optional, pointer     :: ad_2d_y      !< vert sum of diagnostic y-advect flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:),   optional, pointer     :: df_2d_x      !< vert sum of diagnostic x-diffuse flux
+  real(wp), dimension(:,:),   optional, pointer     :: df_2d_x      !< vert sum of diagnostic x-diffuse flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
-  real, dimension(:,:),   optional, pointer     :: df_2d_y      !< vert sum of diagnostic y-diffuse flux
+  real(wp), dimension(:,:),   optional, pointer     :: df_2d_y      !< vert sum of diagnostic y-diffuse flux
                                                                 !! [CU H L2 T-1 ~> conc m3 s-1 or conc kg s-1]
 
-  real, dimension(:,:,:), optional, pointer     :: advection_xy !< convergence of lateral advective tracer fluxes
+  real(wp), dimension(:,:,:), optional, pointer     :: advection_xy !< convergence of lateral advective tracer fluxes
                                                                 !! [CU H T-1 ~> conc m s-1 or conc kg m-2 s-1]
   logical,              optional, intent(in)    :: registry_diags !< If present and true, use the registry for
                                                                 !! the diagnostics of this tracer.
-  real,                 optional, intent(in)    :: conc_scale   !< A scaling factor used to convert the concentration
+  real(wp),                 optional, intent(in)    :: conc_scale   !< A scaling factor used to convert the concentration
                                                                 !! of this tracer to its desired units [conc CU-1 ~> 1]
   character(len=*),     optional, intent(in)    :: flux_nameroot !< Short tracer name snippet used construct the
                                                                 !! names of flux diagnostics.
   character(len=*),     optional, intent(in)    :: flux_longname !< A word or phrase used construct the long
                                                                 !! names of flux diagnostics.
   character(len=*),     optional, intent(in)    :: flux_units   !< The units for the fluxes of this tracer.
-  real,                 optional, intent(in)    :: flux_scale   !< A scaling factor used to convert the fluxes
+  real(wp),                 optional, intent(in)    :: flux_scale   !< A scaling factor used to convert the fluxes
                                                                 !! of this tracer to its desired units
                                                                 !! [conc m CU-1 H-1 ~> 1] or [conc kg m-2 CU-1 H-1 ~> 1]
   character(len=*),     optional, intent(in)    :: convergence_units !< The units for the flux convergence of
                                                                 !! this tracer.
-  real,                 optional, intent(in)    :: convergence_scale !< A scaling factor used to convert the flux
+  real(wp),                 optional, intent(in)    :: convergence_scale !< A scaling factor used to convert the flux
                                                                 !! convergence of this tracer to its desired units.
                                                                 !! [conc m CU-1 H-1 ~> 1] or [conc kg m-2 CU-1 H-1 ~> 1]
   character(len=*),     optional, intent(in)    :: cmor_tendprefix !< The CMOR name for the layer-integrated
@@ -127,7 +129,7 @@ subroutine register_tracer(tr_ptr, Reg, param_file, HI, GV, name, longname, unit
   type(MOM_restart_CS), optional, intent(inout) :: restart_CS   !< MOM restart control struct
   logical,              optional, intent(in)    :: mandatory    !< If true, this tracer must be read
                                                                 !! from a restart file.
-  real,                 optional, intent(in)    :: underflow_conc !< A tiny concentration, below which the tracer
+  real(wp),                 optional, intent(in)    :: underflow_conc !< A tiny concentration, below which the tracer
                                                                 !! concentration underflows to 0 [CU ~> conc].
   type(tracer_type),    optional, pointer       :: Tr_out       !< If present, returns pointer into registry
 
@@ -180,10 +182,10 @@ subroutine register_tracer(tr_ptr, Reg, param_file, HI, GV, name, longname, unit
       "MOM register_tracer was called for variable "//trim(Tr%name)//&
       " with a locked tracer registry.")
 
-  Tr%conc_scale = 1.0
+  Tr%conc_scale = 1.0_wp
   if (present(conc_scale)) Tr%conc_scale = conc_scale
 
-  Tr%conc_underflow = 0.0
+  Tr%conc_underflow = 0.0_wp
   if (present(underflow_conc)) Tr%conc_underflow = underflow_conc
 
   Tr%flux_nameroot = Tr%name
@@ -285,7 +287,7 @@ subroutine register_tracer_diagnostics(Reg, h, Time, diag, G, GV, US, use_ALE, u
   type(verticalGrid_type),    intent(in) :: GV   !< The ocean's vertical grid structure
   type(unit_scale_type),      intent(in) :: US   !< A dimensional unit scaling type
   type(tracer_registry_type), pointer    :: Reg  !< pointer to the tracer registry
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(time_type),            intent(in) :: Time !< current model time
   type(diag_ctrl),            intent(in) :: diag !< structure to regulate diagnostic output
@@ -309,7 +311,7 @@ subroutine register_tracer_diagnostics(Reg, h, Time, diag, G, GV, US, use_ALE, u
   character(len=120) :: cmor_longname ! The CMOR long name of that variable.
   character(len=120) :: var_lname      ! A temporary longname for a diagnostic.
   character(len=120) :: cmor_var_lname ! The temporary CMOR long name for a diagnostic
-  real :: conversion ! Temporary term while we address a bug [conc m CU-1 H-1 ~> 1] or [conc kg m-2 CU-1 H-1 ~> 1]
+  real(wp) :: conversion ! Temporary term while we address a bug [conc m CU-1 H-1 ~> 1] or [conc kg m-2 CU-1 H-1 ~> 1]
   type(tracer_type), pointer :: Tr=>NULL()
   integer :: i, j, k, is, ie, js, je, nz, m, m2, nTr_in
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
@@ -610,7 +612,7 @@ subroutine register_tracer_diagnostics(Reg, h, Time, diag, G, GV, US, use_ALE, u
         ! Set up a new tracer for this tracer squared
         m2 = Reg%ntr+1
         Tr%ind_tr_squared = m2
-        call safe_alloc_ptr(Reg%Tr(m2)%t,isd,ied,jsd,jed,nz) ; Reg%Tr(m2)%t(:,:,:) = 0.0
+        call safe_alloc_ptr(Reg%Tr(m2)%t,isd,ied,jsd,jed,nz) ; Reg%Tr(m2)%t(:,:,:) = 0.0_wp
         Reg%Tr(m2)%name = trim(shortnm)//"2"
         Reg%Tr(m2)%longname = "Squared "//trim(longname)
         Reg%Tr(m2)%units = unit2
@@ -629,7 +631,7 @@ subroutine register_tracer_diagnostics(Reg, h, Time, diag, G, GV, US, use_ALE, u
           diag%axesTL, Time, &
           trim(longname)//' tendency due to non-local transport of '//trim(lowercase(flux_longname))//&
           ', as calculated by [CVMix] KPP', trim(units)//' s-1', conversion=Tr%conc_scale*US%s_to_T)
-      if (Tr%conv_scale == 0.001*GV%H_to_kg_m2) then
+      if (Tr%conv_scale == 0.001_wp*GV%H_to_kg_m2) then
         conversion = GV%H_to_kg_m2
       else
         conversion = Tr%conv_scale
@@ -673,15 +675,15 @@ subroutine postALE_tracer_diagnostics(Reg, G, GV, diag, dt)
   type(ocean_grid_type),      intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),    intent(in) :: GV   !< ocean vertical grid structure
   type(diag_ctrl),            intent(in) :: diag !< regulates diagnostic output
-  real,                       intent(in) :: dt   !< total time interval for these diagnostics [T ~> s]
+  real(wp),                       intent(in) :: dt   !< total time interval for these diagnostics [T ~> s]
 
-  real    :: work(SZI_(G),SZJ_(G),SZK_(GV)) ! Variance decay [CU2 T-1 ~> conc2 s-1]
-  real    :: Idt ! The inverse of the time step [T-1 ~> s-1]
+  real(wp)    :: work(SZI_(G),SZJ_(G),SZK_(GV)) ! Variance decay [CU2 T-1 ~> conc2 s-1]
+  real(wp)    :: Idt ! The inverse of the time step [T-1 ~> s-1]
   integer :: i, j, k, is, ie, js, je, nz, m, m2
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   ! The "if" is to avoid NaNs if the diagnostic is called for a zero length interval
-  Idt = 0.0 ; if (dt /= 0.0) Idt = 1.0 / dt
+  Idt = 0.0_wp ; if (dt /= 0.0_wp) Idt = 1.0_wp / dt
 
   do m=1,Reg%ntr ; if (Reg%Tr(m)%id_tr_vardec > 0) then
     m2 = Reg%Tr(m)%ind_tr_squared
@@ -701,21 +703,21 @@ subroutine post_tracer_diagnostics_at_sync(Reg, h, diag_prev, diag, G, GV, dt)
   type(ocean_grid_type),      intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),    intent(in) :: GV   !< The ocean's vertical grid structure
   type(tracer_registry_type), pointer    :: Reg  !< pointer to the tracer registry
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_grid_storage),    intent(in) :: diag_prev !< Contains diagnostic grids from previous timestep
   type(diag_ctrl),            intent(inout) :: diag !< structure to regulate diagnostic output
-  real,                       intent(in) :: dt   !< total time step for tracer updates [T ~> s]
+  real(wp),                       intent(in) :: dt   !< total time step for tracer updates [T ~> s]
 
-  real    :: work3d(SZI_(G),SZJ_(G),SZK_(GV)) ! The time tendency of a diagnostic [CU T-1 ~> conc s-1]
-  real    :: work2d(SZI_(G),SZJ_(G)) ! The vertically integrated time tendency of a diagnostic
+  real(wp)    :: work3d(SZI_(G),SZJ_(G),SZK_(GV)) ! The time tendency of a diagnostic [CU T-1 ~> conc s-1]
+  real(wp)    :: work2d(SZI_(G),SZJ_(G)) ! The vertically integrated time tendency of a diagnostic
                                      ! in [CU H T-1 ~> conc m s-1 or conc kg m-2 s-1]
-  real    :: Idt ! The inverse of the time step [T-1 ~> s-1]
+  real(wp)    :: Idt ! The inverse of the time step [T-1 ~> s-1]
   type(tracer_type), pointer :: Tr=>NULL()
   integer :: i, j, k, is, ie, js, je, nz, m
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
-  Idt = 0.; if (dt/=0.) Idt = 1.0 / dt ! The "if" is in case the diagnostic is called for a zero length interval
+  Idt = 0._wp; if (dt/=0._wp) Idt = 1.0_wp / dt ! The "if" is in case the diagnostic is called for a zero length interval
 
   ! Tendency diagnostics need to be posted on the grid from the last call to this routine
   call diag_save_grids(diag)
@@ -724,7 +726,7 @@ subroutine post_tracer_diagnostics_at_sync(Reg, h, diag_prev, diag, G, GV, dt)
     Tr => Reg%Tr(m)
     if (Tr%id_tr > 0) call post_data(Tr%id_tr, Tr%t, diag)
     if (Tr%id_tendency > 0) then
-      work3d(:,:,:) = 0.0
+      work3d(:,:,:) = 0.0_wp
       do k=1,nz ; do j=js,je ; do i=is,ie
         work3d(i,j,k)    = (Tr%t(i,j,k) - Tr%t_prev(i,j,k))*Idt
         tr%t_prev(i,j,k) =  Tr%t(i,j,k)
@@ -739,7 +741,7 @@ subroutine post_tracer_diagnostics_at_sync(Reg, h, diag_prev, diag, G, GV, dt)
       if (Tr%id_trxh_tendency > 0) call post_data(Tr%id_trxh_tendency, work3d, diag, &
                                                   alt_h=diag_prev%h_state)
       if (Tr%id_trxh_tendency_2d > 0) then
-        work2d(:,:) = 0.0
+        work2d(:,:) = 0.0_wp
         do k=1,nz ; do j=js,je ; do i=is,ie
           work2d(i,j) = work2d(i,j) + work3d(i,j,k)
         enddo ; enddo ; enddo
@@ -756,22 +758,22 @@ subroutine post_tracer_transport_diagnostics(G, GV, Reg, h_diag, diag)
   type(ocean_grid_type),      intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),    intent(in) :: GV   !< The ocean's vertical grid structure
   type(tracer_registry_type), pointer    :: Reg  !< pointer to the tracer registry
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                               intent(in) :: h_diag !< Layer thicknesses on which to post fields [H ~> m or kg m-2]
   type(diag_ctrl),            intent(in) :: diag !< structure to regulate diagnostic output
 
   integer :: i, j, k, is, ie, js, je, nz, m, khi
-  real    :: work2d(SZI_(G),SZJ_(G))      ! The vertically integrated convergence of lateral advective
+  real(wp)    :: work2d(SZI_(G),SZJ_(G))      ! The vertically integrated convergence of lateral advective
                                           ! tracer fluxes [CU H T-1 ~> conc m s-1 or conc kg m-2 s-1]
-  real    :: frac_under_100m(SZI_(G),SZJ_(G),SZK_(GV)) ! weights used to compute 100m vertical integrals [nondim]
-  real    :: ztop(SZI_(G),SZJ_(G)) ! position of the top interface [H ~> m or kg m-2]
-  real    :: zbot(SZI_(G),SZJ_(G)) ! position of the bottom interface [H ~> m or kg m-2]
+  real(wp)    :: frac_under_100m(SZI_(G),SZJ_(G),SZK_(GV)) ! weights used to compute 100m vertical integrals [nondim]
+  real(wp)    :: ztop(SZI_(G),SZJ_(G)) ! position of the top interface [H ~> m or kg m-2]
+  real(wp)    :: zbot(SZI_(G),SZJ_(G)) ! position of the bottom interface [H ~> m or kg m-2]
   type(tracer_type), pointer :: Tr=>NULL()
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   ! If any tracers are posting 100m vertical integrals, compute weights
-  frac_under_100m(:,:,:) = 0.0
+  frac_under_100m(:,:,:) = 0.0_wp
   ! khi will be the largest layer index corresponding where ztop < 100m and ztop >= 100m
   ! in any column (we can reduce computation of 100m integrals by only looping through khi
   ! rather than GV%ke)
@@ -779,17 +781,17 @@ subroutine post_tracer_transport_diagnostics(G, GV, Reg, h_diag, diag)
   do m=1,Reg%ntr ; if (Reg%Tr(m)%registry_diags) then
     Tr => Reg%Tr(m)
     if (Tr%id_zint_100m > 0) then
-      zbot(:,:) = 0.0
+      zbot(:,:) = 0.0_wp
       do k=1, nz
         do j=js,je ; do i=is,ie
           ztop(i,j) = zbot(i,j)
           zbot(i,j) = ztop(i,j) + h_diag(i,j,k)*GV%H_to_m
-          if (zbot(i,j) <= 100.0) then
-            frac_under_100m(i,j,k) = 1.0
-          elseif (ztop(i,j) < 100.0) then
-            frac_under_100m(i,j,k) = (100.0 - ztop(i,j)) / (zbot(i,j) - ztop(i,j))
+          if (zbot(i,j) <= 100.0_wp) then
+            frac_under_100m(i,j,k) = 1.0_wp
+          elseif (ztop(i,j) < 100.0_wp) then
+            frac_under_100m(i,j,k) = (100.0_wp - ztop(i,j)) / (zbot(i,j) - ztop(i,j))
           else
-            frac_under_100m(i,j,k) = 0.0
+            frac_under_100m(i,j,k) = 0.0_wp
           endif
           ! frac_under_100m(i,j,k) = max(0, min(1.0, (100.0 - ztop(i,j)) / (zbot(i,j) - ztop(i,j))))
         enddo ; enddo
@@ -812,7 +814,7 @@ subroutine post_tracer_transport_diagnostics(G, GV, Reg, h_diag, diag)
     if (Tr%id_dfy_2d > 0) call post_data(Tr%id_dfy_2d, Tr%df2d_y, diag)
     if (Tr%id_adv_xy > 0) call post_data(Tr%id_adv_xy, Tr%advection_xy, diag, alt_h=h_diag)
     if (Tr%id_adv_xy_2d > 0) then
-      work2d(:,:) = 0.0
+      work2d(:,:) = 0.0_wp
       do k=1,nz ; do j=js,je ; do i=is,ie
         work2d(i,j) = work2d(i,j) + Tr%advection_xy(i,j,k)
       enddo ; enddo ; enddo
@@ -822,7 +824,7 @@ subroutine post_tracer_transport_diagnostics(G, GV, Reg, h_diag, diag)
     ! A few diagnostics introduce with MARBL driver
     ! Compute full-depth vertical integral
     if (Tr%id_zint > 0) then
-      work2d(:,:) = 0.0
+      work2d(:,:) = 0.0_wp
       do k=1,nz ; do j=js,je ; do i=is,ie
         work2d(i,j) = work2d(i,j) + (h_diag(i,j,k)*GV%H_to_m)*tr%t(i,j,k)
       enddo ; enddo ; enddo
@@ -831,7 +833,7 @@ subroutine post_tracer_transport_diagnostics(G, GV, Reg, h_diag, diag)
 
     ! Compute 100m vertical integral
     if (Tr%id_zint_100m > 0) then
-      work2d(:,:) = 0.0
+      work2d(:,:) = 0.0_wp
       do k=1,khi ; do j=js,je ; do i=is,ie
         work2d(i,j) = work2d(i,j) + frac_under_100m(i,j,k)*((h_diag(i,j,k)*GV%H_to_m)*tr%t(i,j,k))
       enddo ; enddo ; enddo
@@ -881,15 +883,15 @@ subroutine tracer_array_chkinv(mesg, G, GV, h, Tr, ntr)
   type(ocean_grid_type),                     intent(in) :: G    !< ocean grid structure
   type(verticalGrid_type),                   intent(in) :: GV   !< The ocean's vertical grid structure
   type(tracer_type), dimension(:),           intent(in) :: Tr   !< array of all of registered tracers
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   integer,                                   intent(in) :: ntr  !< number of registered tracers
 
   ! Local variables
-  real :: vol_scale ! The dimensional scaling factor to convert volumes to m3 [m3 H-1 L-2 ~> 1] or cell
+  real(wp) :: vol_scale ! The dimensional scaling factor to convert volumes to m3 [m3 H-1 L-2 ~> 1] or cell
                     ! masses to kg [kg H-1 L-2 ~> 1], depending on whether the Boussinesq approximation is used
-  real :: tr_inv(SZI_(G),SZJ_(G),SZK_(GV)) ! Volumetric or mass-based tracer inventory in
+  real(wp) :: tr_inv(SZI_(G),SZJ_(G),SZK_(GV)) ! Volumetric or mass-based tracer inventory in
                     ! each cell [conc m3] or [conc kg]
-  real :: total_inv ! The total amount of tracer [conc m3] or [conc kg]
+  real(wp) :: total_inv ! The total amount of tracer [conc m3] or [conc kg]
   integer :: is, ie, js, je, nz
   integer :: i, j, k, m
 
@@ -914,14 +916,14 @@ subroutine tracer_Reg_chkinv(mesg, G, GV, h, Reg)
   type(ocean_grid_type),                     intent(in) :: G    !< ocean grid structure
   type(verticalGrid_type),                   intent(in) :: GV   !< The ocean's vertical grid structure
   type(tracer_registry_type),                pointer    :: Reg  !< pointer to the tracer registry
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
 
   ! Local variables
-  real :: vol_scale ! The dimensional scaling factor to convert volumes to m3 [m3 H-1 L-2 ~> 1] or cell
+  real(wp) :: vol_scale ! The dimensional scaling factor to convert volumes to m3 [m3 H-1 L-2 ~> 1] or cell
                     ! masses to kg [kg H-1 L-2 ~> 1], depending on whether the Boussinesq approximation is used
-  real :: tr_inv(SZI_(G),SZJ_(G),SZK_(GV)) ! Volumetric or mass-based tracer inventory in
+  real(wp) :: tr_inv(SZI_(G),SZJ_(G),SZK_(GV)) ! Volumetric or mass-based tracer inventory in
                     ! each cell [conc m3] or [conc kg]
-  real :: total_inv ! The total amount of tracer [conc m3] or [conc kg]
+  real(wp) :: total_inv ! The total amount of tracer [conc m3] or [conc kg]
   integer :: is, ie, js, je, nz
   integer :: i, j, k, m
 

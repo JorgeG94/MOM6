@@ -14,6 +14,8 @@ use MOM_unit_scaling, only : unit_scale_type
 use MOM_variables, only : thermo_var_ptrs, surface
 use MOM_verticalGrid, only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public MOM_state_chksum, MOM_thermo_chksum, MOM_accel_chksum
@@ -29,9 +31,9 @@ end interface
 
 !> A type for storing statistica about a variable
 type :: stats ; private
-  real :: minimum = 1.E34  !< The minimum value [degC] or [ppt] or other units
-  real :: maximum = -1.E34 !< The maximum value [degC] or [ppt] or other units
-  real :: average = 0.     !< The average value [degC] or [ppt] or other units
+  real(wp) :: minimum = 1.E34_wp  !< The minimum value [degC] or [ppt] or other units
+  real(wp) :: maximum = -1.E34_wp !< The maximum value [degC] or [ppt] or other units
+  real(wp) :: average = 0._wp     !< The average value [degC] or [ppt] or other units
 end type stats
 
 contains
@@ -44,16 +46,16 @@ subroutine MOM_state_chksum_5arg(mesg, u, v, h, uh, vh, G, GV, US, haloshift, sy
                            intent(in) :: mesg !< A message that appears on the chksum lines.
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure.
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: u    !< The zonal velocity [L T-1 ~> m s-1] or other units.
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in) :: v    !< The meridional velocity [L T-1 ~> m s-1] or other units.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
                            intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: uh   !< Volume flux through zonal faces = u*h*dy
                                               !! [H L2 T-1 ~> m3 s-1 or kg s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in) :: vh   !< Volume flux through meridional faces = v*h*dx
                                               !! [H L2 T-1 ~> m3 s-1 or kg s-1].
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
@@ -61,9 +63,9 @@ subroutine MOM_state_chksum_5arg(mesg, u, v, h, uh, vh, G, GV, US, haloshift, sy
   logical,       optional, intent(in) :: symmetric !< If true, do checksums on the fully symmetric
                                                    !! computational domain.
   logical,       optional, intent(in) :: omit_corners !< If true, avoid checking diagonal shifts
-  real,          optional, intent(in) :: vel_scale !< The scaling factor to convert velocities to [T m L-1 s-1 ~> 1]
+  real(wp),          optional, intent(in) :: vel_scale !< The scaling factor to convert velocities to [T m L-1 s-1 ~> 1]
 
-  real :: scale_vel ! The scaling factor to convert velocities to mks units [T m L-1 s-1 ~> 1]
+  real(wp) :: scale_vel ! The scaling factor to convert velocities to mks units [T m L-1 s-1 ~> 1]
   logical :: sym
   integer :: hs
 
@@ -88,11 +90,11 @@ subroutine MOM_state_chksum_3arg(mesg, u, v, h, G, GV, US, haloshift, symmetric,
   character(len=*),                intent(in) :: mesg !< A message that appears on the chksum lines.
   type(ocean_grid_type),           intent(in) :: G  !< The ocean's grid structure.
   type(verticalGrid_type),         intent(in) :: GV !< The ocean's vertical grid structure.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                                    intent(in) :: u  !< Zonal velocity [L T-1 ~> m s-1] or [m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                                    intent(in) :: v  !< Meridional velocity [L T-1 ~> m s-1] or [m s-1]..
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
                                    intent(in) :: h  !< Layer thicknesses [H ~> m or kg m-2].
   type(unit_scale_type),           intent(in) :: US !< A dimensional unit scaling type, which is
                                                     !! used to rescale u and v if present.
@@ -201,33 +203,33 @@ subroutine MOM_accel_chksum(mesg, CAu, CAv, PFu, PFv, diffu, diffv, G, GV, US, p
   character(len=*),         intent(in) :: mesg !< A message that appears on the chksum lines.
   type(ocean_grid_type),    intent(in) :: G    !< The ocean's grid structure.
   type(verticalGrid_type),  intent(in) :: GV   !< The ocean's vertical grid structure.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                             intent(in) :: CAu  !< Zonal acceleration due to Coriolis
                                                !! and momentum advection terms [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                             intent(in) :: CAv  !< Meridional acceleration due to Coriolis
                                                !! and momentum advection terms [L T-2 ~> m s-2].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                             intent(in) :: PFu  !< Zonal acceleration due to pressure gradients
                                                !! (equal to -dM/dx) [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                             intent(in) :: PFv  !< Meridional acceleration due to pressure gradients
                                                !! (equal to -dM/dy) [L T-2 ~> m s-2].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                             intent(in) :: diffu !< Zonal acceleration due to convergence of the
                                                 !! along-isopycnal stress tensor [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                             intent(in) :: diffv !< Meridional acceleration due to convergence of
                                                 !! the along-isopycnal stress tensor [L T-2 ~> m s-2].
   type(unit_scale_type),    intent(in) :: US    !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
                   optional, intent(in) :: pbce !< The baroclinic pressure anomaly in each layer
                                                !! due to free surface height anomalies
                                                !! [L2 T-2 H-1 ~> m s-2 or m4 s-2 kg-1].
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                   optional, intent(in) :: u_accel_bt !< The zonal acceleration from terms in the
                                                      !! barotropic solver [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                   optional, intent(in) :: v_accel_bt !< The meridional acceleration from terms in
                                                      !! the barotropic solver [L T-2 ~> m s-2].
   logical,        optional, intent(in) :: symmetric !< If true, do checksums on the fully symmetric
@@ -257,15 +259,15 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure.
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure.
   character(len=*),        intent(in) :: mesg !< A message that appears on the chksum lines.
-  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: u    !< The zonal velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
                            intent(in) :: v    !< The meridional velocity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
                            intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2].
-  real, pointer, dimension(:,:,:),           &
+  real(wp), pointer, dimension(:,:,:),           &
                            intent(in) :: Temp !< Temperature [C ~> degC].
-  real, pointer, dimension(:,:,:),           &
+  real(wp), pointer, dimension(:,:,:),           &
                            intent(in) :: Salt !< Salinity [S ~> ppt].
   type(unit_scale_type),   intent(in) :: US    !< A dimensional unit scaling type
   logical,       optional, intent(in) :: allowChange !< do not flag an error
@@ -274,17 +276,17 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
                                                            !! extrema are diminishing.
 
   ! Local variables
-  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: &
+  real(wp), dimension(G%isc:G%iec, G%jsc:G%jec) :: &
     tmp_A, &  ! The area per cell [L2 ~> m2]
     tmp_V, &  ! The column-integrated volume or mass [H L2 ~> m3 or kg],
               ! depending on whether the Boussinesq approximation is used
     tmp_T, &  ! The column-integrated temperature [C H L2 ~> degC m3 or degC kg]
     tmp_S     ! The column-integrated salinity [S H L2 ~> ppt m3 or ppt kg]
-  real :: Vol, dV    ! The total ocean volume or mass and its change [H L2 ~> m3 or kg]
-  real :: Area       ! The total ocean surface area [L2 ~> m2].
-  real :: h_minimum  ! The minimum layer thicknesses [H ~> m or kg m-2]
-  real :: T_scale    ! The scaling conversion factor for temperatures [degC C-1 ~> 1]
-  real :: S_scale    ! The scaling conversion factor for salinities [ppt S-1 ~> 1]
+  real(wp) :: Vol, dV    ! The total ocean volume or mass and its change [H L2 ~> m3 or kg]
+  real(wp) :: Area       ! The total ocean surface area [L2 ~> m2].
+  real(wp) :: h_minimum  ! The minimum layer thicknesses [H ~> m or kg m-2]
+  real(wp) :: T_scale    ! The scaling conversion factor for temperatures [degC C-1 ~> 1]
+  real(wp) :: S_scale    ! The scaling conversion factor for salinities [ppt S-1 ~> 1]
   logical :: do_TS   ! If true, evaluate statistics for temperature and salinity
   type(stats) :: T, delT ! Temperature statistics in unscaled units [degC]
   type(stats) :: S, delS ! Salinity statistics in unscaled units [ppt]
@@ -293,7 +295,7 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
   !       assumption we will not turn this on with threads
   type(stats), save :: oldT, oldS
   logical, save :: firstCall = .true.
-  real, save :: oldVol ! The previous total ocean volume or mass [H L2 ~> m3 or kg]
+  real(wp), save :: oldVol ! The previous total ocean volume or mass [H L2 ~> m3 or kg]
 
   character(len=80) :: lMsg
   integer :: is, ie, js, je, nz, i, j, k
@@ -301,10 +303,10 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   do_TS = associated(Temp) .and. associated(Salt)
 
-  tmp_A(:,:) = 0.0
-  tmp_V(:,:) = 0.0
-  tmp_T(:,:) = 0.0
-  tmp_S(:,:) = 0.0
+  tmp_A(:,:) = 0.0_wp
+  tmp_V(:,:) = 0.0_wp
+  tmp_T(:,:) = 0.0_wp
+  tmp_S(:,:) = 0.0_wp
 
   T_scale = US%C_to_degC ; S_scale = US%S_to_ppt
 
@@ -312,14 +314,14 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
   do j=js,je ; do i=is,ie
     tmp_A(i,j) = tmp_A(i,j) + G%areaT(i,j)
   enddo ; enddo
-  T%minimum = 1.E34 ; T%maximum = -1.E34 ; T%average = 0.
-  S%minimum = 1.E34 ; S%maximum = -1.E34 ; S%average = 0.
-  h_minimum = 1.E34*GV%m_to_H
+  T%minimum = 1.E34_wp ; T%maximum = -1.E34_wp ; T%average = 0._wp
+  S%minimum = 1.E34_wp ; S%maximum = -1.E34_wp ; S%average = 0._wp
+  h_minimum = 1.E34_wp*GV%m_to_H
   do k=1,nz ; do j=js,je ; do i=is,ie
-    if (G%mask2dT(i,j)>0.) then
+    if (G%mask2dT(i,j)>0._wp) then
       dV = G%areaT(i,j)*h(i,j,k)
       tmp_V(i,j) = tmp_V(i,j) + dV
-      if (do_TS .and. h(i,j,k)>0.) then
+      if (do_TS .and. h(i,j,k)>0._wp) then
         T%minimum = min( T%minimum, T_scale*Temp(i,j,k) ) ; T%maximum = max( T%maximum, T_scale*Temp(i,j,k) )
         S%minimum = min( S%minimum, S_scale*Salt(i,j,k) ) ; S%maximum = max( S%maximum, S_scale*Salt(i,j,k) )
         tmp_T(i,j) = tmp_T(i,j) + dV*Temp(i,j,k)
@@ -370,7 +372,7 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
   oldT%minimum = T%minimum ; oldT%maximum = T%maximum ; oldT%average = T%average
   oldS%minimum = S%minimum ; oldS%maximum = S%maximum ; oldS%average = S%average
 
-  if (do_TS .and. T%minimum<-5.0) then
+  if (do_TS .and. T%minimum<-5.0_wp) then
     do j=js,je ; do i=is,ie
       if (minval(T_scale*Temp(i,j,:)) == T%minimum) then
         write(0,'(a,2f12.5)') 'x,y=', G%geoLonT(i,j), G%geoLatT(i,j)
@@ -383,7 +385,7 @@ subroutine MOM_state_stats(mesg, u, v, h, Temp, Salt, G, GV, US, allowChange, pe
     enddo ; enddo
   endif
 
-  if (h_minimum<0.0) then
+  if (h_minimum<0.0_wp) then
     do j=js,je ; do i=is,ie
       if (minval(h(i,j,:)) == h_minimum) then
         write(0,'(a,2f12.5)') 'x,y=',G%geoLonT(i,j),G%geoLatT(i,j)

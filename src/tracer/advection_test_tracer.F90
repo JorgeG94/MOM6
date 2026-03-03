@@ -23,6 +23,8 @@ use MOM_unit_scaling,    only : unit_scale_type
 use MOM_variables,       only : surface
 use MOM_verticalGrid,    only : verticalGrid_type
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -40,16 +42,16 @@ type, public :: advection_test_tracer_CS ; private
   character(len=200) :: tracer_IC_file !< The full path to the IC file, or " " to initialize internally.
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the MOM tracer registry
-  real, pointer :: tr(:,:,:,:) => NULL() !< The array of tracers used in this subroutine [conc]
-  real :: land_val(NTR) = -1.0 !< The value of tr used where land is masked out [conc]
+  real(wp), pointer :: tr(:,:,:,:) => NULL() !< The array of tracers used in this subroutine [conc]
+  real(wp) :: land_val(NTR) = -1.0_wp !< The value of tr used where land is masked out [conc]
   logical :: use_sponge    !< If true, sponges may be applied somewhere in the domain.
   logical :: tracers_may_reinit !< If true, the tracers may be set up via the initialization code if
                            !! they are not found in the restart files.  Otherwise it is a fatal error
                            !! if the tracers are not found in the restart files of a restarted run.
-  real :: x_origin !< Starting x-position of the tracer [m] or [km] or [degrees_E]
-  real :: x_width  !< Initial size in the x-direction of the tracer patch [m] or [km] or [degrees_E]
-  real :: y_origin !< Starting y-position of the tracer [m] or [km] or [degrees_N]
-  real :: y_width  !< Initial size in the y-direction of the tracer patch [m] or [km] or [degrees_N]
+  real(wp) :: x_origin !< Starting x-position of the tracer [m] or [km] or [degrees_E]
+  real(wp) :: x_width  !< Initial size in the x-direction of the tracer patch [m] or [km] or [degrees_E]
+  real(wp) :: y_origin !< Starting y-position of the tracer [m] or [km] or [degrees_N]
+  real(wp) :: y_width  !< Initial size in the y-direction of the tracer patch [m] or [km] or [degrees_N]
 
   integer, dimension(NTR) :: ind_tr !< Indices returned by atmos_ocn_coupler_flux if it is used and
                    !! the surface tracer concentrations are to be provided to the coupler.
@@ -83,7 +85,7 @@ function register_advection_test_tracer(G, GV, param_file, CS, tr_Reg, restart_C
   character(len=200) :: inputdir   ! The directory where the input file can be found
   character(len=48)  :: flux_units ! The units for tracer fluxes, usually
                             ! kg(tracer) kg(water)-1 m3 s-1 or kg(tracer) s-1.
-  real, pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to a tracer array [conc]
+  real(wp), pointer :: tr_ptr(:,:,:) => NULL() ! A pointer to a tracer array [conc]
   logical :: register_advection_test_tracer
   integer :: isd, ied, jsd, jed, nz, m
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; nz = GV%ke
@@ -98,13 +100,13 @@ function register_advection_test_tracer(G, GV, param_file, CS, tr_Reg, restart_C
   call log_version(param_file, mdl, version, "")
 
   call get_param(param_file, mdl, "ADVECTION_TEST_X_ORIGIN", CS%x_origin, &
-        "The x-coordinate of the center of the test-functions.", units=G%x_ax_unit_short, default=0.)
+        "The x-coordinate of the center of the test-functions.", units=G%x_ax_unit_short, default=0._wp)
   call get_param(param_file, mdl, "ADVECTION_TEST_Y_ORIGIN", CS%y_origin, &
-        "The y-coordinate of the center of the test-functions.", units=G%y_ax_unit_short, default=0.)
+        "The y-coordinate of the center of the test-functions.", units=G%y_ax_unit_short, default=0._wp)
   call get_param(param_file, mdl, "ADVECTION_TEST_X_WIDTH", CS%x_width, &
-        "The x-width of the test-functions.", units=G%x_ax_unit_short, default=0.)
+        "The x-width of the test-functions.", units=G%x_ax_unit_short, default=0._wp)
   call get_param(param_file, mdl, "ADVECTION_TEST_Y_WIDTH", CS%y_width, &
-        "The y-width of the test-functions.", units=G%y_ax_unit_short, default=0.)
+        "The y-width of the test-functions.", units=G%y_ax_unit_short, default=0._wp)
   call get_param(param_file, mdl, "ADVECTION_TEST_TRACER_IC_FILE", CS%tracer_IC_file, &
                  "The name of a file from which to read the initial "//&
                  "conditions for the tracers, or blank to initialize "//&
@@ -128,7 +130,7 @@ function register_advection_test_tracer(G, GV, param_file, CS, tr_Reg, restart_C
                  "restart files of a restarted run.", default=.false.)
 
 
-  allocate(CS%tr(isd:ied,jsd:jed,nz,NTR), source=0.0)
+  allocate(CS%tr(isd:ied,jsd:jed,nz,NTR), source=0.0_wp)
 
   do m=1,NTR
     write(name,'("tr",I0)') m
@@ -168,7 +170,7 @@ subroutine initialize_advection_test_tracer(restart, day, G, GV, h,diag, OBC, CS
   type(time_type),            target, intent(in) :: day  !< Time of the start of the run.
   type(ocean_grid_type),              intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type),            intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                       intent(in) :: h    !< Layer thicknesses [H ~> m or kg m-2]
   type(diag_ctrl),            target, intent(in) :: diag !< A structure that is used to regulate
                                                          !! diagnostic output.
@@ -181,9 +183,9 @@ subroutine initialize_advection_test_tracer(restart, day, G, GV, h,diag, OBC, CS
 
   ! Local variables
   character(len=16) :: name ! A variable's name in a NetCDF file.
-  real :: locx, locy        ! x- and y- positions relative to the center of the tracer patch
+  real(wp) :: locx, locy        ! x- and y- positions relative to the center of the tracer patch
                             ! normalized by its size [nondim]
-  real :: h_neglect         ! A thickness that is so small it is usually lost
+  real(wp) :: h_neglect         ! A thickness that is so small it is usually lost
                             ! in roundoff and can be neglected [H ~> m or kg m-2].
   integer :: i, j, k, is, ie, js, je, isd, ied, jsd, jed, nz, m
   integer :: IsdB, IedB, JsdB, JedB
@@ -202,37 +204,37 @@ subroutine initialize_advection_test_tracer(restart, day, G, GV, h,diag, OBC, CS
     if ((.not.restart) .or. (CS%tracers_may_reinit .and. .not. &
         query_initialized(CS%tr(:,:,:,m), name, CS%restart_CSp))) then
       do k=1,nz ; do j=js,je ; do i=is,ie
-        CS%tr(i,j,k,m) = 0.0
+        CS%tr(i,j,k,m) = 0.0_wp
       enddo ; enddo ; enddo
       k=1 ! Square wave
       do j=js,je ; do i=is,ie
-        if (abs(G%geoLonT(i,j)-CS%x_origin)<0.5*CS%x_width .and. &
-            abs(G%geoLatT(i,j)-CS%y_origin)<0.5*CS%y_width) CS%tr(i,j,k,m) = 1.0
+        if (abs(G%geoLonT(i,j)-CS%x_origin)<0.5_wp*CS%x_width .and. &
+            abs(G%geoLatT(i,j)-CS%y_origin)<0.5_wp*CS%y_width) CS%tr(i,j,k,m) = 1.0_wp
       enddo ; enddo
       k=2 ! Triangle wave
       do j=js,je ; do i=is,ie
         locx = abs(G%geoLonT(i,j)-CS%x_origin)/CS%x_width
         locy = abs(G%geoLatT(i,j)-CS%y_origin)/CS%y_width
-        CS%tr(i,j,k,m) = max(0.0, 1.0-locx)*max(0.0, 1.0-locy)
+        CS%tr(i,j,k,m) = max(0.0_wp, 1.0_wp-locx)*max(0.0_wp, 1.0_wp-locy)
       enddo ; enddo
       k=3 ! Cosine bell
       do j=js,je ; do i=is,ie
-        locx = min(1.0, abs(G%geoLonT(i,j)-CS%x_origin)/CS%x_width) * (acos(0.0)*2.)
-        locy = min(1.0, abs(G%geoLatT(i,j)-CS%y_origin)/CS%y_width) * (acos(0.0)*2.)
-        CS%tr(i,j,k,m) = (1.0+cos(locx))*(1.0+cos(locy))*0.25
+        locx = min(1.0_wp, abs(G%geoLonT(i,j)-CS%x_origin)/CS%x_width) * (acos(0.0_wp)*2._wp)
+        locy = min(1.0_wp, abs(G%geoLatT(i,j)-CS%y_origin)/CS%y_width) * (acos(0.0_wp)*2._wp)
+        CS%tr(i,j,k,m) = (1.0_wp+cos(locx))*(1.0_wp+cos(locy))*0.25_wp
       enddo ; enddo
       k=4 ! Cylinder
       do j=js,je ; do i=is,ie
         locx = abs(G%geoLonT(i,j)-CS%x_origin)/CS%x_width
         locy = abs(G%geoLatT(i,j)-CS%y_origin)/CS%y_width
-        if ((locx**2) + (locy**2) <= 1.0) CS%tr(i,j,k,m) = 1.0
+        if ((locx**2) + (locy**2) <= 1.0_wp) CS%tr(i,j,k,m) = 1.0_wp
       enddo ; enddo
       k=5 ! Cut cylinder
       do j=js,je ; do i=is,ie
         locx = (G%geoLonT(i,j)-CS%x_origin)/CS%x_width
         locy = (G%geoLatT(i,j)-CS%y_origin)/CS%y_width
-        if ((locx**2) + (locy**2) <= 1.0) CS%tr(i,j,k,m) = 1.0
-        if (locx>0.0 .and. abs(locy)<0.2) CS%tr(i,j,k,m) = 0.0
+        if ((locx**2) + (locy**2) <= 1.0_wp) CS%tr(i,j,k,m) = 1.0_wp
+        if (locx>0.0_wp .and. abs(locy)<0.2_wp) CS%tr(i,j,k,m) = 0.0_wp
       enddo ; enddo
 
       call set_initialized(CS%tr(:,:,:,m), name, CS%restart_CSp)
@@ -249,27 +251,27 @@ subroutine advection_test_tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, 
               evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_old !< Layer thickness before entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: h_new !< Layer thickness after entrainment [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: ea   !< an array to which the amount of fluid entrained
                                               !! from the layer above during this call will be
                                               !! added [H ~> m or kg m-2].
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in) :: eb   !< an array to which the amount of fluid entrained
                                               !! from the layer below during this call will be
                                               !! added [H ~> m or kg m-2].
   type(forcing),           intent(in) :: fluxes !< A structure containing pointers to thermodynamic
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
-  real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
+  real(wp),                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
   type(advection_test_tracer_CS), pointer :: CS !< The control structure returned by a previous
                                               !! call to register_advection_test_tracer.
-  real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
+  real(wp),          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
                                               !! be fluxed out of the top layer in a timestep [nondim]
-  real,          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
+  real(wp),          optional, intent(in) :: minimum_forcing_depth !< The smallest depth over which
                                               !! fluxes can be applied [H ~> m or kg m-2]
 !   This subroutine applies diapycnal diffusion and any other column
 ! tracer physics or chemistry to the tracers from this file.
@@ -278,7 +280,7 @@ subroutine advection_test_tracer_column_physics(h_old, h_new,  ea,  eb, fluxes, 
 ! The arguments to this subroutine are redundant in that
 !     h_new(k) = h_old(k) + ea(k) - eb(k-1) + eb(k) - ea(k+1)
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)) :: h_work ! Used so that h can be modified [H ~> m or kg m-2]
   integer :: i, j, k, is, ie, js, je, nz, m
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -309,7 +311,7 @@ subroutine advection_test_tracer_surface_state(sfc_state, h, G, GV, CS)
   type(verticalGrid_type), intent(in)    :: GV !< The ocean's vertical grid structure
   type(surface),           intent(inout) :: sfc_state !< A structure containing fields that
                                                !! describe the surface state of the ocean.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                            intent(in)    :: h  !< Layer thickness [H ~> m or kg m-2].
   type(advection_test_tracer_CS), pointer :: CS !< The control structure returned by a previous
                                                !! call to register_advection_test_tracer.
@@ -339,7 +341,7 @@ end subroutine advection_test_tracer_surface_state
 function advection_test_stock(h, stocks, G, GV, CS, names, units, stock_index)
   type(ocean_grid_type),              intent(in)    :: G      !< The ocean's grid structure
   type(verticalGrid_type),            intent(in)    :: GV     !< The ocean's vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
+  real(wp), dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h   !< Layer thicknesses [H ~> m or kg m-2]
   type(EFP_type), dimension(:),       intent(out)   :: stocks !< the mass-weighted integrated amount of each
                                                               !! tracer, in kg times concentration units [kg conc].
   type(advection_test_tracer_CS),     pointer       :: CS     !< The control structure returned by a previous

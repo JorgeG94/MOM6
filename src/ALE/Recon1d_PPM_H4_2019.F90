@@ -12,6 +12,8 @@ module Recon1d_PPM_H4_2019
 
 use Recon1d_type, only : Recon1d, testing
 
+use MOM_datatypes, only : wp
+
 implicit none ; private
 
 public PPM_H4_2019, testing
@@ -32,8 +34,8 @@ public PPM_H4_2019, testing
 !! - reconstruct_parent()   -> reconstruct()
 type, extends (Recon1d) :: PPM_H4_2019
 
-  real, allocatable :: ul(:) !< Left edge value [A]
-  real, allocatable :: ur(:) !< Right edge value [A]
+  real(wp), allocatable :: ul(:) !< Left edge value [A]
+  real(wp), allocatable :: ur(:) !< Right edge value [A]
 
 contains
   !> Implementation of the PPM_H4_2019 initialization
@@ -66,7 +68,7 @@ contains
 subroutine init(this, n, h_neglect, check)
   class(PPM_H4_2019),     intent(out) :: this      !< This reconstruction
   integer,           intent(in)  :: n         !< Number of cells in this column
-  real, optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
+  real(wp), optional,    intent(in)  :: h_neglect !< A negligibly small width used in cell reconstructions [H]
   logical, optional, intent(in)  :: check     !< If true, enable some consistency checking
 
   this%n = n
@@ -85,40 +87,40 @@ end subroutine init
 !> Calculate a 1D PPM_H4_2019 reconstructions based on h(:) and u(:)
 subroutine reconstruct(this, h, u)
   class(PPM_H4_2019), intent(inout) :: this !< This reconstruction
-  real,          intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
-  real,          intent(in)    :: u(*) !< Cell mean values [A]
+  real(wp),          intent(in)    :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),          intent(in)    :: u(*) !< Cell mean values [A]
   ! Local variables
-  real :: slp ! The PLM slopes (difference across cell) [A]
-  real :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
+  real(wp) :: slp ! The PLM slopes (difference across cell) [A]
+  real(wp) :: sigma_l, sigma_c, sigma_r ! Left, central and right slope estimates as
                                     ! differences across the cell [A]
-  real :: u_min, u_max ! Minimum and maximum value across cell [A]
-  real :: u_l, u_r, u_c ! Left, right, and center values [A]
-  real :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
-  real :: h_c0 ! Thickness of center with h_neglect added [H]
-  real :: h0, h1, h2, h3        ! temporary thicknesses [H]
-  real :: h_min                 ! A minimal cell width [H]
-  real :: f1                    ! An auxiliary variable [H]
-  real :: f2                    ! An auxiliary variable [A H]
-  real :: f3                    ! An auxiliary variable [H-1]
-  real :: et1, et2, et3         ! terms the expression for edge values [A H]
-  real :: I_h12                 ! The inverse of the sum of the two central thicknesses [H-1]
-  real :: I_h012, I_h123        ! Inverses of sums of three successive thicknesses [H-1]
-  real :: I_den_et2, I_den_et3  ! Inverses of denominators in edge value terms [H-2]
-  real :: dx                    ! Difference of successive values of x [H]
-  real :: f                     ! value of polynomial at x in arbitrary units [A]
-  real :: edge_l, edge_r        ! Edge values (left and right) [A]
-  real :: expr1, expr2          ! Temporary expressions [A2]
-  real :: slope_x_h             ! retained PLM slope times  half grid step [A]
-  real :: u0_avg                ! avg value at given edge [A]
-  real, parameter :: hMinFrac = 1.e-5  !< A minimum fraction for min(h)/sum(h) [nondim]
-  real :: edge_values(this%n,2) ! Edge values [A]
-  real :: ppoly_coef(this%n,3)  ! Polynomial coefficients [A]
-  real :: dz(4)                 ! A temporary array of limited layer thicknesses [H]
-  real :: u_tmp(4)              ! A temporary array of cell average properties [A]
-  real :: A(4,4)     ! Differences in successive positions raised to various powers,
+  real(wp) :: u_min, u_max ! Minimum and maximum value across cell [A]
+  real(wp) :: u_l, u_r, u_c ! Left, right, and center values [A]
+  real(wp) :: h_l, h_c, h_r ! Thickness of left, center and right cells [H]
+  real(wp) :: h_c0 ! Thickness of center with h_neglect added [H]
+  real(wp) :: h0, h1, h2, h3        ! temporary thicknesses [H]
+  real(wp) :: h_min                 ! A minimal cell width [H]
+  real(wp) :: f1                    ! An auxiliary variable [H]
+  real(wp) :: f2                    ! An auxiliary variable [A H]
+  real(wp) :: f3                    ! An auxiliary variable [H-1]
+  real(wp) :: et1, et2, et3         ! terms the expression for edge values [A H]
+  real(wp) :: I_h12                 ! The inverse of the sum of the two central thicknesses [H-1]
+  real(wp) :: I_h012, I_h123        ! Inverses of sums of three successive thicknesses [H-1]
+  real(wp) :: I_den_et2, I_den_et3  ! Inverses of denominators in edge value terms [H-2]
+  real(wp) :: dx                    ! Difference of successive values of x [H]
+  real(wp) :: f                     ! value of polynomial at x in arbitrary units [A]
+  real(wp) :: edge_l, edge_r        ! Edge values (left and right) [A]
+  real(wp) :: expr1, expr2          ! Temporary expressions [A2]
+  real(wp) :: slope_x_h             ! retained PLM slope times  half grid step [A]
+  real(wp) :: u0_avg                ! avg value at given edge [A]
+  real(wp), parameter :: hMinFrac = 1.e-5_wp  !< A minimum fraction for min(h)/sum(h) [nondim]
+  real(wp) :: edge_values(this%n,2) ! Edge values [A]
+  real(wp) :: ppoly_coef(this%n,3)  ! Polynomial coefficients [A]
+  real(wp) :: dz(4)                 ! A temporary array of limited layer thicknesses [H]
+  real(wp) :: u_tmp(4)              ! A temporary array of cell average properties [A]
+  real(wp) :: A(4,4)     ! Differences in successive positions raised to various powers,
                      ! in units that vary with the second (j) index as [H^j]
-  real :: B(4)       ! The right hand side of the system to solve for C [A H]
-  real :: C(4)       ! The coefficients of a fit polynomial in units that vary
+  real(wp) :: B(4)       ! The right hand side of the system to solve for C [A H]
+  real(wp) :: C(4)       ! The coefficients of a fit polynomial in units that vary
                      ! with the index (j) as [A H^(j-1)]
   integer :: k, n, km1, kp1
 
@@ -133,7 +135,7 @@ subroutine reconstruct(this, h, u)
     h3 = h(k+1)
 
     ! Avoid singularities when consecutive pairs of h vanish
-    if (h0+h1==0.0 .or. h1+h2==0.0 .or. h2+h3==0.0) then
+    if (h0+h1==0.0_wp .or. h1+h2==0.0_wp .or. h2+h3==0.0_wp) then
       h_min = hMinFrac*max( this%h_neglect, (h0+h1)+(h2+h3) )
       h0 = max( h_min, h0 )
       h1 = max( h_min, h1 )
@@ -141,12 +143,12 @@ subroutine reconstruct(this, h, u)
       h3 = max( h_min, h3 )
     endif
 
-    I_h12 = 1.0 / (h1+h2)
-    I_den_et2 = 1.0 / ( ((h0+h1)+h2)*(h0+h1) ) ; I_h012 = (h0+h1) * I_den_et2
-    I_den_et3 = 1.0 / ( (h1+(h2+h3))*(h2+h3) ) ; I_h123 = (h2+h3) * I_den_et3
+    I_h12 = 1.0_wp / (h1+h2)
+    I_den_et2 = 1.0_wp / ( ((h0+h1)+h2)*(h0+h1) ) ; I_h012 = (h0+h1) * I_den_et2
+    I_den_et3 = 1.0_wp / ( (h1+(h2+h3))*(h2+h3) ) ; I_h123 = (h2+h3) * I_den_et3
 
-    et1 = ( 1.0 + (h1 * I_h012 + (h0+h1) * I_h123) ) * I_h12 * (h2*(h2+h3)) * u(k-1) + &
-          ( 1.0 + (h2 * I_h123 + (h2+h3) * I_h012) ) * I_h12 * (h1*(h0+h1)) * u(k)
+    et1 = ( 1.0_wp + (h1 * I_h012 + (h0+h1) * I_h123) ) * I_h12 * (h2*(h2+h3)) * u(k-1) + &
+          ( 1.0_wp + (h2 * I_h123 + (h2+h3) * I_h012) ) * I_h12 * (h1*(h0+h1)) * u(k)
     et2 = ( h1 * (h2*(h2+h3)) * I_den_et2 ) * (u(k-1)-u(k-2))
     et3 = ( h2 * (h1*(h0+h1)) * I_den_et3 ) * (u(k) - u(k+1))
     edge_values(k,1) = (et1 + (et2 + et3)) / ((h0 + h1) + (h2 + h3))
@@ -181,26 +183,26 @@ subroutine reconstruct(this, h, u)
     ! boundary cells look like extrema.
     km1 = max(1,k-1) ; kp1 = min(k+1,N)
 
-    slope_x_h = 0.0
+    slope_x_h = 0.0_wp
     sigma_l = ( u(k) - u(km1) )
-    if ( (h(km1) + h(kp1)) + 2.0*h(k) > 0. ) then
-      sigma_c = ( u(kp1) - u(km1) ) * ( h(k) / ((h(km1) + h(kp1)) + 2.0*h(k)) )
+    if ( (h(km1) + h(kp1)) + 2.0_wp*h(k) > 0._wp ) then
+      sigma_c = ( u(kp1) - u(km1) ) * ( h(k) / ((h(km1) + h(kp1)) + 2.0_wp*h(k)) )
     else
-      sigma_c = 0.
+      sigma_c = 0._wp
     endif
     sigma_r = ( u(kp1) - u(k) )
 
     ! The limiter is used in the local coordinate system to each cell, so for convenience store
     ! the slope times a half grid spacing.  (See White and Adcroft JCP 2008 Eqs 19 and 20)
-    if ( (sigma_l * sigma_r) > 0.0 ) &
+    if ( (sigma_l * sigma_r) > 0.0_wp ) &
       slope_x_h = sign( min(abs(sigma_l),abs(sigma_c),abs(sigma_r)), sigma_c )
 
     ! Limit the edge values
-    if ( (u(km1)-edge_values(k,1)) * (edge_values(k,1)-u(k)) < 0.0 ) then
+    if ( (u(km1)-edge_values(k,1)) * (edge_values(k,1)-u(k)) < 0.0_wp ) then
       edge_values(k,1) = u(k) - sign( min( abs(slope_x_h), abs(edge_values(k,1)-u(k)) ), slope_x_h )
     endif
 
-    if ( (u(kp1)-edge_values(k,2)) * (edge_values(k,2)-u(k)) < 0.0 ) then
+    if ( (u(kp1)-edge_values(k,2)) * (edge_values(k,2)-u(k)) < 0.0_wp ) then
       edge_values(k,2) = u(k) + sign( min( abs(slope_x_h), abs(edge_values(k,2)-u(k)) ), slope_x_h )
     endif
 
@@ -211,8 +213,8 @@ subroutine reconstruct(this, h, u)
   enddo ! loop on interior edges
 
   do k = 1, n-1
-    if ( (edge_values(k+1,1) - edge_values(k,2)) * (u(k+1) - u(k)) < 0.0 ) then
-      u0_avg = 0.5 * ( edge_values(k,2) + edge_values(k+1,1) )
+    if ( (edge_values(k+1,1) - edge_values(k,2)) * (u(k+1) - u(k)) < 0.0_wp ) then
+      u0_avg = 0.5_wp * ( edge_values(k,2) + edge_values(k+1,1) )
       u0_avg = max( min( u0_avg, max(u(k), u(k+1)) ), min(u(k), u(k+1)) )
       edge_values(k,2) = u0_avg
       edge_values(k+1,1) = u0_avg
@@ -231,27 +233,27 @@ subroutine reconstruct(this, h, u)
     edge_l = edge_values(k,1)
     edge_r = edge_values(k,2)
 
-    if ( (u_r - u_c)*(u_c - u_l) <= 0.0) then
+    if ( (u_r - u_c)*(u_c - u_l) <= 0.0_wp) then
       ! Flatten extremum
       edge_l = u_c
       edge_r = u_c
     else
-      expr1 = 3.0 * (edge_r - edge_l) * ( (u_c - edge_l) + (u_c - edge_r))
+      expr1 = 3.0_wp * (edge_r - edge_l) * ( (u_c - edge_l) + (u_c - edge_r))
       expr2 = (edge_r - edge_l) * (edge_r - edge_l)
       if ( expr1 > expr2 ) then
         ! Place extremum at right edge of cell by adjusting left edge value
-        edge_l = u_c + 2.0 * ( u_c - edge_r )
+        edge_l = u_c + 2.0_wp * ( u_c - edge_r )
         edge_l = max( min( edge_l, max(u_l, u_c) ), min(u_l, u_c) ) ! In case of round off
       elseif ( expr1 < -expr2 ) then
         ! Place extremum at left edge of cell by adjusting right edge value
-        edge_r = u_c + 2.0 * ( u_c - edge_l )
+        edge_r = u_c + 2.0_wp * ( u_c - edge_l )
         edge_r = max( min( edge_r, max(u_r, u_c) ), min(u_r, u_c) ) ! In case of round off
       endif
     endif
     ! This checks that the difference in edge values is representable
     ! and avoids overshoot problems due to round off.
     !### The 1.e-60 needs to have units of [A], so this dimensionally inconsistent.
-    if ( abs( edge_r - edge_l )<max(1.e-60,epsilon(u_c)*abs(u_c)) ) then
+    if ( abs( edge_r - edge_l )<max(1.e-60_wp,epsilon(u_c)*abs(u_c)) ) then
       edge_l = u_c
       edge_r = u_c
     endif
@@ -277,27 +279,27 @@ end subroutine reconstruct
 !> Determine a one-sided 4th order polynomial fit of u to the data points for the purposes of specifying
 !! edge values, as described in the appendix of White and Adcroft JCP 2008.
 subroutine end_value_h4(dz, u, Csys)
-  real, intent(in)  :: dz(4)    !< The thicknesses of 4 layers, starting at the edge [H].
+  real(wp), intent(in)  :: dz(4)    !< The thicknesses of 4 layers, starting at the edge [H].
                                 !! The values of dz must be positive.
-  real, intent(in)  :: u(4)     !< The average properties of 4 layers, starting at the edge [A]
-  real, intent(out) :: Csys(4)  !< The four coefficients of a 4th order polynomial fit
+  real(wp), intent(in)  :: u(4)     !< The average properties of 4 layers, starting at the edge [A]
+  real(wp), intent(out) :: Csys(4)  !< The four coefficients of a 4th order polynomial fit
                                 !! of u as a function of z [A H-(n-1)]
 
   ! Local variables
-  real :: Wt(3,4)         ! The weights of successive u differences in the 4 closed form expressions.
+  real(wp) :: Wt(3,4)         ! The weights of successive u differences in the 4 closed form expressions.
                           ! The units of Wt vary with the second index as [H-(n-1)].
-  real :: h1, h2, h3, h4  ! Copies of the layer thicknesses [H]
-  real :: h12, h23, h34   ! Sums of two successive thicknesses [H]
-  real :: h123, h234      ! Sums of three successive thicknesses [H]
-  real :: h1234           ! Sums of all four thicknesses [H]
+  real(wp) :: h1, h2, h3, h4  ! Copies of the layer thicknesses [H]
+  real(wp) :: h12, h23, h34   ! Sums of two successive thicknesses [H]
+  real(wp) :: h123, h234      ! Sums of three successive thicknesses [H]
+  real(wp) :: h1234           ! Sums of all four thicknesses [H]
   ! real :: I_h1          ! The inverse of the a thickness [H-1]
-  real :: I_h12, I_h23, I_h34 ! The inverses of sums of two thicknesses [H-1]
-  real :: I_h123, I_h234  ! The inverse of the sum of three thicknesses [H-1]
-  real :: I_h1234         ! The inverse of the sum of all four thicknesses [H-1]
-  real :: I_denom         ! The inverse of the denominator some expressions [H-3]
-  real :: I_denB3         ! The inverse of the product of three sums of thicknesses [H-3]
-  real :: min_frac = 1.0e-6  ! The square of min_frac should be much larger than roundoff [nondim]
-  real, parameter :: C1_3 = 1.0 / 3.0   ! A rational parameter [nondim]
+  real(wp) :: I_h12, I_h23, I_h34 ! The inverses of sums of two thicknesses [H-1]
+  real(wp) :: I_h123, I_h234  ! The inverse of the sum of three thicknesses [H-1]
+  real(wp) :: I_h1234         ! The inverse of the sum of all four thicknesses [H-1]
+  real(wp) :: I_denom         ! The inverse of the denominator some expressions [H-3]
+  real(wp) :: I_denB3         ! The inverse of the product of three sums of thicknesses [H-3]
+  real(wp) :: min_frac = 1.0e-6_wp  ! The square of min_frac should be much larger than roundoff [nondim]
+  real(wp), parameter :: C1_3 = 1.0_wp / 3.0_wp   ! A rational parameter [nondim]
 
  ! if ((dz(1) == dz(2)) .and. (dz(1) == dz(3)) .and. (dz(1) == dz(4))) then
  !   ! There are simple closed-form expressions in this case
@@ -320,11 +322,11 @@ subroutine end_value_h4(dz, u, Csys)
   h12 = h1+h2 ; h23 = h2+h3 ; h34 = h3+h4
   h123 = h12 + h3 ; h234 = h2 + h34 ; h1234 = h12 + h34
   ! Find 3 reciprocals with a single division for efficiency.
-  I_denB3 = 1.0 / (h123 * h12 * h23)
+  I_denB3 = 1.0_wp / (h123 * h12 * h23)
   I_h12 = (h123 * h23) * I_denB3
   I_h23 = (h12 * h123) * I_denB3
   I_h123 = (h12 * h23) * I_denB3
-  I_denom = 1.0 / ( h1234 * (h234 * h34) )
+  I_denom = 1.0_wp / ( h1234 * (h234 * h34) )
   I_h34 = (h1234 * h234) * I_denom
   I_h234 = (h1234 * h34) * I_denom
   I_h1234 = (h234 * h34) * I_denom
@@ -350,18 +352,18 @@ subroutine end_value_h4(dz, u, Csys)
   Wt(2,1) =  h1 * h12 * ( I_h234 * I_h1234 + I_h23 * (I_h234 + I_h123) )  ! < (h1/h234) + (h1/h23)*(2+(h1/h234))
   Wt(3,1) = -h1 * h12 * h123 * I_denom                                    ! > -(h1/h34)*(1+(h1/h234))
 
-  Wt(1,2) =  2.0 * (I_h12*(1.0 + (h1+h12) * (I_h1234 + I_h123)) + h1 * I_h1234*I_h123) ! < 10/h12
-  Wt(2,2) = -2.0 * ((h1 * h12 * I_h1234) *       (I_h23 * (I_h234 + I_h123)) + &       ! > -(10+6*(h1/h234))/h23
+  Wt(1,2) =  2.0_wp * (I_h12*(1.0_wp + (h1+h12) * (I_h1234 + I_h123)) + h1 * I_h1234*I_h123) ! < 10/h12
+  Wt(2,2) = -2.0_wp * ((h1 * h12 * I_h1234) *       (I_h23 * (I_h234 + I_h123)) + &       ! > -(10+6*(h1/h234))/h23
                     (h1+h12) * ( I_h1234*I_h234 + I_h23 * (I_h234 + I_h123) ) )
-  Wt(3,2) =  2.0 * ((h1+h12) * h123 + h1*h12 ) * I_denom                               ! < (2+(6*h1/h234)) / h34
+  Wt(3,2) =  2.0_wp * ((h1+h12) * h123 + h1*h12 ) * I_denom                               ! < (2+(6*h1/h234)) / h34
 
-  Wt(1,3) = -3.0 * I_h12 * I_h123* ( 1.0 + I_h1234 * ((h1+h12)+h123) )                 ! > -12 / (h12*h123)
-  Wt(2,3) =  3.0 * I_h23 * ( I_h123 + I_h1234 * ((h1+h12)+h123) * (I_h123 + I_h234) )  ! < 12 / (h23^2)
-  Wt(3,3) = -3.0 * ((h1+h12)+h123) * I_denom                                           ! > -9 / (h234*h23)
+  Wt(1,3) = -3.0_wp * I_h12 * I_h123* ( 1.0_wp + I_h1234 * ((h1+h12)+h123) )                 ! > -12 / (h12*h123)
+  Wt(2,3) =  3.0_wp * I_h23 * ( I_h123 + I_h1234 * ((h1+h12)+h123) * (I_h123 + I_h234) )  ! < 12 / (h23^2)
+  Wt(3,3) = -3.0_wp * ((h1+h12)+h123) * I_denom                                           ! > -9 / (h234*h23)
 
-  Wt(1,4) =  4.0 * I_h1234 * I_h123 * I_h12                          ! Wt*h1^3 < 4
-  Wt(2,4) = -4.0 * I_h1234 * (I_h23 * (I_h123 + I_h234))             ! Wt*h1^3 > -4* (h1/h23)*(1+h1/h234)
-  Wt(3,4) =  4.0 * I_denom  ! = 4.0*I_h1234 * I_h234 * I_h34         ! Wt*h1^3 < 4 * (h1/h234)*(h1/h34)
+  Wt(1,4) =  4.0_wp * I_h1234 * I_h123 * I_h12                          ! Wt*h1^3 < 4
+  Wt(2,4) = -4.0_wp * I_h1234 * (I_h23 * (I_h123 + I_h234))             ! Wt*h1^3 > -4* (h1/h23)*(1+h1/h234)
+  Wt(3,4) =  4.0_wp * I_denom  ! = 4.0*I_h1234 * I_h234 * I_h34         ! Wt*h1^3 < 4 * (h1/h234)*(h1/h34)
 
   Csys(1) = ((u(1) + Wt(1,1) * (u(2)-u(1))) + Wt(2,1) * (u(3)-u(2))) + Wt(3,1) * (u(4)-u(3))
   Csys(2) = (Wt(1,2) * (u(2)-u(1)) + Wt(2,2) * (u(3)-u(2))) + Wt(3,2) * (u(4)-u(3))
@@ -373,21 +375,21 @@ subroutine end_value_h4(dz, u, Csys)
 end subroutine end_value_h4
 
 !> Value of PPM_H4_2019 reconstruction at a point in cell k [A]
-real function f(this, k, x)
+real(wp) function f(this, k, x)
   class(PPM_H4_2019), intent(in) :: this !< This reconstruction
   integer,            intent(in) :: k    !< Cell number
-  real,               intent(in) :: x    !< Non-dimensional position within element [nondim]
-  real :: xc ! Bounded version of x [nondim]
-  real :: du ! Difference across cell [A]
-  real :: a6 ! Collela and Woordward curvature parameter [A]
-  real :: u_a, u_b ! Two estimate of f [A]
-  real :: lmx ! 1 - x [nondim]
-  real :: wb ! Weight based on x [nondim]
+  real(wp),               intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp) :: xc ! Bounded version of x [nondim]
+  real(wp) :: du ! Difference across cell [A]
+  real(wp) :: a6 ! Collela and Woordward curvature parameter [A]
+  real(wp) :: u_a, u_b ! Two estimate of f [A]
+  real(wp) :: lmx ! 1 - x [nondim]
+  real(wp) :: wb ! Weight based on x [nondim]
 
   du = this%ur(k) - this%ul(k)
-  a6 = 3.0 * ( ( this%u_mean(k) - this%ul(k) ) + ( this%u_mean(k) - this%ur(k) ) )
-  xc = max( 0., min( 1., x ) )
-  lmx = 1.0 - xc
+  a6 = 3.0_wp * ( ( this%u_mean(k) - this%ul(k) ) + ( this%u_mean(k) - this%ur(k) ) )
+  xc = max( 0._wp, min( 1._wp, x ) )
+  lmx = 1.0_wp - xc
 
   ! This expression for u_a can overshoot u_r but is good for x<<1
   u_a = this%ul(k) + xc * ( du + a6 * lmx )
@@ -395,58 +397,58 @@ real function f(this, k, x)
   u_b = this%ur(k) + lmx * ( - du + a6 * xc )
 
   ! Since u_a and u_b are both side-bounded, using weights=0 or 1 will preserve uniformity
-  wb = 0.5 + sign(0.5, xc - 0.5 ) ! = 1 @ x=0, = 0 @ x=1
-  f = ( ( 1. - wb ) * u_a ) + ( wb * u_b )
+  wb = 0.5_wp + sign(0.5_wp, xc - 0.5_wp ) ! = 1 @ x=0, = 0 @ x=1
+  f = ( ( 1._wp - wb ) * u_a ) + ( wb * u_b )
 
 end function f
 
 !> Derivative of PPM_H4_2019 reconstruction at a point in cell k [A]
-real function dfdx(this, k, x)
+real(wp) function dfdx(this, k, x)
   class(PPM_H4_2019), intent(in) :: this !< This reconstruction
   integer,            intent(in) :: k    !< Cell number
-  real,               intent(in) :: x    !< Non-dimensional position within element [nondim]
-  real :: xc ! Bounded version of x [nondim]
-  real :: du ! Difference across cell [A]
-  real :: a6 ! Collela and Woordward curvature parameter [A]
+  real(wp),               intent(in) :: x    !< Non-dimensional position within element [nondim]
+  real(wp) :: xc ! Bounded version of x [nondim]
+  real(wp) :: du ! Difference across cell [A]
+  real(wp) :: a6 ! Collela and Woordward curvature parameter [A]
 
   du = this%ur(k) - this%ul(k)
-  a6 = 3.0 * ( ( this%u_mean(k) - this%ul(k) ) + ( this%u_mean(k) - this%ur(k) ) )
-  xc = max( 0., min( 1., x ) )
+  a6 = 3.0_wp * ( ( this%u_mean(k) - this%ul(k) ) + ( this%u_mean(k) - this%ur(k) ) )
+  xc = max( 0._wp, min( 1._wp, x ) )
 
-  dfdx = du + a6 * ( 2.0 * xc - 1.0 )
+  dfdx = du + a6 * ( 2.0_wp * xc - 1.0_wp )
 
 end function dfdx
 
 !> Average between xa and xb for cell k of a 1D PPM reconstruction [A]
-real function average(this, k, xa, xb)
+real(wp) function average(this, k, xa, xb)
   class(PPM_H4_2019), intent(in) :: this !< This reconstruction
   integer,       intent(in) :: k    !< Cell number
-  real,          intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
-  real,          intent(in) :: xb   !< End of averaging interval on element (0 to 1)
-  real :: xapxb                 ! A sum of fracional positions [nondim]
-  real :: mx, Ya, Yb, my        ! Various fractional positions [nondim]
-  real :: u_a, u_b ! Values at xa and xb [A]
-  real :: xa2pxb2,  xa2b2ab, Ya2b2ab  ! Sums of squared fractional positions [nondim]
-  real :: a_L, a_R, u_c, a_c    ! Values of the polynomial at various locations [A]
+  real(wp),          intent(in) :: xa   !< Start of averaging interval on element (0 to 1)
+  real(wp),          intent(in) :: xb   !< End of averaging interval on element (0 to 1)
+  real(wp) :: xapxb                 ! A sum of fracional positions [nondim]
+  real(wp) :: mx, Ya, Yb, my        ! Various fractional positions [nondim]
+  real(wp) :: u_a, u_b ! Values at xa and xb [A]
+  real(wp) :: xa2pxb2,  xa2b2ab, Ya2b2ab  ! Sums of squared fractional positions [nondim]
+  real(wp) :: a_L, a_R, u_c, a_c    ! Values of the polynomial at various locations [A]
 
-  mx = 0.5 * ( xa + xb )
+  mx = 0.5_wp * ( xa + xb )
   a_L = this%ul(k)
   a_R = this%ur(k)
   u_c = this%u_mean(k)
-  a_c = 0.5 * ( ( u_c - a_L ) + ( u_c - a_R ) ) ! a_6 / 6
-  if (mx<0.5) then
+  a_c = 0.5_wp * ( ( u_c - a_L ) + ( u_c - a_R ) ) ! a_6 / 6
+  if (mx<0.5_wp) then
     ! This integration of the PPM reconstruction is expressed in distances from the left edge
     xa2b2ab = (xa*xa+xb*xb)+xa*xb
     average = a_L + ( ( a_R - a_L ) * mx &
-                    + a_c * ( 3. * ( xb + xa ) - 2.*xa2b2ab ) )
+                    + a_c * ( 3._wp * ( xb + xa ) - 2._wp*xa2b2ab ) )
   else
     ! This integration of the PPM reconstruction is expressed in distances from the right edge
-    Ya = 1. - xa
-    Yb = 1. - xb
-    my = 0.5 * ( Ya + Yb )
+    Ya = 1._wp - xa
+    Yb = 1._wp - xb
+    my = 0.5_wp * ( Ya + Yb )
     Ya2b2ab = (Ya*Ya+Yb*Yb)+Ya*Yb
     average = a_R  + ( ( a_L - a_R ) * my &
-                     + a_c * ( 3. * ( Yb + Ya ) - 2.*Ya2b2ab ) )
+                     + a_c * ( 3._wp * ( Yb + Ya ) - 2._wp*Ya2b2ab ) )
   endif
 
 end function average
@@ -462,8 +464,8 @@ end subroutine destroy
 !> Checks the PPM_H4_2019 reconstruction for consistency
 logical function check_reconstruction(this, h, u)
   class(PPM_H4_2019), intent(in) :: this !< This reconstruction
-  real,          intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
-  real,          intent(in) :: u(*) !< Cell mean values [A]
+  real(wp),          intent(in) :: h(*) !< Grid spacing (thickness) [typically H]
+  real(wp),          intent(in) :: u(*) !< Cell mean values [A]
   ! Local variables
   integer :: k
 
@@ -471,32 +473,32 @@ logical function check_reconstruction(this, h, u)
 
   ! Simply checks the internal copy of "u" is exactly equal to "u"
   do k = 1, this%n
-    if ( abs( this%u_mean(k) - u(k) ) > 0. ) check_reconstruction = .true.
+    if ( abs( this%u_mean(k) - u(k) ) > 0._wp ) check_reconstruction = .true.
   enddo
 
   ! If (u - ul) has the opposite sign from (ur - u), then this cell has an interior extremum
   do k = 1, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ur(k) - this%u_mean(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of right edges, w.r.t. the cell means
   do K = 1, this%n-1
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%u_mean(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. the cell means
   do K = 2, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%u_mean(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of right edges, w.r.t. this cell mean and the next cell left edge
   do K = 1, this%n-1
-    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%ur(k) - this%u_mean(k) ) * ( this%ul(k+1) - this%ur(k) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
   ! Check bounding of left edges, w.r.t. this cell mean and the previous cell right edge
   do K = 2, this%n
-    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0. ) check_reconstruction = .true.
+    if ( ( this%u_mean(k) - this%ul(k) ) * ( this%ul(k) - this%ur(k-1) ) < 0._wp ) check_reconstruction = .true.
   enddo
 
 end function check_reconstruction
@@ -508,8 +510,8 @@ logical function unit_tests(this, verbose, stdout, stderr)
   integer,       intent(in)    :: stdout  !< I/O channel for stdout
   integer,       intent(in)    :: stderr  !< I/O channel for stderr
   ! Local variables
-  real, allocatable :: ul(:), ur(:), um(:) ! test values [A]
-  real, allocatable :: ull(:), urr(:) ! test values [A]
+  real(wp), allocatable :: ul(:), ur(:), um(:) ! test values [A]
+  real(wp), allocatable :: ull(:), urr(:) ! test values [A]
   type(testing) :: test ! convenience functions
   integer :: k
 
@@ -524,37 +526,37 @@ logical function unit_tests(this, verbose, stdout, stderr)
   allocate( um(5), ul(5), ur(5), ull(5), urr(5) )
 
   ! Straight line, f(x) = x , or  f(K) = 2*K
-  call this%reconstruct( (/2.,2.,2.,2.,2./), (/1.,3.,5.,7.,9./) )
-  call test%real_arr(5, this%u_mean, (/1.,3.,5.,7.,9./), 'Setting cell values')
-  call test%real_arr(5, this%ul, (/1.,2.,4.,6.,9./), 'Left edge values', robits=2)
-  call test%real_arr(5, this%ur, (/1.,4.,6.,8.,9./), 'Right edge values')
+  call this%reconstruct( (/2._wp,2._wp,2._wp,2._wp,2._wp/), (/1._wp,3._wp,5._wp,7._wp,9._wp/) )
+  call test%real_arr(5, this%u_mean, (/1._wp,3._wp,5._wp,7._wp,9._wp/), 'Setting cell values')
+  call test%real_arr(5, this%ul, (/1._wp,2._wp,4._wp,6._wp,9._wp/), 'Left edge values', robits=2)
+  call test%real_arr(5, this%ur, (/1._wp,4._wp,6._wp,8._wp,9._wp/), 'Right edge values')
   do k = 1, 5
     um(k) = this%u_mean(k)
   enddo
-  call test%real_arr(5, um, (/1.,3.,5.,7.,9./), 'Return cell mean')
+  call test%real_arr(5, um, (/1._wp,3._wp,5._wp,7._wp,9._wp/), 'Return cell mean')
 
   do k = 1, 5
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
   call test%real_arr(5, ul, this%ul, 'Evaluation on left edge')
-  call test%real_arr(5, um, (/1.,3.,5.,7.,9./), 'Evaluation in center')
+  call test%real_arr(5, um, (/1._wp,3._wp,5._wp,7._wp,9._wp/), 'Evaluation in center')
   call test%real_arr(5, ur, this%ur, 'Evaluation on right edge')
 
   do k = 1, 5
-    ul(k) = this%dfdx(k, 0.)
-    um(k) = this%dfdx(k, 0.5)
-    ur(k) = this%dfdx(k, 1.)
+    ul(k) = this%dfdx(k, 0._wp)
+    um(k) = this%dfdx(k, 0.5_wp)
+    ur(k) = this%dfdx(k, 1._wp)
   enddo
-  call test%real_arr(5, ul, (/0.,2.,2.,2.,0./), 'dfdx on left edge', robits=3)
-  call test%real_arr(5, um, (/0.,2.,2.,2.,0./), 'dfdx in center', robits=2)
-  call test%real_arr(5, ur, (/0.,2.,2.,2.,0./), 'dfdx on right edge', robits=6)
+  call test%real_arr(5, ul, (/0._wp,2._wp,2._wp,2._wp,0._wp/), 'dfdx on left edge', robits=3)
+  call test%real_arr(5, um, (/0._wp,2._wp,2._wp,2._wp,0._wp/), 'dfdx in center', robits=2)
+  call test%real_arr(5, ur, (/0._wp,2._wp,2._wp,2._wp,0._wp/), 'dfdx on right edge', robits=6)
 
   do k = 1, 5
-    um(k) = this%average(k, 0.5, 0.75) ! Average from x=0.25 to 0.75 in each cell
+    um(k) = this%average(k, 0.5_wp, 0.75_wp) ! Average from x=0.25 to 0.75 in each cell
   enddo
-  call test%real_arr(5, um, (/1.,3.25,5.25,7.25,9./), 'Return interval average')
+  call test%real_arr(5, um, (/1._wp,3.25_wp,5.25_wp,7.25_wp,9._wp/), 'Return interval average')
 
   if (verbose) write(stdout,'(a)') 'PPM_H4_2019:unit_tests testing with parabola'
 
@@ -563,14 +565,14 @@ logical function unit_tests(this, verbose, stdout, stderr)
   ! f[i] = [ ( 3 i )^3 - ( 3 i - 3 )^3 ]    i=1,2,3,4,5
   ! means:   1, 7, 19, 37, 61
   ! edges:  0, 3, 12, 27, 48, 75
-  call this%reconstruct( (/3.,3.,3.,3.,3./), (/1.,7.,19.,37.,61./) )
+  call this%reconstruct( (/3._wp,3._wp,3._wp,3._wp,3._wp/), (/1._wp,7._wp,19._wp,37._wp,61._wp/) )
   do k = 1, 5
-    ul(k) = this%f(k, 0.)
-    um(k) = this%f(k, 0.5)
-    ur(k) = this%f(k, 1.)
+    ul(k) = this%f(k, 0._wp)
+    um(k) = this%f(k, 0.5_wp)
+    ur(k) = this%f(k, 1._wp)
   enddo
-  call test%real_arr(5, ul, (/1.,3.,12.,27.,61./), 'Return left edge', robits=2)
-  call test%real_arr(5, ur, (/1.,12.,27.,48.,61./), 'Return right edge', robits=1)
+  call test%real_arr(5, ul, (/1._wp,3._wp,12._wp,27._wp,61._wp/), 'Return left edge', robits=2)
+  call test%real_arr(5, ur, (/1._wp,12._wp,27._wp,48._wp,61._wp/), 'Return right edge', robits=1)
 
   call this%destroy()
   deallocate( um, ul, ur, ull, urr )
