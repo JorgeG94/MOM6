@@ -39,7 +39,7 @@ implicit none ; private
 
 #include <MOM_memory.h>
 
-public horizontal_viscosity, hor_visc_init, hor_visc_end, hor_visc_vel_stencil
+public horizontal_viscosity, hor_visc_nkblock, hor_visc_init, hor_visc_end, hor_visc_vel_stencil
 
 !> Control structure for horizontal viscosity
 type, public :: hor_visc_CS ; private
@@ -271,7 +271,7 @@ contains
 !!   v(is-2:ie+2,js-2:je+2)
 !!   h(is-1:ie+1,js-1:je+1) or up to h(is-2:ie+2,js-2:je+2) with some Leith options.
 subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, GV, US, &
-                                CS, tv, dt, OBC, BT, TD, ADp, hu_cont, hv_cont, STOCH)
+                                CS, nkblock, tv, dt, OBC, BT, TD, ADp, hu_cont, hv_cont, STOCH)
   type(ocean_grid_type),         intent(in)  :: G      !< The ocean's grid structure.
   type(verticalGrid_type),       intent(in)  :: GV     !< The ocean's vertical grid structure.
   real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
@@ -295,6 +295,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   type(VarMix_CS),               intent(inout) :: VarMix !< Variable mixing control structure
   type(unit_scale_type),         intent(in)    :: US   !< A dimensional unit scaling type
   type(hor_visc_CS),             intent(inout) :: CS   !< Horizontal viscosity control structure
+  integer,                       intent(in)    :: nkblock !< The effective k-block size [nondim]
   type(thermo_var_ptrs),         intent(in)    :: tv   !< A structure pointing to various
                                                        !! thermodynamic variables
   real,                          intent(in)    :: dt   !< Time increment [T ~> s]
@@ -309,7 +310,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   type(stochastic_CS), intent(inout), optional :: STOCH !< Stochastic control structure
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
+  real, dimension(SZIB_(G),SZJ_(G),nkblock) :: &
     Del2u, &      ! The u-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
     h_u, &        ! Thickness interpolated to u points [H ~> m or kg m-2].
     vort_xy_dy, & ! y-derivative of vertical vorticity (d/dy(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
@@ -317,7 +318,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
     div_xx_dx     ! x-derivative of horizontal divergence (d/dx(du/dx + dv/dy)) [L-1 T-1 ~> m-1 s-1]
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     ubtav         ! zonal barotropic velocity averaged over a baroclinic time-step [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
+  real, dimension(SZI_(G),SZJB_(G),nkblock) :: &
     Del2v, &      ! The v-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
     h_v, &        ! Thickness interpolated to v points [H ~> m or kg m-2].
     vort_xy_dx, & ! x-derivative of vertical vorticity (d/dx(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
@@ -332,7 +333,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
     FrictWorkIntz_bh, & ! depth integrated energy dissipated by biharmonic lateral friction [R Z L2 T-3 ~> W m-2]
     GME_effic_h, &  ! The filtered efficiency of the GME terms at h points [nondim]
     htot          ! The total thickness of all layers [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
+  real, dimension(SZI_(G),SZJ_(G),nkblock) :: &
     div_xx, &     ! Estimate of horizontal divergence at h-points [T-1 ~> s-1]
     sh_xx, &      ! horizontal tension (du/dx - dv/dy) including metric terms [T-1 ~> s-1]
     sh_xx_smooth, & ! horizontal tension from smoothed velocity including metric terms [T-1 ~> s-1]
@@ -352,7 +353,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   real :: grad_vel_mag_bt_h ! Magnitude of the barotropic velocity gradient tensor squared at h-points [T-2 ~> s-2]
   real :: boundary_mask_h ! A mask that zeroes out cells with at least one land edge [nondim]
 
-  real, dimension(SZIB_(G),SZJB_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
+  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
     dvdx, dudy, & ! components in the shearing strain [T-1 ~> s-1]
     dvdx_smooth, dudy_smooth, & ! components in the shearing strain from smoothed velocity [T-1 ~> s-1]
     dDel2vdx, dDel2udy, & ! Components in the biharmonic equivalent of the shearing strain [L-2 T-1 ~> m-2 s-1]
@@ -466,7 +467,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   integer :: is_vort, ie_vort, js_vort, je_vort  ! Loop ranges for vorticity terms
   integer :: is_Kh, ie_Kh, js_Kh, je_Kh  ! Loop ranges for thickness point viscosities
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz
-  integer :: i, j, k, n, nkblock, kstart, kend, kk
+  integer :: i, j, k, n, kstart, kend, kk
   real :: inv_PI3, inv_PI2, inv_PI6 ! Powers of the inverse of pi [nondim]
   real :: tmp
 
@@ -476,7 +477,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   ! NOTE: Several of these are declared with the memory extent of q-points, but the
   !   same arrays are also used at h-points to reduce the memory footprint of this
   !   module, so they should never be used in halo point or checksum calls.
-  real, dimension(SZIB_(G),SZJB_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
+  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
     Ah, &           ! biharmonic viscosity (h or q) [L4 T-1 ~> m4 s-1]
     Kh, &           ! Laplacian  viscosity (h or q) [L2 T-1 ~> m2 s-1]
     Kh_BS, &        ! Laplacian  antiviscosity [L2 T-1 ~> m2 s-1]
@@ -497,7 +498,6 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
 
   is  = G%isc  ; ie  = G%iec  ; js  = G%jsc  ; je  = G%jec ; nz = GV%ke
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
-  nkblock = merge(GV%ke, CS%nkblock, CS%nkblock==0)
 
   h_neglect  = GV%H_subroundoff
   !h_neglect3 = h_neglect**3
@@ -518,7 +518,7 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   skeb_use_frict = .false.
   if (present(STOCH)) skeb_use_frict = STOCH%skeb_use_frict
 
-  m_leithy(:,:,:) = 0.0 ! Initialize
+  if (CS%use_Leithy) m_leithy(:,:,:) = 0.0 ! Initialize
 
   if (present(OBC)) then ; if (associated(OBC)) then ; if (OBC%OBC_pe) then
     apply_OBC = OBC%Flather_u_BCs_exist_globally .or. OBC%Flather_v_BCs_exist_globally
@@ -2689,6 +2689,13 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   endif
 
 end subroutine horizontal_viscosity
+
+!> Returns the effective k-block size for horizontal_viscosity calls.
+integer function hor_visc_nkblock(CS, GV)
+  type(hor_visc_CS),       intent(in) :: CS !< Horizontal viscosity control structure
+  type(verticalGrid_type), intent(in) :: GV !< The ocean's vertical grid structure.
+  hor_visc_nkblock = merge(GV%ke, CS%nkblock, CS%nkblock==0)
+end function hor_visc_nkblock
 
 !> Allocates space for and calculates static variables used by horizontal_viscosity.
 !! hor_visc_init calculates and stores the values of a number of metric functions that
