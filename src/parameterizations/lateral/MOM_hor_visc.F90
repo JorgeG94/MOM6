@@ -310,20 +310,8 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   type(stochastic_CS), intent(inout), optional :: STOCH !< Stochastic control structure
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G),nkblock) :: &
-    Del2u, &      ! The u-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
-    h_u, &        ! Thickness interpolated to u points [H ~> m or kg m-2].
-    vort_xy_dy, & ! y-derivative of vertical vorticity (d/dy(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
-    vort_xy_dy_smooth, & ! y-derivative of smoothed vertical vorticity [L-1 T-1 ~> m-1 s-1]
-    div_xx_dx     ! x-derivative of horizontal divergence (d/dx(du/dx + dv/dy)) [L-1 T-1 ~> m-1 s-1]
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     ubtav         ! zonal barotropic velocity averaged over a baroclinic time-step [L T-1 ~> m s-1]
-  real, dimension(SZI_(G),SZJB_(G),nkblock) :: &
-    Del2v, &      ! The v-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
-    h_v, &        ! Thickness interpolated to v points [H ~> m or kg m-2].
-    vort_xy_dx, & ! x-derivative of vertical vorticity (d/dx(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
-    vort_xy_dx_smooth, & ! x-derivative of smoothed vertical vorticity [L-1 T-1 ~> m-1 s-1]
-    div_xx_dy     ! y-derivative of horizontal divergence (d/dy(du/dx + dv/dy)) [L-1 T-1 ~> m-1 s-1]
   real, dimension(SZI_(G),SZJB_(G)) :: &
     vbtav         ! meridional barotropic velocity averaged over a baroclinic time-step [L T-1 ~> m s-1]
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -333,52 +321,10 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
     FrictWorkIntz_bh, & ! depth integrated energy dissipated by biharmonic lateral friction [R Z L2 T-3 ~> W m-2]
     GME_effic_h, &  ! The filtered efficiency of the GME terms at h points [nondim]
     htot          ! The total thickness of all layers [H ~> m or kg m-2]
-  real, dimension(SZI_(G),SZJ_(G),nkblock) :: &
-    div_xx, &     ! Estimate of horizontal divergence at h-points [T-1 ~> s-1]
-    sh_xx, &      ! horizontal tension (du/dx - dv/dy) including metric terms [T-1 ~> s-1]
-    sh_xx_smooth, & ! horizontal tension from smoothed velocity including metric terms [T-1 ~> s-1]
-    str_xx,&      ! str_xx is the diagonal term in the stress tensor [H L2 T-2 ~> m3 s-2 or kg s-2], but
-                  ! at some points in the code it is not yet layer integrated, so is in [L2 T-2 ~> m2 s-2].
-    str_xx_GME,&  ! smoothed diagonal term in the stress tensor from GME [L2 T-2 ~> m2 s-2]
-    bhstr_xx, &   ! A copy of str_xx that only contains the biharmonic contribution [H L2 T-2 ~> m3 s-2 or kg s-2]
-    grad_vort_mag_h, & ! Magnitude of vorticity gradient at h-points [L-1 T-1 ~> m-1 s-1]
-    grad_vort_mag_h_2d, & ! Magnitude of 2d vorticity gradient at h-points [L-1 T-1 ~> m-1 s-1]
-    grad_div_mag_h, &     ! Magnitude of divergence gradient at h-points [L-1 T-1 ~> m-1 s-1]
-    dudx, dvdy, &    ! components in the horizontal tension [T-1 ~> s-1]
-    dudx_smooth, dvdy_smooth, & ! components in the horizontal tension from smoothed velocity [T-1 ~> s-1]
-    m_leithy, &   ! Kh=m_leithy*Ah in Leith+E parameterization [L-2 ~> m-2]
-    Ah_sq, &      ! The square of the biharmonic viscosity [L8 T-2 ~> m8 s-2]
-    str_xx_BS      ! The diagonal term in the stress tensor due to backscatter [H L2 T-2 ~> m3 s-2 or kg s-2]
-  real :: Del2vort_h ! Laplacian of vorticity at h-points [L-2 T-1 ~> m-2 s-1]
-  real :: grad_vel_mag_bt_h ! Magnitude of the barotropic velocity gradient tensor squared at h-points [T-2 ~> s-2]
-  real :: boundary_mask_h ! A mask that zeroes out cells with at least one land edge [nondim]
-
-  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
-    dvdx, dudy, & ! components in the shearing strain [T-1 ~> s-1]
-    dvdx_smooth, dudy_smooth, & ! components in the shearing strain from smoothed velocity [T-1 ~> s-1]
-    dDel2vdx, dDel2udy, & ! Components in the biharmonic equivalent of the shearing strain [L-2 T-1 ~> m-2 s-1]
-    sh_xy,  &     ! horizontal shearing strain (du/dy + dv/dx) including metric terms [T-1 ~> s-1]
-    sh_xy_smooth,  & ! horizontal shearing strain from smoothed velocity including metric terms [T-1 ~> s-1]
-    str_xy, &     ! str_xy is the cross term in the stress tensor [H L2 T-2 ~> m3 s-2 or kg s-2], but
-                  ! at some points in the code it is not yet layer integrated, so is in [L2 T-2 ~> m2 s-2].
-    str_xy_GME, & ! smoothed cross term in the stress tensor from GME [L2 T-2 ~> m2 s-2]
-    bhstr_xy, &   ! A copy of str_xy that only contains the biharmonic contribution [H L2 T-2 ~> m3 s-2 or kg s-2]
-    vort_xy, &    ! Vertical vorticity (dv/dx - du/dy) including metric terms [T-1 ~> s-1]
-    vort_xy_smooth, & ! Vertical vorticity including metric terms, smoothed [T-1 ~> s-1]
-    grad_vort_mag_q, & ! Magnitude of vorticity gradient at q-points [L-1 T-1 ~> m-1 s-1]
-    grad_vort_mag_q_2d, & ! Magnitude of 2d vorticity gradient at q-points [L-1 T-1 ~> m-1 s-1]
-    Del2vort_q, & ! Laplacian of vorticity at q-points [L-2 T-1 ~> m-2 s-1]
-    grad_div_mag_q, &  ! Magnitude of divergence gradient at q-points [L-1 T-1 ~> m-1 s-1]
-    hq             ! harmonic mean of the harmonic means of the u- & v point thicknesses [H ~> m or kg m-2]
-                   ! This form guarantees that hq/hu < 4.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     dvdx_bt, dudy_bt,   & ! components in the barotropic shearing strain [T-1 ~> s-1]
     sh_xy_bt, &   ! barotropic horizontal shearing strain (du/dy + dv/dx) inc. metric terms [T-1 ~> s-1]
     GME_effic_q   ! The filtered efficiency of the GME terms at q points [nondim]
-  real, dimension(SZIB_(G),SZJB_(G),merge(GV%ke,CS%nkblock,CS%nkblock==0)) :: &
-    str_xy_BS      ! The cross term in the stress tensor due to backscatter [H L2 T-2 ~> m3 s-2 or kg s-2]
-  real :: grad_vel_mag_bt_q ! Magnitude of the barotropic velocity gradient tensor squared at q-points [T-2 ~> s-2]
-  real :: boundary_mask_q ! A mask that zeroes out cells with at least one land edge [nondim]
 
   real, dimension(SZIB_(G),SZJB_(G),SZK_(GV)) :: &
     Ah_q, &      ! biharmonic viscosity at corner points [L4 T-1 ~> m4 s-1]
@@ -419,6 +365,76 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
     u_smooth         ! Zonal velocity, smoothed with a spatial low-pass filter [L T-1 ~> m s-1]
   real, dimension(SZI_(G),SZJB_(G),SZK_(GV)) :: &
     v_smooth         ! Meridional velocity, smoothed with a spatial low-pass filter [L T-1 ~> m s-1]
+
+  real, dimension(SZIB_(G),SZJ_(G),nkblock) :: &
+    Del2u, &      ! The u-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
+    h_u, &        ! Thickness interpolated to u points [H ~> m or kg m-2].
+    vort_xy_dy, & ! y-derivative of vertical vorticity (d/dy(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
+    vort_xy_dy_smooth, & ! y-derivative of smoothed vertical vorticity [L-1 T-1 ~> m-1 s-1]
+    div_xx_dx     ! x-derivative of horizontal divergence (d/dx(du/dx + dv/dy)) [L-1 T-1 ~> m-1 s-1]
+  real, dimension(SZI_(G),SZJB_(G),nkblock) :: &
+    Del2v, &      ! The v-component of the Laplacian of velocity [L-1 T-1 ~> m-1 s-1]
+    h_v, &        ! Thickness interpolated to v points [H ~> m or kg m-2].
+    vort_xy_dx, & ! x-derivative of vertical vorticity (d/dx(dv/dx - du/dy)) [L-1 T-1 ~> m-1 s-1]
+    vort_xy_dx_smooth, & ! x-derivative of smoothed vertical vorticity [L-1 T-1 ~> m-1 s-1]
+    div_xx_dy     ! y-derivative of horizontal divergence (d/dy(du/dx + dv/dy)) [L-1 T-1 ~> m-1 s-1]
+  real, dimension(SZI_(G),SZJ_(G),nkblock) :: &
+    div_xx, &     ! Estimate of horizontal divergence at h-points [T-1 ~> s-1]
+    sh_xx, &      ! horizontal tension (du/dx - dv/dy) including metric terms [T-1 ~> s-1]
+    sh_xx_smooth, & ! horizontal tension from smoothed velocity including metric terms [T-1 ~> s-1]
+    str_xx,&      ! str_xx is the diagonal term in the stress tensor [H L2 T-2 ~> m3 s-2 or kg s-2], but
+                  ! at some points in the code it is not yet layer integrated, so is in [L2 T-2 ~> m2 s-2].
+    str_xx_GME,&  ! smoothed diagonal term in the stress tensor from GME [L2 T-2 ~> m2 s-2]
+    bhstr_xx, &   ! A copy of str_xx that only contains the biharmonic contribution [H L2 T-2 ~> m3 s-2 or kg s-2]
+    grad_vort_mag_h, & ! Magnitude of vorticity gradient at h-points [L-1 T-1 ~> m-1 s-1]
+    grad_vort_mag_h_2d, & ! Magnitude of 2d vorticity gradient at h-points [L-1 T-1 ~> m-1 s-1]
+    grad_div_mag_h, &     ! Magnitude of divergence gradient at h-points [L-1 T-1 ~> m-1 s-1]
+    dudx, dvdy, &    ! components in the horizontal tension [T-1 ~> s-1]
+    dudx_smooth, dvdy_smooth, & ! components in the horizontal tension from smoothed velocity [T-1 ~> s-1]
+    m_leithy, &   ! Kh=m_leithy*Ah in Leith+E parameterization [L-2 ~> m-2]
+    Ah_sq, &      ! The square of the biharmonic viscosity [L8 T-2 ~> m8 s-2]
+    str_xx_BS      ! The diagonal term in the stress tensor due to backscatter [H L2 T-2 ~> m3 s-2 or kg s-2]
+
+  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
+    dvdx, dudy, & ! components in the shearing strain [T-1 ~> s-1]
+    dvdx_smooth, dudy_smooth, & ! components in the shearing strain from smoothed velocity [T-1 ~> s-1]
+    dDel2vdx, dDel2udy, & ! Components in the biharmonic equivalent of the shearing strain [L-2 T-1 ~> m-2 s-1]
+    sh_xy,  &     ! horizontal shearing strain (du/dy + dv/dx) including metric terms [T-1 ~> s-1]
+    sh_xy_smooth,  & ! horizontal shearing strain from smoothed velocity including metric terms [T-1 ~> s-1]
+    str_xy, &     ! str_xy is the cross term in the stress tensor [H L2 T-2 ~> m3 s-2 or kg s-2], but
+                  ! at some points in the code it is not yet layer integrated, so is in [L2 T-2 ~> m2 s-2].
+    str_xy_GME, & ! smoothed cross term in the stress tensor from GME [L2 T-2 ~> m2 s-2]
+    bhstr_xy, &   ! A copy of str_xy that only contains the biharmonic contribution [H L2 T-2 ~> m3 s-2 or kg s-2]
+    vort_xy, &    ! Vertical vorticity (dv/dx - du/dy) including metric terms [T-1 ~> s-1]
+    vort_xy_smooth, & ! Vertical vorticity including metric terms, smoothed [T-1 ~> s-1]
+    grad_vort_mag_q, & ! Magnitude of vorticity gradient at q-points [L-1 T-1 ~> m-1 s-1]
+    grad_vort_mag_q_2d, & ! Magnitude of 2d vorticity gradient at q-points [L-1 T-1 ~> m-1 s-1]
+    Del2vort_q, & ! Laplacian of vorticity at q-points [L-2 T-1 ~> m-2 s-1]
+    grad_div_mag_q, &  ! Magnitude of divergence gradient at q-points [L-1 T-1 ~> m-1 s-1]
+    hq             ! harmonic mean of the harmonic means of the u- & v point thicknesses [H ~> m or kg m-2]
+                   ! This form guarantees that hq/hu < 4.
+  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
+    str_xy_BS      ! The cross term in the stress tensor due to backscatter [H L2 T-2 ~> m3 s-2 or kg s-2]
+  ! Fields evaluated on active layers, used for constructing 3D stress fields
+  ! NOTE: The position of these declarations can impact performance, due to the
+  !   very large number of stack arrays in this function.  Move with caution!
+  ! NOTE: Several of these are declared with the memory extent of q-points, but the
+  !   same arrays are also used at h-points to reduce the memory footprint of this
+  !   module, so they should never be used in halo point or checksum calls.
+  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
+    Ah, &           ! biharmonic viscosity (h or q) [L4 T-1 ~> m4 s-1]
+    Kh, &           ! Laplacian  viscosity (h or q) [L2 T-1 ~> m2 s-1]
+    Kh_BS, &        ! Laplacian  antiviscosity [L2 T-1 ~> m2 s-1]
+    Shear_mag, &    ! magnitude of the shear (h or q) [T-1 ~> s-1]
+    vert_vort_mag, &  ! magnitude of the vertical vorticity gradient (h or q) [L-1 T-1 ~> m-1 s-1]
+    vert_vort_mag_smooth, &  ! magnitude of gradient of smoothed vertical vorticity (h or q) [L-1 T-1 ~> m-1 s-1]
+    hrat_min, &     ! h_min divided by the thickness at the stress point (h or q) [nondim]
+    visc_bound_rem  ! fraction of overall viscous bounds that remain to be applied (h or q) [nondim]
+  real :: grad_vel_mag_bt_q ! Magnitude of the barotropic velocity gradient tensor squared at q-points [T-2 ~> s-2]
+  real :: boundary_mask_q ! A mask that zeroes out cells with at least one land edge [nondim]
+  real :: Del2vort_h ! Laplacian of vorticity at h-points [L-2 T-1 ~> m-2 s-1]
+  real :: grad_vel_mag_bt_h ! Magnitude of the barotropic velocity gradient tensor squared at h-points [T-2 ~> s-2]
+  real :: boundary_mask_h ! A mask that zeroes out cells with at least one land edge [nondim]
   real :: AhSm       ! Smagorinsky biharmonic viscosity [L4 T-1 ~> m4 s-1]
   real :: AhLth      ! 2D Leith biharmonic viscosity [L4 T-1 ~> m4 s-1]
   real :: AhLthy     ! 2D Leith+E biharmonic viscosity [L4 T-1 ~> m4 s-1]
@@ -453,6 +469,8 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   real :: grad_vort_qg ! QG-based vorticity gradient magnitude [L-1 T-1 ~> m-1 s-1]
   real :: grid_Kh   ! Laplacian viscosity bound by grid [L2 T-1 ~> m2 s-1]
   real :: grid_Ah   ! Biharmonic viscosity bound by grid [L4 T-1 ~> m4 s-1]
+  real :: inv_PI3, inv_PI2, inv_PI6 ! Powers of the inverse of pi [nondim]
+  real :: tmp
 
   logical :: rescale_Kh
   logical :: find_FrictWork
@@ -468,24 +486,6 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
   integer :: is_Kh, ie_Kh, js_Kh, je_Kh  ! Loop ranges for thickness point viscosities
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz
   integer :: i, j, k, n, kstart, kend, kk
-  real :: inv_PI3, inv_PI2, inv_PI6 ! Powers of the inverse of pi [nondim]
-  real :: tmp
-
-  ! Fields evaluated on active layers, used for constructing 3D stress fields
-  ! NOTE: The position of these declarations can impact performance, due to the
-  !   very large number of stack arrays in this function.  Move with caution!
-  ! NOTE: Several of these are declared with the memory extent of q-points, but the
-  !   same arrays are also used at h-points to reduce the memory footprint of this
-  !   module, so they should never be used in halo point or checksum calls.
-  real, dimension(SZIB_(G),SZJB_(G),nkblock) :: &
-    Ah, &           ! biharmonic viscosity (h or q) [L4 T-1 ~> m4 s-1]
-    Kh, &           ! Laplacian  viscosity (h or q) [L2 T-1 ~> m2 s-1]
-    Kh_BS, &        ! Laplacian  antiviscosity [L2 T-1 ~> m2 s-1]
-    Shear_mag, &    ! magnitude of the shear (h or q) [T-1 ~> s-1]
-    vert_vort_mag, &  ! magnitude of the vertical vorticity gradient (h or q) [L-1 T-1 ~> m-1 s-1]
-    vert_vort_mag_smooth, &  ! magnitude of gradient of smoothed vertical vorticity (h or q) [L-1 T-1 ~> m-1 s-1]
-    hrat_min, &     ! h_min divided by the thickness at the stress point (h or q) [nondim]
-    visc_bound_rem  ! fraction of overall viscous bounds that remain to be applied (h or q) [nondim]
 
   ! New variables: move these up once ready
   logical :: use_Leith    ! True if any Leith parameterizations are enabled
@@ -724,16 +724,8 @@ subroutine horizontal_viscosity(u, v, h, uh, vh, diffu, diffv, MEKE, VarMix, G, 
       kk = k - kstart + 1
       dudx(i,j,kk) = CS%DY_dxT(i,j)*((G%IdyCu(I,j) * u(I,j,k)) - &
                                       (G%IdyCu(I-1,j) * u(I-1,j,k)))
-    enddo
-
-    do concurrent (k=kstart:kend, j=Jsq-1:Jeq+2, i=Isq-1:Ieq+2) DO_LOCALITY(local(kk))
-      kk = k - kstart + 1
       dvdy(i,j,kk) = CS%DX_dyT(i,j)*((G%IdxCv(i,J) * v(i,J,k)) - &
                                       (G%IdxCv(i,J-1) * v(i,J-1,k)))
-    enddo
-
-    do concurrent (k=kstart:kend, j=Jsq-1:Jeq+2, i=Isq-1:Ieq+2) DO_LOCALITY(local(kk))
-      kk = k - kstart + 1
       sh_xx(i,j,kk) = dudx(i,j,kk) - dvdy(i,j,kk)
     enddo
 
