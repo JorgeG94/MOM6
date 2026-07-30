@@ -2,6 +2,8 @@
 ! See the LICENSE file for licensing information.
 ! SPDX-License-Identifier: Apache-2.0
 
+#include "do_concurrent_compat.h"
+
 !> Interface to vertical tidal mixing schemes including CVMix tidal mixing.
 module MOM_tidal_mixing
 
@@ -9,6 +11,7 @@ use MOM_diag_mediator,      only : diag_ctrl, time_type, register_diag_field
 use MOM_diag_mediator,      only : safe_alloc_ptr, post_data
 use MOM_diagnose_Kdwork,    only : vbf_CS
 use MOM_debugging,          only : hchksum
+use MOM_intrinsic_functions, only : exp_reprod
 use MOM_error_handler,      only : MOM_error, is_root_pe, FATAL, WARNING, NOTE
 use MOM_file_parser,        only : openParameterBlock, closeParameterBlock
 use MOM_file_parser,        only : get_param, log_param, log_version, param_file_type
@@ -691,6 +694,14 @@ logical function tidal_mixing_init(Time, G, GV, US, param_file, int_tide_CSp, di
     endif ! S%use_CVMix_tidal
   endif
 
+  ! Map this CS for the device deposition kernels in add_int_tide_diffusivity.  It lives
+  ! on the heap (set_diffusivity_CS -> diabatic_CSp), outside the driver's whole-struct
+  ! MOM_CSp device allocation, so a plain map(to:) here really copies it.  The per-step
+  ! dd%% diagnostic members are mapped in setup/post_tidal_diagnostics.
+  if (CS%int_tide_dissipation .or. CS%lee_wave_dissipation) then
+    !$omp target enter data map(to: CS)
+  endif
+
 end function tidal_mixing_init
 
 
@@ -1097,17 +1108,17 @@ subroutine add_int_tide_diffusivity(dz, j, N2_bot, Rho_bot, N2_lay, TKE_to_Kd, m
         CS%dd%N2_bot(i,j) = N2_bot(i)
       if ( CS%Int_tide_dissipation ) then
         if (Izeta*dztot(i) > 1.0e-14) then ! L'Hospital's version of Adcroft's reciprocal rule.
-          Inv_int(i) = 1.0 / (1.0 - exp(-Izeta*dztot(i)))
+          Inv_int(i) = 1.0 / (1.0 - exp_reprod(-Izeta*dztot(i)))
         endif
       endif
       if ( CS%Lee_wave_dissipation ) then
         if (Izeta_lee*dztot(i) > 1.0e-14) then  ! L'Hospital's version of Adcroft's reciprocal rule.
-          Inv_int_lee(i) = 1.0 / (1.0 - exp(-Izeta_lee*dztot(i)))
+          Inv_int_lee(i) = 1.0 / (1.0 - exp_reprod(-Izeta_lee*dztot(i)))
         endif
       endif
       if ( CS%Lowmode_itidal_dissipation) then
         if (Izeta*dztot(i) > 1.0e-14) then ! L'Hospital's version of Adcroft's reciprocal rule.
-          Inv_int_low(i) = 1.0 / (1.0 - exp(-Izeta*dztot(i)))
+          Inv_int_low(i) = 1.0 / (1.0 - exp_reprod(-Izeta*dztot(i)))
         endif
       endif
       z_from_bot(i) = dz(i,nz)
@@ -1262,17 +1273,47 @@ subroutine add_int_tide_diffusivity(dz, j, N2_bot, Rho_bot, N2_lay, TKE_to_Kd, m
       CS%dd%Fl_itidal(i,j,nz) = TKE_itidal_rem(i) !why is this here? BDM
   enddo
 
+  ! The O(nx) setup above stays on the host (it includes the cross-module
+  ! get_lowmode_loss call); the O(nx*nz) deposition loops below run on the device.
+  ! Map the row inputs and the host-computed 1-D setup arrays.
+  !$omp target enter data map(to: dz, N2_lay, TKE_to_Kd, max_TKE)
+  !$omp target enter data map(to: z_from_bot, z_from_bot_WKB)
+  !$omp target enter data map(to: Inv_int, Inv_int_lee, Inv_int_low)
+  !$omp target enter data map(to: TKE_itidal_bot, TKE_Niku_bot, TKE_lowmode_bot)
+  !$omp target enter data map(to: TKE_itidal_rem, TKE_Niku_rem, TKE_lowmode_rem)
+  !$omp target enter data map(to: z0_Polzin_scaled, N2_meanz, dztot_WKB)
+  !$omp target enter data map(alloc: TKE_frac_top, TKE_frac_top_lee, TKE_frac_top_lowmode)
+  if (present(Kd_lay)) then
+    !$omp target enter data map(to: Kd_lay)
+  endif
+  if (present(Kd_int)) then
+    !$omp target enter data map(to: Kd_int)
+  endif
+  if (associated(VBF)) then
+    !$omp target enter data map(to: VBF)
+    if (associated(VBF%Kd_itides)) then
+      !$omp target enter data map(to: VBF%Kd_itides)
+    endif
+    if (associated(VBF%Kd_Niku)) then
+      !$omp target enter data map(to: VBF%Kd_Niku)
+    endif
+    if (associated(VBF%Kd_lowmode)) then
+      !$omp target enter data map(to: VBF%Kd_lowmode)
+    endif
+  endif
+
   ! Estimate the work that would be done by mixing in each layer.
   ! Simmons:
   if ( use_Simmons ) then
-    do k=nz-1,2,-1 ; do i=is,ie
+    do concurrent (i=is:ie) DO_LOCALITY(local(k, Kd_add, TKE_itide_lay, TKE_Niku_lay, TKE_lowmode_lay, frac_used))
+      do k=nz-1,2,-1
       if (max_TKE(i,k) <= 0.0) cycle
       z_from_bot(i) = z_from_bot(i) + dz(i,k)
 
       ! Fraction of bottom flux predicted to reach top of this layer
-      TKE_frac_top(i)         = Inv_int(i)     * exp(-Izeta * z_from_bot(i))
-      TKE_frac_top_lee(i)     = Inv_int_lee(i) * exp(-Izeta_lee * z_from_bot(i))
-      TKE_frac_top_lowmode(i) = Inv_int_low(i) * exp(-Izeta * z_from_bot(i))
+      TKE_frac_top(i)         = Inv_int(i)     * exp_reprod(-Izeta * z_from_bot(i))
+      TKE_frac_top_lee(i)     = Inv_int_lee(i) * exp_reprod(-Izeta_lee * z_from_bot(i))
+      TKE_frac_top_lowmode(i) = Inv_int_low(i) * exp_reprod(-Izeta * z_from_bot(i))
 
       ! Actual influx at bottom of layer minus predicted outflux at top of layer to give
       ! predicted power expended
@@ -1363,12 +1404,14 @@ subroutine add_int_tide_diffusivity(dz, j, N2_bot, Rho_bot, N2_lay, TKE_to_Kd, m
         CS%dd%Kd_lowmode_work(i,j,k) = GV%H_to_RZ * TKE_lowmode_lay
       if (allocated(CS%dd%Fl_lowmode)) &
         CS%dd%Fl_lowmode(i,j,k) = TKE_lowmode_rem(i)
-    enddo ; enddo
+      enddo
+    enddo
   endif ! Simmons
 
   ! Polzin:
   if ( use_Polzin ) then
-    do k=nz-1,2,-1 ; do i=is,ie
+    do concurrent (i=is:ie) DO_LOCALITY(local(k, Kd_add, TKE_itide_lay, TKE_Niku_lay, TKE_lowmode_lay, frac_used, z0_psl))
+      do k=nz-1,2,-1
       if (max_TKE(i,k) <= 0.0) cycle
       z_from_bot(i) = z_from_bot(i) + dz(i,k)
       if (CS%tidal_answer_date < 20190101) then
@@ -1476,8 +1519,35 @@ subroutine add_int_tide_diffusivity(dz, j, N2_bot, Rho_bot, N2_lay, TKE_to_Kd, m
         CS%dd%Kd_lowmode_work(i,j,k) = GV%H_to_RZ * TKE_lowmode_lay
       if (allocated(CS%dd%Fl_lowmode)) CS%dd%Fl_lowmode(i,j,k) = TKE_lowmode_rem(i)
 
-    enddo ; enddo
+      enddo
+    enddo
   endif ! Polzin
+
+  if (present(Kd_lay)) then
+    !$omp target exit data map(from: Kd_lay)
+  endif
+  if (present(Kd_int)) then
+    !$omp target exit data map(from: Kd_int)
+  endif
+  if (associated(VBF)) then
+    if (associated(VBF%Kd_itides)) then
+      !$omp target exit data map(from: VBF%Kd_itides)
+    endif
+    if (associated(VBF%Kd_Niku)) then
+      !$omp target exit data map(from: VBF%Kd_Niku)
+    endif
+    if (associated(VBF%Kd_lowmode)) then
+      !$omp target exit data map(from: VBF%Kd_lowmode)
+    endif
+    !$omp target exit data map(release: VBF)
+  endif
+  !$omp target exit data map(release: dz, N2_lay, TKE_to_Kd, max_TKE)
+  !$omp target exit data map(release: z_from_bot, z_from_bot_WKB)
+  !$omp target exit data map(release: Inv_int, Inv_int_lee, Inv_int_low)
+  !$omp target exit data map(release: TKE_itidal_bot, TKE_Niku_bot, TKE_lowmode_bot)
+  !$omp target exit data map(release: TKE_itidal_rem, TKE_Niku_rem, TKE_lowmode_rem)
+  !$omp target exit data map(release: z0_Polzin_scaled, N2_meanz, dztot_WKB)
+  !$omp target exit data map(release: TKE_frac_top, TKE_frac_top_lee, TKE_frac_top_lowmode)
 
 end subroutine add_int_tide_diffusivity
 
@@ -1519,6 +1589,36 @@ subroutine setup_tidal_diagnostics(G, GV, CS)
     allocate(CS%dd%Simmons_coeff_2d(isd:ied,jsd:jed), source=0.0)
   endif
   if (CS%id_vert_dep > 0) allocate(CS%dd%vert_dep_3d(isd:ied,jsd:jed,nz+1), source=0.0)
+  ! The device copy of CS still holds the descriptors from the last step: refresh it and
+  ! attach the freshly allocated diagnostic arrays that the device deposition loops write.
+  if (CS%int_tide_dissipation .or. CS%lee_wave_dissipation) then
+    !$omp target update to(CS)
+    if (allocated(CS%dd%Kd_itidal)) then
+      !$omp target enter data map(to: CS%dd%Kd_itidal)
+    endif
+    if (allocated(CS%dd%Kd_lowmode)) then
+      !$omp target enter data map(to: CS%dd%Kd_lowmode)
+    endif
+    if (allocated(CS%dd%Fl_itidal)) then
+      !$omp target enter data map(to: CS%dd%Fl_itidal)
+    endif
+    if (allocated(CS%dd%Fl_lowmode)) then
+      !$omp target enter data map(to: CS%dd%Fl_lowmode)
+    endif
+    if (allocated(CS%dd%Kd_Niku)) then
+      !$omp target enter data map(to: CS%dd%Kd_Niku)
+    endif
+    if (allocated(CS%dd%Kd_Niku_work)) then
+      !$omp target enter data map(to: CS%dd%Kd_Niku_work)
+    endif
+    if (allocated(CS%dd%Kd_Itidal_work)) then
+      !$omp target enter data map(to: CS%dd%Kd_Itidal_work)
+    endif
+    if (allocated(CS%dd%Kd_Lowmode_Work)) then
+      !$omp target enter data map(to: CS%dd%Kd_Lowmode_Work)
+    endif
+  endif
+
   if (CS%id_Schmittner_coeff > 0) then
     if (CS%CVMix_tidal_scheme /= SCHMITTNER) then
       call MOM_error(FATAL, "setup_tidal_diagnostics: Schmittner_coeff diagnostics is available "//&
@@ -1542,6 +1642,35 @@ subroutine post_tidal_diagnostics(G, GV, h ,CS)
   real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  &
                             intent(in)   :: h   !< Layer thicknesses [H ~> m or kg m-2].
   type(tidal_mixing_cs),    intent(inout) :: CS !< The control structure for this module
+
+  ! These diagnostics are written by the device deposition loops: bring them down
+  ! (and unmap them) before they are posted and deallocated below.
+  if (CS%int_tide_dissipation .or. CS%lee_wave_dissipation) then
+    if (allocated(CS%dd%Kd_itidal)) then
+      !$omp target exit data map(from: CS%dd%Kd_itidal)
+    endif
+    if (allocated(CS%dd%Kd_lowmode)) then
+      !$omp target exit data map(from: CS%dd%Kd_lowmode)
+    endif
+    if (allocated(CS%dd%Fl_itidal)) then
+      !$omp target exit data map(from: CS%dd%Fl_itidal)
+    endif
+    if (allocated(CS%dd%Fl_lowmode)) then
+      !$omp target exit data map(from: CS%dd%Fl_lowmode)
+    endif
+    if (allocated(CS%dd%Kd_Niku)) then
+      !$omp target exit data map(from: CS%dd%Kd_Niku)
+    endif
+    if (allocated(CS%dd%Kd_Niku_work)) then
+      !$omp target exit data map(from: CS%dd%Kd_Niku_work)
+    endif
+    if (allocated(CS%dd%Kd_Itidal_work)) then
+      !$omp target exit data map(from: CS%dd%Kd_Itidal_work)
+    endif
+    if (allocated(CS%dd%Kd_Lowmode_Work)) then
+      !$omp target exit data map(from: CS%dd%Kd_Lowmode_Work)
+    endif
+  endif
 
   if (CS%Int_tide_dissipation .or. CS%Lee_wave_dissipation .or. CS%Lowmode_itidal_dissipation) then
     if (CS%id_TKE_itidal  > 0) call post_data(CS%id_TKE_itidal,  CS%dd%TKE_itidal_used, CS%diag)
@@ -1592,6 +1721,11 @@ subroutine post_tidal_diagnostics(G, GV, h ,CS)
   if (allocated(CS%dd%Simmons_coeff_2d)) deallocate(CS%dd%Simmons_coeff_2d)
   if (allocated(CS%dd%Schmittner_coeff_3d)) deallocate(CS%dd%Schmittner_coeff_3d)
   if (allocated(CS%dd%tidal_qe_md)) deallocate(CS%dd%tidal_qe_md)
+
+  ! Refresh the device CS so its dd descriptors read as unallocated again.
+  if (CS%int_tide_dissipation .or. CS%lee_wave_dissipation) then
+    !$omp target update to(CS)
+  endif
 end subroutine post_tidal_diagnostics
 
 !> This subroutine returns a zonal slice of the topographic roughness amplitudes
@@ -1761,6 +1895,10 @@ end subroutine read_tidal_constituents
 subroutine tidal_mixing_end(CS)
   type(tidal_mixing_cs), intent(inout) :: CS !< This module's control structure, which
                                              !! will be deallocated in this routine.
+
+  if (CS%int_tide_dissipation .or. CS%lee_wave_dissipation) then
+    !$omp target exit data map(delete: CS)
+  endif
 
   ! TODO: deallocate all the dynamically allocated members here ...
   if (allocated(CS%tidal_qe_2d))    deallocate(CS%tidal_qe_2d)
