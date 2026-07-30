@@ -1410,7 +1410,8 @@ subroutine add_int_tide_diffusivity(dz, j, N2_bot, Rho_bot, N2_lay, TKE_to_Kd, m
 
   ! Polzin:
   if ( use_Polzin ) then
-    do concurrent (i=is:ie) DO_LOCALITY(local(k, Kd_add, TKE_itide_lay, TKE_Niku_lay, TKE_lowmode_lay, frac_used, z0_psl))
+    do concurrent (i=is:ie) &
+    DO_LOCALITY(local(k, Kd_add, TKE_itide_lay, TKE_Niku_lay, TKE_lowmode_lay, frac_used, z0_psl))
       do k=nz-1,2,-1
       if (max_TKE(i,k) <= 0.0) cycle
       z_from_bot(i) = z_from_bot(i) + dz(i,k)
