@@ -35,9 +35,11 @@ implicit none ; private
 #ifdef __NVCOMPILER_OPENMP_GPU
 integer, parameter :: default_nkblock = 0 !< Default k block size for the mixed layer density integral [nondim]
 integer, parameter :: default_njblock = 0 !< Default j block size for the mixed layer density integral [nondim]
+integer, parameter :: default_niblock = 0 !< Default i block size for the mixed layer density integral [nondim]
 #else
 integer, parameter :: default_nkblock = 1 !< Default k block size for the mixed layer density integral [nondim]
 integer, parameter :: default_njblock = 1 !< Default j block size for the mixed layer density integral [nondim]
+integer, parameter :: default_niblock = 0 !< Default i block size for the mixed layer density integral [nondim]
 #endif
 
 public mixedlayer_restrat
@@ -126,6 +128,9 @@ type, public :: mixedlayer_restrat_CS ; private
   integer :: njblock = default_njblock !< The number of rows whose density is evaluated in one call to the
                                    !! equation of state in the Bodner mixed-layer buoyancy integral, or 0
                                    !! to do the whole j compute domain in a single block [nondim].
+  integer :: niblock = default_niblock !< The number of columns whose density is evaluated in one call to the
+                                   !! equation of state in the Bodner mixed-layer buoyancy integral, or 0
+                                   !! to do the whole i compute domain in a single block [nondim].
 
   real, dimension(:,:), allocatable :: &
          MLD_filtered, &           !< Time-filtered MLD [H ~> m or kg m-2]
@@ -860,9 +865,11 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
   logical :: line_is_empty, keep_going
   integer, dimension(2) :: EOSdom ! The i-computational domain for the equation of state
   integer :: EOSdom3(3,2) ! The (i,j,k) computational domain for the blocked equation of state calls
-  integer :: nkblock, njblock ! The number of layers and rows in each tile of the density integral [nondim]
+  integer :: nkblock, njblock, niblock ! The number of layers, rows and columns in each tile of the
+                          ! density integral [nondim]
   integer :: kstart, kend ! The first and last layer of the tile being worked on [nondim]
   integer :: jstart, jend ! The first and last row of the tile being worked on [nondim]
+  integer :: istart, iend ! The first and last column of the tile being worked on [nondim]
   integer :: i, j, k, is, ie, js, je, Isq, Ieq, Jsq, Jeq, nz
 
   is  = G%isc  ; ie  = G%iec  ; js  = G%jsc  ; je  = G%jec ; nz = GV%ke
@@ -1048,13 +1055,13 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
   enddo
 
   if ((GV%Boussinesq .or. GV%semi_Boussinesq) .and. .not.CS%use_Stanley_ML) then
-    ! Walk the mixed layer in tiles of njblock rows by nkblock layers: evaluate the density for a
-    ! tile, then integrate it.  The columns are independent of one another, so the integral runs as
-    ! one concurrent loop over (i,j) with the sequential k-dependence kept inside each column, and
-    ! the running totals for the tile's rows carry across its k blocks.
+    ! Walk the mixed layer in tiles of niblock columns by njblock rows by nkblock layers: evaluate
+    ! the density for a tile, then integrate it.  The columns are independent of one another, so
+    ! the integral runs as one concurrent loop over (i,j) with the sequential k-dependence kept
+    ! inside each column, and the running totals for the tile's columns carry across its k blocks.
     nkblock = merge(nz, CS%nkblock, CS%nkblock==0)
     njblock = merge((je+1) - (js-1) + 1, CS%njblock, CS%njblock==0)
-    EOSdom3(1,:) = EOS_domain(G%HI, halo=1)
+    niblock = merge((ie+1) - (is-1) + 1, CS%niblock, CS%niblock==0)
 
     ! The tile scratch never leaves the device, and no other branch uses it.
     !$omp target enter data map(alloc: rho_blk, p_blk, Rml_blk)
@@ -1073,43 +1080,49 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
       jend = min(jstart+njblock-1, je+1)
       EOSdom3(2,:) = [1, jend-jstart+1]
 
-      do concurrent (j=jstart:jend, i=is-1:ie+1)
-        htot(i,j) = 0.0 ; Rml_blk(i,j-jstart+1) = 0.0
-      enddo
+      do istart=is-1,ie+1,niblock
+        iend = min(istart+niblock-1, ie+1)
+        EOSdom3(1,:) = [istart-(G%isd-1), iend-(G%isd-1)]
 
-      keep_going = .true.
-      do kstart=1,nz,nkblock ; if (keep_going) then
-        kend = min(kstart+nkblock-1, nz)
-        EOSdom3(3,:) = [1, kend-kstart+1]
-        call calculate_density(tv%T(:,jstart:jend,kstart:kend), tv%S(:,jstart:jend,kstart:kend), &
-                               p_blk, rho_blk, tv%eqn_of_state, EOSdom3)
-
-        do concurrent (j=jstart:jend, i=is-1:ie+1) DO_LOCALITY(local(k, dh))
-          do k=kstart,kend
-            if (htot(i,j) < big_H(i,j)) then
-              dh = min( h(i,j,k), big_H(i,j) - htot(i,j) )
-              ! Rml_blk is in [R H ~> kg m-2]
-              Rml_blk(i,j-jstart+1) = Rml_blk(i,j-jstart+1) + dh*rho_blk(i,j-jstart+1,k-kstart+1)
-              htot(i,j) = htot(i,j) + dh
-            endif
-          enddo
+        do concurrent (j=jstart:jend, i=istart:iend)
+          htot(i,j) = 0.0 ; Rml_blk(i,j-jstart+1) = 0.0
         enddo
 
-        if (nkblock < nz) then
-          ! Stop calling the equation of state once every column in the tile has been filled to
-          ! "big H".  With a single k block there is nothing left to skip, and this test would drag
-          ! htot back to the host for nothing.
-          !$omp target update from(htot)
-          keep_going = .false.
-          do j=jstart,jend ; do i=is-1,ie+1
-            if (htot(i,j) < big_H(i,j)) keep_going = .true.
-          enddo ; enddo
-        endif
-      endif ; enddo
+        keep_going = .true.
+        do kstart=1,nz,nkblock ; if (keep_going) then
+          kend = min(kstart+nkblock-1, nz)
+          EOSdom3(3,:) = [1, kend-kstart+1]
+          call calculate_density(tv%T(:,jstart:jend,kstart:kend), tv%S(:,jstart:jend,kstart:kend), &
+                                 p_blk, rho_blk, tv%eqn_of_state, EOSdom3)
 
-      do concurrent (j=jstart:jend, i=is-1:ie+1)
-        ! Buoy_av has units (L2 H-1 T-2 R-1) * (R H) * H-1 = [L2 H-1 T-2 ~> m s-2 or m4 kg-1 s-2]
-        buoy_av(i,j) = -( g_Rho0 * Rml_blk(i,j-jstart+1) ) / (htot(i,j) + h_neglect)
+          do concurrent (j=jstart:jend, i=istart:iend) DO_LOCALITY(local(k, dh))
+            do k=kstart,kend
+              if (htot(i,j) < big_H(i,j)) then
+                dh = min( h(i,j,k), big_H(i,j) - htot(i,j) )
+                ! Rml_blk is in [R H ~> kg m-2]
+                Rml_blk(i,j-jstart+1) = Rml_blk(i,j-jstart+1) + dh*rho_blk(i,j-jstart+1,k-kstart+1)
+                htot(i,j) = htot(i,j) + dh
+              endif
+            enddo
+          enddo
+
+          if (nkblock < nz) then
+            ! Stop calling the equation of state once every column in the tile has been filled to
+            ! "big H".  With a single k block there is nothing left to skip, and this test would
+            ! drag htot back to the host for nothing.
+            !$omp target update from(htot)
+            keep_going = .false.
+            do j=jstart,jend ; do i=istart,iend
+              if (htot(i,j) < big_H(i,j)) keep_going = .true.
+            enddo ; enddo
+          endif
+        endif ; enddo
+
+        do concurrent (j=jstart:jend, i=istart:iend)
+          ! Buoy_av has units (L2 H-1 T-2 R-1) * (R H) * H-1 = [L2 H-1 T-2 ~> m s-2 or m4 kg-1 s-2]
+          buoy_av(i,j) = -( g_Rho0 * Rml_blk(i,j-jstart+1) ) / (htot(i,j) + h_neglect)
+        enddo
+
       enddo
     enddo
 
@@ -1878,6 +1891,10 @@ logical function mixedlayer_restrat_init(Time, G, GV, US, param_file, diag, CS, 
              "j-tile size for the mixed layer density integral. "//&
              "0 uses the full j compute domain.", &
              default=default_njblock)
+    call get_param(param_file, mdl, "MLE_NIBLOCK", CS%niblock, &
+             "i-tile size for the mixed layer density integral. "//&
+             "0 uses the full i compute domain.", &
+             default=default_niblock)
     call get_param(param_file, mdl, "USE_CR_GRID", CS%Cr_grid, &
              "If true, read in a spatially varying Cr field.", default=.false.)
     call get_param(param_file, mdl, "USE_MLD_GRID", CS%MLD_grid, &
