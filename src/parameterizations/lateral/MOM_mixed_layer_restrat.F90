@@ -5,6 +5,7 @@
 !> \brief Parameterization of mixed layer restratification by unresolved mixed-layer eddies.
 module MOM_mixed_layer_restrat
 
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
 use MOM_debugging,     only : hchksum
 use MOM_diag_mediator, only : post_data, query_averaging_enabled, diag_ctrl
 use MOM_diag_mediator, only : register_diag_field, safe_alloc_ptr, time_type
@@ -39,6 +40,13 @@ integer, parameter :: default_njblock = 0 !< Default j block size for the mixed 
 integer, parameter :: default_nkblock = 1 !< Default k block size for the mixed layer density integral [nondim]
 integer, parameter :: default_njblock = 1 !< Default j block size for the mixed layer density integral [nondim]
 #endif
+
+! Benchmarking clocks for the sections of mixedlayer_restrat_Bodner (temporary instrumentation)
+integer :: id_clock_mle_pre = -1   !< pass_var(bflux) + find_ustar
+integer :: id_clock_mle_filt = -1  !< little_h / big_H / w'u' filters
+integer :: id_clock_mle_eos = -1   !< density integral (vol_dt_avail + EOS + buoy_av)
+integer :: id_clock_mle_uv = -1    !< u/v transport loops + h update
+integer :: id_clock_mle_tail = -1  !< transfers, halo update, diagnostics
 
 public mixedlayer_restrat
 public mixedlayer_restrat_init
@@ -888,11 +896,13 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
            "Bodner_detect_MLD must be True.")
   endif
 
+  call cpu_clock_begin(id_clock_mle_pre)
   if (associated(bflux)) &
     call pass_var(bflux, G%domain, halo=1)
 
   ! Extract the friction velocity from the forcing type.
   call find_ustar(forces, tv, U_star_2d, G, GV, US, halo=1)
+  call cpu_clock_end(id_clock_mle_pre)
 
   if (CS%debug) then
     call hchksum(h,'mixed_Bodner: h', G%HI, haloshift=1, unscale=GV%H_to_mks)
@@ -907,6 +917,7 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
                  G%HI, haloshift=1, unscale=GV%H_to_mks)
   endif
 
+  call cpu_clock_begin(id_clock_mle_filt)
   !$omp target enter data map(to: U_star_2d, h_MLD)
   !$omp target enter data map(alloc: little_h, big_H, wpup, htot, buoy_av, uDml_diag, vDml_diag)
   !$omp target enter data map(alloc: vol_dt_avail, uhml, vhml)
@@ -1035,6 +1046,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     call hchksum(wpup,'mle_Bodner: wpup', G%HI, haloshift=1, unscale=US%L_to_m*GV%H_to_mks*US%s_to_T**2)
   endif
 
+  call cpu_clock_end(id_clock_mle_filt)
+  call cpu_clock_begin(id_clock_mle_eos)
   ! Calculate the average density in the "mixed layer".
   ! Notice we use p=0 (sigma_0) since horizontal differences of vertical averages of
   ! in-situ density would contain the MLD gradient (through the pressure dependence).
@@ -1168,6 +1181,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     call hchksum(buoy_av,'mle_Bodner: buoy_av', G%HI, haloshift=1, unscale=GV%m_to_H*US%L_T_to_m_s**2)
   endif
 
+  call cpu_clock_end(id_clock_mle_eos)
+  call cpu_clock_begin(id_clock_mle_uv)
   ! U - Component
   do concurrent (j=js:je, I=is-1:ie) &
       DO_LOCALITY(local(k,dmu,grid_dsd,absf,h_sml,h_big,grd_b,r_wpup,psi_mag,IhTot,sigint,muzb,muza,hAtVel))
@@ -1258,6 +1273,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
         ((uhml(I,j,k) - uhml(I-1,j,k)) + (vhml(i,J,k) - vhml(i,J-1,k)))
   enddo
 
+  call cpu_clock_end(id_clock_mle_uv)
+  call cpu_clock_begin(id_clock_mle_tail)
   ! h, uhtr and vhtr stay mapped for the whole run, but step_MOM_dynamics pushes the host copies
   ! back to the device after this call, so the values just computed here have to reach the host.
   !$omp target update from(h, uhtr, vhtr)
@@ -1309,6 +1326,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
       call post_data(CS%id_vml, vDml_diag, CS%diag)
     endif
   endif
+
+  call cpu_clock_end(id_clock_mle_tail)
 
 end subroutine mixedlayer_restrat_Bodner
 
@@ -1782,6 +1801,12 @@ logical function mixedlayer_restrat_init(Time, G, GV, US, param_file, diag, CS, 
   if (.not. mixedlayer_restrat_init) return
 
   CS%initialized = .true.
+
+  id_clock_mle_pre  = cpu_clock_id('(MLE Bodner: ustar+comm)', grain=CLOCK_ROUTINE)
+  id_clock_mle_filt = cpu_clock_id('(MLE Bodner: filters)', grain=CLOCK_ROUTINE)
+  id_clock_mle_eos  = cpu_clock_id('(MLE Bodner: density integral)', grain=CLOCK_ROUTINE)
+  id_clock_mle_uv   = cpu_clock_id('(MLE Bodner: uv loops)', grain=CLOCK_ROUTINE)
+  id_clock_mle_tail = cpu_clock_id('(MLE Bodner: tail)', grain=CLOCK_ROUTINE)
   CS%Time => Time
 
   ! Nonsense values to cause problems when these parameters are not used
