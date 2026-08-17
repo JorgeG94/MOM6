@@ -1063,10 +1063,6 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
   p0(:) = 0.0
   EOSdom(:) = EOS_domain(G%HI, halo=1)
 
-  do concurrent (k=1:nz, j=js-1:je+1, i=is-1:ie+1)
-    vol_dt_avail(i,j,k) = max(I4dt*G%areaT(i,j)*(h(i,j,k)-GV%Angstrom_H), 0.0)
-  enddo
-
   if ((GV%Boussinesq .or. GV%semi_Boussinesq) .and. .not.CS%use_Stanley_ML) then
     ! Walk the mixed layer in tiles of niblock columns by njblock rows by nkblock layers: evaluate
     ! the density for a tile, then integrate it.  The columns are independent of one another, so
@@ -1102,36 +1098,46 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
         enddo
 
         keep_going = .true.
-        do kstart=1,nz,nkblock ; if (keep_going) then
-          kend = min(kstart+nkblock-1, nz)
-          EOSdom3(3,:) = [1, kend-kstart+1]
-          ! The tile is selected purely by the index ranges in EOSdom3, so the whole T and S
-          ! arrays are passed (the k range is a contiguous section) and no copies are made.
-          call calculate_density(tv%T(:,:,kstart:kend), tv%S(:,:,kstart:kend), &
-                                 p_blk, rho_blk, tv%eqn_of_state, EOSdom3)
+        do kstart=1,nz,nkblock
 
-          do concurrent (j=jstart:jend, i=istart:iend) DO_LOCALITY(local(k, dh))
-            do k=kstart,kend
-              if (htot(i,j) < big_H(i,j)) then
-                dh = min( h(i,j,k), big_H(i,j) - htot(i,j) )
-                ! Rml_blk is in [R H ~> kg m-2]
-                Rml_blk(i,j) = Rml_blk(i,j) + dh*rho_blk(i,j,k-kstart+1)
-                htot(i,j) = htot(i,j) + dh
-              endif
-            enddo
+          ! The available volumes are needed for every layer, so they are evaluated for the
+          ! whole tile even after the mixed-layer integral below has been filled, as in the
+          ! original code.
+          do concurrent (k=kstart:min(kstart+nkblock-1,nz), j=jstart:jend, i=istart:iend)
+            vol_dt_avail(i,j,k) = max(I4dt*G%areaT(i,j)*(h(i,j,k)-GV%Angstrom_H), 0.0)
           enddo
 
-          if (nkblock < nz) then
-            ! Stop calling the equation of state once every column in the tile has been filled to
-            ! "big H".  With a single k block there is nothing left to skip, and this test would
-            ! drag htot back to the host for nothing.
-            !$omp target update from(htot)
-            keep_going = .false.
-            do j=jstart,jend ; do i=istart,iend
-              if (htot(i,j) < big_H(i,j)) keep_going = .true.
-            enddo ; enddo
+          if (keep_going) then
+            kend = min(kstart+nkblock-1, nz)
+            EOSdom3(3,:) = [1, kend-kstart+1]
+            ! The tile is selected purely by the index ranges in EOSdom3, so the whole T and S
+            ! arrays are passed (the k range is a contiguous section) and no copies are made.
+            call calculate_density(tv%T(:,:,kstart:kend), tv%S(:,:,kstart:kend), &
+                                   p_blk, rho_blk, tv%eqn_of_state, EOSdom3)
+
+            do concurrent (j=jstart:jend, i=istart:iend) DO_LOCALITY(local(k, dh))
+              do k=kstart,kend
+                if (htot(i,j) < big_H(i,j)) then
+                  dh = min( h(i,j,k), big_H(i,j) - htot(i,j) )
+                  ! Rml_blk is in [R H ~> kg m-2]
+                  Rml_blk(i,j) = Rml_blk(i,j) + dh*rho_blk(i,j,k-kstart+1)
+                  htot(i,j) = htot(i,j) + dh
+                endif
+              enddo
+            enddo
+
+            if (nkblock < nz) then
+              ! Stop calling the equation of state once every column in the tile has been filled to
+              ! "big H".  With a single k block there is nothing left to skip, and this test would
+              ! drag htot back to the host for nothing.
+              !$omp target update from(htot)
+              keep_going = .false.
+              do j=jstart,jend ; do i=istart,iend
+                if (htot(i,j) < big_H(i,j)) keep_going = .true.
+              enddo ; enddo
+            endif
           endif
-        endif ; enddo
+        enddo
 
         do concurrent (j=jstart:jend, i=istart:iend)
           ! Buoy_av has units (L2 H-1 T-2 R-1) * (R H) * H-1 = [L2 H-1 T-2 ~> m s-2 or m4 kg-1 s-2]
@@ -1154,6 +1160,9 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
       enddo
       keep_going = .true.
       do k=1,nz
+        do i=is-1,ie+1
+          vol_dt_avail(i,j,k) = max(I4dt*G%areaT(i,j)*(h(i,j,k)-GV%Angstrom_H), 0.0)
+        enddo
         if (keep_going) then
           if (GV%Boussinesq .or. GV%semi_Boussinesq) then
             call calculate_density(tv%T(:,j,k), tv%S(:,j,k), p0, tv%varT(:,j,k), covTS, varS, &
@@ -1187,7 +1196,7 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
         enddo
       endif
     enddo
-    !$omp target update to(htot, buoy_av)
+    !$omp target update to(htot, buoy_av, vol_dt_avail)
   endif
 
   if (CS%debug) then
