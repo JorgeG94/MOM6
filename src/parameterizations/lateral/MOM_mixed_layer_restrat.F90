@@ -823,18 +823,13 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
   real :: SpV_ml(SZI_(G)) ! Specific volume evaluated at the surface pressure [R-1 ~> m3 kg-1]
   real :: SpV_int(SZI_(G)) ! Specific volume integrated through the mixed layer [H R-1 ~> m4 kg-1 or m]
   real :: rho_ml(SZI_(G)) ! Potential density relative to the surface [R ~> kg m-3]
-  real :: rho_blk(merge(G%ied-G%isd+1, CS%niblock, CS%niblock==0), &
-                  merge(G%jed-G%jsd+1, CS%njblock, CS%njblock==0), &
-                  merge(GV%ke, CS%nkblock, CS%nkblock==0))
+  real :: rho_blk(SZI_(G), SZJ_(G), merge(GV%ke, CS%nkblock, CS%nkblock==0))
                           ! Potential density relative to the surface for a tile [R ~> kg m-3]
-  real :: p_blk(merge(G%ied-G%isd+1, CS%niblock, CS%niblock==0), &
-                merge(G%jed-G%jsd+1, CS%njblock, CS%njblock==0), &
-                merge(GV%ke, CS%nkblock, CS%nkblock==0))
+  real :: p_blk(SZI_(G), SZJ_(G), merge(GV%ke, CS%nkblock, CS%nkblock==0))
                           ! A pressure of 0 for a tile [R L2 T-2 ~> Pa]
-  real :: Rml_blk(merge(G%ied-G%isd+1, CS%niblock, CS%niblock==0), &
-                  merge(G%jed-G%jsd+1, CS%njblock, CS%njblock==0))
-                          ! Density integrated through the mixed layer, for the rows of a tile,
-                          ! carried across the k blocks of a column [R H ~> kg m-2 or kg2 m-5]
+  real :: Rml_blk(SZI_(G), SZJ_(G))
+                          ! Density integrated through the mixed layer, carried across the
+                          ! k blocks of a column [R H ~> kg m-2 or kg2 m-5]
   real :: p0(SZI_(G))     ! A pressure of 0 [R L2 T-2 ~> Pa]
   real :: g_Rho0          ! G_Earth/Rho0 times a thickness conversion factor
                           ! [L2 H-1 T-2 R-1 ~> m4 s-2 kg-1 or m7 s-2 kg-2]
@@ -1075,31 +1070,29 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
       !$omp target update from(big_H)
     endif
 
-    do concurrent (k=1:nkblock, j=1:njblock, i=1:niblock)
+    do concurrent (k=1:nkblock, j=js-1:je+1, i=is-1:ie+1)
       p_blk(i,j,k) = 0.0
     enddo
 
     do jstart=js-1,je+1,njblock
       jend = min(jstart+njblock-1, je+1)
-      EOSdom3(2,:) = [1, jend-jstart+1]
+      EOSdom3(2,:) = [jstart-(G%jsd-1), jend-(G%jsd-1)]
 
       do istart=is-1,ie+1,niblock
         iend = min(istart+niblock-1, ie+1)
-        EOSdom3(1,:) = [1, iend-istart+1]
+        EOSdom3(1,:) = [istart-(G%isd-1), iend-(G%isd-1)]
 
         do concurrent (j=jstart:jend, i=istart:iend)
-          htot(i,j) = 0.0 ; Rml_blk(i-istart+1,j-jstart+1) = 0.0
+          htot(i,j) = 0.0 ; Rml_blk(i,j) = 0.0
         enddo
 
         keep_going = .true.
         do kstart=1,nz,nkblock ; if (keep_going) then
           kend = min(kstart+nkblock-1, nz)
           EOSdom3(3,:) = [1, kend-kstart+1]
-          ! The scratch arrays are tile-sized, which keeps the temporaries inside
-          ! calculate_density (dimensioned from the density argument) tile-sized too.
-          ! The sections pass as descriptors into assumed-shape dummies, with no copies.
-          call calculate_density(tv%T(istart:iend,jstart:jend,kstart:kend), &
-                                 tv%S(istart:iend,jstart:jend,kstart:kend), &
+          ! The tile is selected purely by the index ranges in EOSdom3, so the whole T and S
+          ! arrays are passed (the k range is a contiguous section) and no copies are made.
+          call calculate_density(tv%T(:,:,kstart:kend), tv%S(:,:,kstart:kend), &
                                  p_blk, rho_blk, tv%eqn_of_state, EOSdom3)
 
           do concurrent (j=jstart:jend, i=istart:iend) DO_LOCALITY(local(k, dh))
@@ -1107,8 +1100,7 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
               if (htot(i,j) < big_H(i,j)) then
                 dh = min( h(i,j,k), big_H(i,j) - htot(i,j) )
                 ! Rml_blk is in [R H ~> kg m-2]
-                Rml_blk(i-istart+1,j-jstart+1) = Rml_blk(i-istart+1,j-jstart+1) &
-                                                 + dh*rho_blk(i-istart+1,j-jstart+1,k-kstart+1)
+                Rml_blk(i,j) = Rml_blk(i,j) + dh*rho_blk(i,j,k-kstart+1)
                 htot(i,j) = htot(i,j) + dh
               endif
             enddo
@@ -1128,7 +1120,7 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
 
         do concurrent (j=jstart:jend, i=istart:iend)
           ! Buoy_av has units (L2 H-1 T-2 R-1) * (R H) * H-1 = [L2 H-1 T-2 ~> m s-2 or m4 kg-1 s-2]
-          buoy_av(i,j) = -( g_Rho0 * Rml_blk(i-istart+1,j-jstart+1) ) / (htot(i,j) + h_neglect)
+          buoy_av(i,j) = -( g_Rho0 * Rml_blk(i,j) ) / (htot(i,j) + h_neglect)
         enddo
 
       enddo
