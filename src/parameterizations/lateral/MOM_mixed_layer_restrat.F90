@@ -1192,13 +1192,20 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
   endif
 
   ! U - Component
-  ! These loops are OpenMP target constructs rather than do concurrent because they need the
-  ! per-column dmu profile as a private automatic array, which do concurrent local() cannot
-  ! yet express without crashing nvfortran (private() handles it correctly).
+#ifdef __NVCOMPILER_OPENMP_GPU
+  ! On GPU builds these loops are OpenMP target constructs rather than do concurrent because
+  ! they need the per-column dmu profile as a private automatic array, which nvfortran's
+  ! do concurrent local() cannot yet express without crashing (private() handles it).
+  ! CPU builds keep do concurrent, whose independence guarantee ifx uses to vectorize
+  ! the mu chains across columns.  The loop bodies are identical.
   !$omp target teams loop collapse(2) &
   !$omp   private(k, dmu, grid_dsd, absf, h_sml, h_big, grd_b, r_wpup, psi_mag, IhTot, &
   !$omp           sigint, muzb, muza, hAtVel)
   do j=js,je ; do I=is-1,ie
+#else
+  do concurrent (j=js:je, I=is-1:ie) &
+      DO_LOCALITY(local(k,dmu,grid_dsd,absf,h_sml,h_big,grd_b,r_wpup,psi_mag,IhTot,sigint,muzb,muza,hAtVel))
+#endif
     if (G%OBCmaskCu(I,j) > 0.) then
       grid_dsd = sqrt(0.5*( G%dxCu(I,j)**2 + G%dyCu(I,j)**2 )) * G%dyCu(I,j) ! [L2 ~> m2]
       absf = 0.5*(abs(G%CoriolisBu(I,J-1)) + abs(G%CoriolisBu(I,J)))  ! [T-1 ~> s-1]
@@ -1235,13 +1242,22 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     enddo
 
     uDml_diag(I,j) = psi_mag
+#ifdef __NVCOMPILER_OPENMP_GPU
   enddo ; enddo
+#else
+  enddo
+#endif
 
   ! V- component
+#ifdef __NVCOMPILER_OPENMP_GPU
   !$omp target teams loop collapse(2) &
   !$omp   private(k, dmu, grid_dsd, absf, h_sml, h_big, grd_b, r_wpup, psi_mag, IhTot, &
   !$omp           sigint, muzb, muza, hAtVel)
   do J=js-1,je ; do i=is,ie
+#else
+  do concurrent (J=js-1:je, i=is:ie) &
+      DO_LOCALITY(local(k,dmu,grid_dsd,absf,h_sml,h_big,grd_b,r_wpup,psi_mag,IhTot,sigint,muzb,muza,hAtVel))
+#endif
     if (G%OBCmaskCv(i,J) > 0.) then
       grid_dsd = sqrt(0.5*( G%dxCv(i,J)**2 + G%dyCv(i,J)**2 )) * G%dxCv(i,J) ! [L2 ~> m2]
       absf = 0.5*(abs(G%CoriolisBu(I-1,J)) + abs(G%CoriolisBu(I,J)))  ! [T-1 ~> s-1]
@@ -1278,7 +1294,11 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     enddo
 
     vDml_diag(i,J) = psi_mag
+#ifdef __NVCOMPILER_OPENMP_GPU
   enddo ; enddo
+#else
+  enddo
+#endif
 
   do concurrent (j=js:je, k=1:nz, i=is:ie)
     h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * &
