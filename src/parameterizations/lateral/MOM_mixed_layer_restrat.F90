@@ -5,6 +5,7 @@
 !> \brief Parameterization of mixed layer restratification by unresolved mixed-layer eddies.
 module MOM_mixed_layer_restrat
 
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
 use MOM_debugging,     only : hchksum
 use MOM_diag_mediator, only : post_data, query_averaging_enabled, diag_ctrl
 use MOM_diag_mediator, only : register_diag_field, safe_alloc_ptr, time_type
@@ -30,6 +31,13 @@ use MOM_EOS,           only : calculate_density, calculate_spec_vol, EOS_domain
 implicit none ; private
 
 #include <MOM_memory.h>
+
+! Benchmarking clocks for the sections of mixedlayer_restrat_Bodner (temporary instrumentation)
+integer :: id_clock_mle_pre = -1   !< pass_var(bflux) + find_ustar
+integer :: id_clock_mle_filt = -1  !< little_h / big_H / w'u' filters
+integer :: id_clock_mle_eos = -1   !< density integral (vol_dt_avail + EOS + buoy_av)
+integer :: id_clock_mle_uv = -1    !< u/v transport loops + h update
+integer :: id_clock_mle_tail = -1  !< halo update, diagnostics
 
 public mixedlayer_restrat
 public mixedlayer_restrat_init
@@ -860,11 +868,14 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
            "Bodner_detect_MLD must be True.")
   endif
 
+  call cpu_clock_begin(id_clock_mle_pre)
   if (associated(bflux)) &
     call pass_var(bflux, G%domain, halo=1)
 
   ! Extract the friction velocity from the forcing type.
   call find_ustar(forces, tv, U_star_2d, G, GV, US, halo=1)
+  call cpu_clock_end(id_clock_mle_pre)
+  call cpu_clock_begin(id_clock_mle_filt)
 
   if (CS%debug) then
     call hchksum(h,'mixed_Bodner: h', G%HI, haloshift=1, unscale=GV%H_to_mks)
@@ -989,6 +1000,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     call hchksum(wpup,'mle_Bodner: wpup', G%HI, haloshift=1, unscale=US%L_to_m*GV%H_to_mks*US%s_to_T**2)
   endif
 
+  call cpu_clock_end(id_clock_mle_filt)
+  call cpu_clock_begin(id_clock_mle_eos)
   ! Calculate the average density in the "mixed layer".
   ! Notice we use p=0 (sigma_0) since horizontal differences of vertical averages of
   ! in-situ density would contain the MLD gradient (through the pressure dependence).
@@ -1056,6 +1069,14 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
     call hchksum(buoy_av,'mle_Bodner: buoy_av', G%HI, haloshift=1, unscale=GV%m_to_H*US%L_T_to_m_s**2)
   endif
 
+  !$OMP end parallel
+  call cpu_clock_end(id_clock_mle_eos)
+  call cpu_clock_begin(id_clock_mle_uv)
+  !$OMP parallel &
+  !$OMP default(shared) &
+  !$OMP private(i, j, k, dh, dmu, &
+  !$OMP   grid_dsd, absf, h_sml, h_big, grd_b, r_wpup, psi_mag, IhTot, &
+  !$OMP   sigint, muzb, muza, hAtVel)
   ! U - Component
   !$OMP do
   do j=js,je ; do I=is-1,ie
@@ -1144,6 +1165,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
         ((uhml(I,j,k) - uhml(I-1,j,k)) + (vhml(i,J,k) - vhml(i,J-1,k)))
   enddo ; enddo ; enddo
   !$OMP end parallel
+  call cpu_clock_end(id_clock_mle_uv)
+  call cpu_clock_begin(id_clock_mle_tail)
 
   if (CS%id_uhml > 0 .or. CS%id_vhml > 0) &
     ! Remapped uhml and vhml require east/north halo updates of h
@@ -1181,6 +1204,8 @@ subroutine mixedlayer_restrat_Bodner(CS, G, GV, US, h, uhtr, vhtr, tv, forces, d
       call post_data(CS%id_vml, vDml_diag, CS%diag)
     endif
   endif
+
+  call cpu_clock_end(id_clock_mle_tail)
 
 end subroutine mixedlayer_restrat_Bodner
 
@@ -1654,6 +1679,12 @@ logical function mixedlayer_restrat_init(Time, G, GV, US, param_file, diag, CS, 
   if (.not. mixedlayer_restrat_init) return
 
   CS%initialized = .true.
+
+  id_clock_mle_pre  = cpu_clock_id('(MLE Bodner: ustar+comm)', grain=CLOCK_ROUTINE)
+  id_clock_mle_filt = cpu_clock_id('(MLE Bodner: filters)', grain=CLOCK_ROUTINE)
+  id_clock_mle_eos  = cpu_clock_id('(MLE Bodner: density integral)', grain=CLOCK_ROUTINE)
+  id_clock_mle_uv   = cpu_clock_id('(MLE Bodner: uv loops)', grain=CLOCK_ROUTINE)
+  id_clock_mle_tail = cpu_clock_id('(MLE Bodner: tail)', grain=CLOCK_ROUTINE)
   CS%Time => Time
 
   ! Nonsense values to cause problems when these parameters are not used
