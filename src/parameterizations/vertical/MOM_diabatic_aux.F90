@@ -151,7 +151,11 @@ subroutine make_frazil(h, tv, G, GV, US, CS, p_surf, halo)
   call cpu_clock_begin(id_clock_frazil)
 
   if (.not.CS%pressure_dependent_frazil) then
-    do k=1,nz ; do i=is,ie ; pressure(i,k) = 0.0 ; enddo ; enddo
+    do k=1,nz
+    do i=is,ie
+    pressure(i,k) = 0.0
+    enddo
+    enddo
   else
     H_to_RL2_T2 = GV%H_to_RZ * GV%g_Earth
   endif
@@ -161,9 +165,12 @@ subroutine make_frazil(h, tv, G, GV, US, CS, p_surf, halo)
     ps(:) = 0.0
     if (PRESENT(p_surf)) then ; do i=is,ie
       ps(i) = p_surf(i,j)
-    enddo ; endif
+    enddo
+    endif
 
-    do i=is,ie ; fraz_col(i) = 0.0 ; enddo
+    do i=is,ie
+    fraz_col(i) = 0.0
+    enddo
 
     if (CS%pressure_dependent_frazil) then
       do i=is,ie
@@ -171,7 +178,8 @@ subroutine make_frazil(h, tv, G, GV, US, CS, p_surf, halo)
       enddo
       do k=2,nz ; do i=is,ie
         pressure(i,k) = pressure(i,k-1) + (0.5*H_to_RL2_T2) * (h(i,j,k) + h(i,j,k-1))
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (CS%reclaim_frazil) then
@@ -195,7 +203,8 @@ subroutine make_frazil(h, tv, G, GV, US, CS, p_surf, halo)
             tv%T(i,j,1) = T_freeze(i)
           endif
         endif
-      endif ; enddo
+      endif
+      enddo
     endif
 
     do k=nz,1,-1
@@ -324,7 +333,8 @@ subroutine differential_diffuse_T_S(h, T, S, Kd_T, Kd_S, tv, dt, G, GV)
 
       T(i,j,k) = b1_T(i) * (h_tr*T(i,j,k) + mix_T(i,K)*T(i,j,k-1))
       S(i,j,k) = b1_S(i) * (h_tr*S(i,j,k) + mix_S(i,K)*S(i,j,k-1))
-    enddo ; enddo
+    enddo
+    enddo
     do i=is,ie
       c1_T(i,nz) = mix_T(i,nz) * b1_T(i)
       c1_S(i,nz) = mix_S(i,nz) * b1_S(i)
@@ -339,7 +349,8 @@ subroutine differential_diffuse_T_S(h, T, S, Kd_T, Kd_S, tv, dt, G, GV)
     do k=nz-1,1,-1 ; do i=is,ie
       T(i,j,k) = T(i,j,k) + c1_T(i,k+1)*T(i,j,k+1)
       S(i,j,k) = S(i,j,k) + c1_S(i,k+1)*S(i,j,k+1)
-    enddo ; enddo
+    enddo
+    enddo
   enddo
 end subroutine differential_diffuse_T_S
 
@@ -390,7 +401,8 @@ subroutine adjust_salt(h, tv, G, GV, CS)
           tv%S(i,j,k) = S_min
         endif
       endif
-    enddo ; enddo
+    enddo
+    enddo
     do i=is,ie
       tv%salt_deficit(i,j) = tv%salt_deficit(i,j) + salt_add_col(i,j)
     enddo
@@ -441,11 +453,13 @@ subroutine triDiagTS(G, GV, is, ie, js, je, hold, ea, eb, T, S)
       d1(i) = b_denom_1 * b1(i)
       T(i,j,k) = b1(i) * (h_tr*T(i,j,k) + ea(i,j,k)*T(i,j,k-1))
       S(i,j,k) = b1(i) * (h_tr*S(i,j,k) + ea(i,j,k)*S(i,j,k-1))
-    enddo ; enddo
+    enddo
+    enddo
     do k=GV%ke-1,1,-1 ; do i=is,ie
       T(i,j,k) = T(i,j,k) + c1(i,k+1)*T(i,j,k+1)
       S(i,j,k) = S(i,j,k) + c1(i,k+1)*S(i,j,k+1)
-    enddo ; enddo
+    enddo
+    enddo
   enddo
 end subroutine triDiagTS
 
@@ -489,11 +503,13 @@ subroutine triDiagTS_Eulerian(G, GV, is, ie, js, je, hold, ent, T, S)
       d1(i) = b_denom_1 * b1(i)
       T(i,j,k) = b1(i) * (h_tr*T(i,j,k) + ent(i,j,K)*T(i,j,k-1))
       S(i,j,k) = b1(i) * (h_tr*S(i,j,k) + ent(i,j,K)*S(i,j,k-1))
-    enddo ; enddo
+    enddo
+    enddo
     do k=GV%ke-1,1,-1 ; do i=is,ie
       T(i,j,k) = T(i,j,k) + c1(i,k+1)*T(i,j,k+1)
       S(i,j,k) = S(i,j,k) + c1(i,k+1)*S(i,j,k+1)
-    enddo ; enddo
+    enddo
+    enddo
   enddo
 end subroutine triDiagTS_Eulerian
 
@@ -554,7 +570,7 @@ subroutine find_uv_at_h(u, v, h, u_h, v_h, G, GV, US, ea, eb, zero_mix)
   !$omp target teams loop private(sum_area,Idenom,a_w,a_e,a_s,a_n,b_denom_1,b1,d1,c1) &
   !$omp   map(to: ea, eb, h) map(from: u_h, v_h)
   do j=js,je
-    do concurrent (i=is:ie)
+    do i = is, ie
       sum_area = G%areaCu(I-1,j) + G%areaCu(I,j)
       if (sum_area > 0.0) then
         ! If this were a simple area weighted average, this would just be I_denom = 1.0 / sum_area.
@@ -578,17 +594,18 @@ subroutine find_uv_at_h(u, v, h, u_h, v_h, G, GV, US, ea, eb, zero_mix)
       else
         a_s(i) = 0.0 ; a_n(i) = 0.0
       endif
-    enddo
+    end do
 
     if (mix_vertically) then
-      do concurrent (i=is:ie)
+      do i = is, ie
         b_denom_1 = h(i,j,1) + h_neglect
         b1(i) = 1.0 / (b_denom_1 + eb(i,j,1))
         d1(i) = b_denom_1 * b1(i)
         u_h(i,j,1) = (h(i,j,1)*b1(i)) * ((a_e(i)*u(I,j,1)) + (a_w(i)*u(I-1,j,1)))
         v_h(i,j,1) = (h(i,j,1)*b1(i)) * ((a_n(i)*v(i,J,1)) + (a_s(i)*v(i,J-1,1)))
-      enddo
-      do k=2,nz ; do concurrent (i=is:ie)
+      end do
+      do k=2,nz
+      do i = is, ie
         c1(i,k) = eb(i,j,k-1) * b1(i)
         b_denom_1 = h(i,j,k) + d1(i)*ea(i,j,k) + h_neglect
         b1(i) = 1.0 / (b_denom_1 + eb(i,j,k))
@@ -597,27 +614,34 @@ subroutine find_uv_at_h(u, v, h, u_h, v_h, G, GV, US, ea, eb, zero_mix)
                       ea(i,j,k)*u_h(i,j,k-1))*b1(i)
         v_h(i,j,k) = (h(i,j,k) * ((a_n(i)*v(i,J,k)) + (a_s(i)*v(i,J-1,k))) + &
                       ea(i,j,k)*v_h(i,j,k-1))*b1(i)
-      enddo ; enddo
-      do k=nz-1,1,-1 ; do concurrent (i=is:ie)
+      end do
+      enddo
+      do k=nz-1,1,-1
+      do i = is, ie
         u_h(i,j,k) = u_h(i,j,k) + c1(i,k+1)*u_h(i,j,k+1)
         v_h(i,j,k) = v_h(i,j,k) + c1(i,k+1)*v_h(i,j,k+1)
-      enddo ; enddo
+      end do
+      enddo
     elseif (zero_mixing) then
-      do concurrent (i=is:ie)
+      do i = is, ie
         b1(i) = 1.0 / (h(i,j,1) + h_neglect)
         u_h(i,j,1) = (h(i,j,1)*b1(i)) * ((a_e(i)*u(I,j,1)) + (a_w(i)*u(I-1,j,1)))
         v_h(i,j,1) = (h(i,j,1)*b1(i)) * ((a_n(i)*v(i,J,1)) + (a_s(i)*v(i,J-1,1)))
-      enddo
-      do concurrent (k=2:nz, i=is:ie)
+      end do
+      do k = 2, nz
+      do i = is, ie
         b1(i) = 1.0 / (h(i,j,k) + h_neglect)
         u_h(i,j,k) = (h(i,j,k) * ((a_e(i)*u(I,j,k)) + (a_w(i)*u(I-1,j,k)))) * b1(i)
         v_h(i,j,k) = (h(i,j,k) * ((a_n(i)*v(i,J,k)) + (a_s(i)*v(i,J-1,k)))) * b1(i)
-      enddo
+      end do
+      end do
     else
-      do concurrent (k=1:nz, i=is:ie)
+      do k = 1, nz
+      do i = is, ie
         u_h(i,j,k) = (a_e(i)*u(I,j,k)) + (a_w(i)*u(I-1,j,k))
         v_h(i,j,k) = (a_n(i)*v(i,J,k)) + (a_s(i)*v(i,J-1,k))
-      enddo
+      end do
+      end do
     endif
   enddo
   !$omp target exit data map(release: a_w,a_e,a_s,a_n,b1,d1,c1)
@@ -663,7 +687,8 @@ subroutine set_pen_shortwave(optics, fluxes, G, GV, US, CS, opacity, tracer_flow
                      chl_2d(i,j), i, j, G%geoLonT(i,j), G%geoLatT(i,j)
           call MOM_error(FATAL, "MOM_diabatic_aux set_pen_shortwave: "//trim(mesg))
         endif
-      enddo ; enddo
+      enddo
+      enddo
 
       if (CS%id_chl > 0) call post_data(CS%id_chl, chl_2d, CS%diag)
 
@@ -894,16 +919,21 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
     do k=1,nz ; do i=is,ie
       h2d(i,k) = h(i,j,k)
       T2d(i,k) = tv%T(i,j,k)
-    enddo ; enddo
+    enddo
+    enddo
 
     if (calculate_energetics) then
       ! The partial derivatives of specific volume with temperature and
       ! salinity need to be precalculated to avoid having heating of
       ! tiny layers give nonsensical values.
       if (associated(tv%p_surf)) then
-        do i=is,ie ; pres(i) = tv%p_surf(i,j) ; enddo
+        do i=is,ie
+        pres(i) = tv%p_surf(i,j)
+        enddo
       else
-        do i=is,ie ; pres(i) = 0.0 ; enddo
+        do i=is,ie
+        pres(i) = 0.0
+        enddo
       endif
       do k=1,nz
         do i=is,ie
@@ -913,7 +943,9 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
         enddo
         call calculate_specific_vol_derivs(T2d(:,k), tv%S(:,j,k), p_lay(:), &
                  dSV_dT(:,j,k), dSV_dS(:,j,k), tv%eqn_of_state, EOSdom)
-        do i=is,ie ; dSV_dT_2d(i,k) = dSV_dT(i,j,k) ; enddo
+        do i=is,ie
+        dSV_dT_2d(i,k) = dSV_dT(i,j,k)
+        enddo
       enddo
       pen_TKE_2d(:,:) = 0.0
     endif
@@ -1233,7 +1265,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
                 CS%brine_input(i,j,k) = plume_flux*Idt
               endif
 
-            endif ; enddo
+            endif
+            enddo
 
             if (CS%check_salt_bp) then
               salt_after = 0.0
@@ -1327,7 +1360,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
       do k=1,nz ; do i=is,ie
         CS%penSW_diag(i,j,k)     = T2d(i,k)
         CS%penSWflux_diag(i,j,k) = 0.0
-      enddo ; enddo
+      enddo
+      enddo
       k=nz+1 ; do i=is,ie
         CS%penSWflux_diag(i,j,k) = 0.0
       enddo
@@ -1339,7 +1373,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
       k = 1 ! For setting break-points.
       do k=1,nz ; do i=is,ie
         cTKE(i,j,k) = cTKE(i,j,k) + pen_TKE_2d(i,k)
-      enddo ; enddo
+      enddo
+      enddo
     else
       call absorbRemainingSW(G, GV, US, h2d, opacityBand, nsw, optics, j, dt, H_limit_fluxes, &
                              .false., .true., T2d, Pen_SW_bnd)
@@ -1351,7 +1386,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
     do k=1,nz ; do i=is,ie
       h(i,j,k)    = h2d(i,k)
       tv%T(i,j,k) = T2d(i,k)
-    enddo ; enddo
+    enddo
+    enddo
 
     ! Diagnose heating [Q R Z T-1 ~> W m-2] applied to a grid cell from SW penetration
     ! Also diagnose the penetrative SW heat flux at base of layer.
@@ -1361,7 +1397,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
       do k=1,nz ; do i=is,ie
         ! Note that the units of penSW_diag change here, from [C ~> degC] to [Q R Z T-1 ~> W m-2].
         CS%penSW_diag(i,j,k) = (T2d(i,k)-CS%penSW_diag(i,j,k))*h(i,j,k) * Idt * tv%C_p * GV%H_to_RZ
-      enddo ; enddo
+      enddo
+      enddo
 
       ! Perform a cumulative sum upwards from bottom to
       ! diagnose penetrative SW flux at base of tracer cell.
@@ -1372,7 +1409,8 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
       if (CS%id_penSWflux_diag > 0) then
         do k=nz,1,-1 ; do i=is,ie
           CS%penSWflux_diag(i,j,k) = CS%penSW_diag(i,j,k) + CS%penSWflux_diag(i,j,k+1)
-        enddo ; enddo
+        enddo
+        enddo
       endif
 
     endif
@@ -1399,14 +1437,22 @@ subroutine applyBoundaryFluxesInOut(CS, G, GV, US, dt, fluxes, optics, nsw, h, t
       ! call thickness_to_dz(h, tv, dz, j, G, GV)
       ! call sumSWoverBands(G, GV, US, h2d, dz, optics_nbands(optics), optics, j, dt, &
       !                     H_limit_fluxes, .true., pen_SW_bnd_rate, netPen)
-      do i=is,ie ; do nb=1,nsw ; netPen_rate(i) = netPen_rate(i) + pen_SW_bnd_rate(nb,i) ; enddo ; enddo
+      do i=is,ie
+      do nb=1,nsw
+      netPen_rate(i) = netPen_rate(i) + pen_SW_bnd_rate(nb,i)
+      enddo
+      enddo
 
       ! 1. Adjust netSalt to reflect dilution effect of FW flux
       ! 2. Add in the SW heating for purposes of calculating the net
       ! surface buoyancy flux affecting the top layer.
       ! 3. Convert to a buoyancy flux, excluding penetrating SW heating
       !    BGR-Jul 5, 2017: The contribution of SW heating here needs investigated for ePBL.
-      if (associated(tv%p_surf)) then ; do i=is,ie ; SurfPressure(i) = tv%p_surf(i,j) ; enddo ; endif
+      if (associated(tv%p_surf)) then
+      do i=is,ie
+      SurfPressure(i) = tv%p_surf(i,j)
+      enddo
+      endif
 
       if ((.not.GV%Boussinesq) .and. (.not.GV%semi_Boussinesq)) then
         g_conv = GV%g_Earth_Z_T2 * GV%H_to_RZ

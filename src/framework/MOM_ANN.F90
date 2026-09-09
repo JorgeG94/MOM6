@@ -238,7 +238,7 @@ subroutine ANN_end(CS)
 end subroutine ANN_end
 
 !> The default activation function
-pure elemental function activation_fn(x) result (y)
+elemental function activation_fn(x) result (y)
   real, intent(in) :: x !< Scalar input value [nondim]
   real             :: y !< Scalar output value [nondim]
 

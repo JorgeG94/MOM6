@@ -191,7 +191,7 @@ end function nth_root
 !! This function decomposes `a` into the form `s * x * 2**e` so that `x` is
 !! in the desired range.  This is accomplished by computing the integral cube
 !! root of `e` (as a division) and applying the residual to `x`.
-pure subroutine rescale_cbrt(a, x, e_r, s_a)
+subroutine rescale_cbrt(a, x, e_r, s_a)
   !$omp declare target
   real, intent(in) :: a
     !< The number to be rescaled for cube-root computation [A3]
@@ -256,7 +256,7 @@ end subroutine rescale_cbrt
 
 
 !> Undo the rescaling of a real number back to its original base.
-pure function descale(x, e_a, s_a) result(a)
+function descale(x, e_a, s_a) result(a)
   !$omp declare target
   real, intent(in) :: x
     !< The rescaled value which is to be restored in ambiguous units [B]

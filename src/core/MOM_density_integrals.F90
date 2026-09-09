@@ -199,13 +199,21 @@ subroutine int_density_dz_generic_pcm(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
 
   !$omp target enter data map(alloc: z0pres, intx_dpa, inty_dpa, dpa) map(to: T, S)
   if (present(Z_0p)) then
-    do concurrent (j=Jsq:Jeq+1, i=Isq:Ieq+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       z0pres(i,j) = Z_0p(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=HI%jsd:HI%jed, i=HI%isd:HI%ied)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = HI%jsd, HI%jed
+    do i = HI%isd, HI%ied
       z0pres(i,j) = 0.0
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   use_rho_ref = .true.
   if (present(use_inaccurate_form)) then
@@ -313,12 +321,18 @@ subroutine generic_pcm_update_dpa(nii, njj, HI, T, S, z_t, &
     jje = jeb - jsb + 1
     iie = ieb - isb + 1
 
-    do concurrent (jj=1:jje, ii=1:iie, n=1:5) DO_LOCALITY(local(i,j,dz))
+    !$omp target teams distribute parallel do collapse(3) private(i, j, dz)
+    do jj = 1, jje
+    do ii = 1, iie
+    do n = 1, 5
       i=isb+ii-1 ; j=jsb+jj-1
       dz = z_t(i,j) - z_b(i,j)
       T5((ii-1)*5+n,jj) = T(i,j) ; S5((ii-1)*5+n,jj) = S(i,j)
       p5((ii-1)*5+n,jj) = -GxRho*((z_t(i,j) - z0pres(i,j)) - 0.25*real(n-1)*dz)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_h5(1,1) = 1 ; EOSdom_h5(1,2) = 5*iie
     EOSdom_h5(2,1) = 1 ; EOSdom_h5(2,2) = jje
@@ -329,7 +343,9 @@ subroutine generic_pcm_update_dpa(nii, njj, HI, T, S, z_t, &
       call calculate_density(T5, S5, p5, r5, EOS, EOSdom_h5)
     endif
 
-    do concurrent (jj=1:jje, ii=1:iie) DO_LOCALITY(local(i,j,dz,rho_anom))
+    !$omp target teams distribute parallel do collapse(2) private(i, j, dz, rho_anom)
+    do jj = 1, jje
+    do ii = 1, iie
       i=isb+ii-1 ; j=jsb+jj-1
       ! Use Boole's rule to estimate the pressure anomaly change.
       rho_anom = C1_90*( 7.0*(r5((ii-1)*5+1,jj)+r5((ii-1)*5+5,jj)) + &
@@ -343,9 +359,12 @@ subroutine generic_pcm_update_dpa(nii, njj, HI, T, S, z_t, &
       if (present(intz_dpa)) intz_dpa(i,j) = 0.5*G_e*dz**2 * &
             (rho_anom - C1_90*(16.0*(r5((ii-1)*5+4,jj)-r5((ii-1)*5+2,jj)) + &
                                 7.0*(r5((ii-1)*5+5,jj)-r5((ii-1)*5+1,jj))) )
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-  enddo ; enddo
+  enddo
+  enddo
 
   !$omp target exit data map(release: T5, S5, p5, r5)
 
@@ -423,7 +442,9 @@ subroutine generic_pcm_update_intx_dpa(nIIB, njj, HI, T, S, z_t, z_b, bathyT, SS
     jje = jeb - jsb + 1
     IIe = IebB - IsbB + 1
 
-    do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(i,j))
+    !$omp target teams distribute parallel do collapse(2) private(i, j)
+    do jj = 1, jje
+    do II = 1, IIe
       I=IsbB+II-1 ; j=jsb+jj-1
       ! hWght is the distance measure by which the cell is violation of
       ! hydrostatic consistency. For large hWght we bias the interpolation of
@@ -463,7 +484,9 @@ subroutine generic_pcm_update_intx_dpa(nIIB, njj, HI, T, S, z_t, z_b, bathyT, SS
           p15(pos+n,jj) = p15(pos+n-1,jj) + GxRho*0.25*dz_x(m,II,jj)
         enddo
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_q15(1,1) = 1 ; EOSdom_q15(1,2) = 15*IIe
     EOSdom_q15(2,1) = 1 ; EOSdom_q15(2,2) = jje
@@ -474,7 +497,9 @@ subroutine generic_pcm_update_intx_dpa(nIIB, njj, HI, T, S, z_t, z_b, bathyT, SS
       call calculate_density(T15, S15, p15, r15, EOS, EOSdom_q15)
     endif
 
-    do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(i,j,intz))
+    !$omp target teams distribute parallel do collapse(2) private(i, j, intz)
+    do jj = 1, jje
+    do II = 1, IIe
       I=IsbB+II-1 ; j=jsb+jj-1
       intz(1) = dpa(i,j) ; intz(5) = dpa(i+1,j)
       ! Use Boole's rule to estimate the pressure anomaly change.
@@ -496,9 +521,12 @@ subroutine generic_pcm_update_intx_dpa(nIIB, njj, HI, T, S, z_t, z_b, bathyT, SS
       ! Use Boole's rule to integrate the bottom pressure anomaly values in x.
       intx_dpa(i,j) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                              12.0*intz(3))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-  enddo ; enddo
+  enddo
+  enddo
 
   !$omp target exit data map(release: T15, S15, p15, r15, dz_x)
 
@@ -574,7 +602,9 @@ subroutine generic_pcm_update_inty_dpa(nii, nJJB, HI, T, S, z_t, z_b, bathyT, SS
     JebB=min(Jeq,JsbB+nJJB-1) ; ieb = min(ie,isb+nii-1)
     JJe = JebB - JsbB + 1
     iie = ieb - isb + 1
-    do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j))
+    !$omp target teams distribute parallel do collapse(2) private(i, j)
+    do JJ = 1, JJe
+    do ii = 1, iie
       i=isb+ii-1 ; j=JsbB+JJ-1
       ! hWght is the distance measure by which the cell is violation of
       ! hydrostatic consistency. For large hWght we bias the interpolation of
@@ -614,7 +644,9 @@ subroutine generic_pcm_update_inty_dpa(nii, nJJB, HI, T, S, z_t, z_b, bathyT, SS
           p15(pos+n,JJ) = p15(pos+n-1,JJ) + GxRho*0.25*dz_y(m,ii,JJ)
         enddo
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_h15(1,1) = 1 ; EOSdom_h15(1,2) = 15*iie
     EOSdom_h15(2,1) = 1 ; EOSdom_h15(2,2) = JJe
@@ -627,7 +659,9 @@ subroutine generic_pcm_update_inty_dpa(nii, nJJB, HI, T, S, z_t, z_b, bathyT, SS
                              r15, EOS, EOSdom_h15)
     endif
 
-    do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j,intz))
+    !$omp target teams distribute parallel do collapse(2) private(i, j, intz)
+    do JJ = 1, JJe
+    do ii = 1, iie
       i=isb+ii-1 ; j=JsbB+JJ-1
       intz(1) = dpa(i,j) ; intz(5) = dpa(i,j+1)
       ! Use Boole's rule to estimate the pressure anomaly change.
@@ -646,8 +680,11 @@ subroutine generic_pcm_update_inty_dpa(nii, nJJB, HI, T, S, z_t, z_b, bathyT, SS
       ! Use Boole's rule to integrate the values.
       inty_dpa(i,j) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                                        12.0*intz(3))
-    enddo
-  enddo ; enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+  enddo
+  enddo
 
   !$omp target exit data map(release: T15, S15, p15, r15, dz_y)
 
@@ -744,13 +781,21 @@ subroutine int_density_dz_generic_plm(kstart, kend, tv, T_t, T_b, S_t, S_b, e, r
 
   GxRho = G_e * rho_0
   if (present(Z_0p)) then
-    do concurrent (j=Jsq:Jeq+1, i=Isq:Ieq+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       z0pres(i,j) = Z_0p(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=HI%jsd:HI%jed, i=HI%isd:HI%ied)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = HI%jsd, HI%jed
+    do i = HI%isd, HI%ied
       z0pres(i,j) = 0.0
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   massWeightToggle = 0. ; TopWeightToggle = 0.
   if (present(MassWghtInterp)) then
@@ -883,17 +928,26 @@ subroutine generic_plm_update_dpa(niblock, njblock, kstart, kend, tv, T_t, T_b, 
   !$omp target enter data map(alloc: T5, S5, T25, TS5, S25, p5, r5, u5)
 
   ! initialize to 0.0 to ensure garbage isn't read in calculate_density
-  do concurrent (k=kstart:kend, jj=1:njblock, ii=1:5*niblock)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = kstart, kend
+  do jj = 1, njblock
+  do ii = 1, 5*niblock
     T25(ii,jj,k) = 0.0
     TS5(ii,jj,k) = 0.0
     S25(ii,jj,k) = 0.0
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   do jstart=Jsq,Jeq+1,njblock ; do istart=Isq,Ieq+1,niblock
     jend = min(Jeq+1, jstart+njblock-1)
     iend = min(Ieq+1, istart+niblock-1)
 
-    do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = kstart, kend
+    do j = jstart, jend
+    do i = istart, iend
       ii = i-istart+1 ; jj = j-jstart+1
       dz = e(i,j,K) - e(i,j,K+1)
       do n=1,5
@@ -905,7 +959,10 @@ subroutine generic_plm_update_dpa(niblock, njblock, kstart, kend, tv, T_t, T_b, 
       if (use_varT)    T25((ii-1)*5+1:(ii-1)*5+5,jj,k) = tv%varT(i,j,k)
       if (use_covarTS) TS5((ii-1)*5+1:(ii-1)*5+5,jj,k) = tv%covarTS(i,j,k)
       if (use_varS)    S25((ii-1)*5+1:(ii-1)*5+5,jj,k) = tv%varS(i,j,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_h5(1,1) = 1 ; EOSdom_h5(1,2) = 5*(iend-istart+1)
     EOSdom_h5(2,1) = 1 ; EOSdom_h5(2,2) = jend-jstart+1
@@ -921,15 +978,26 @@ subroutine generic_plm_update_dpa(niblock, njblock, kstart, kend, tv, T_t, T_b, 
         call calculate_density(T5, S5, p5, r5, EOS, EOSdom_h5, rho_ref=rho_ref)
       else
         call calculate_density(T5, S5, p5, r5, EOS, EOSdom_h5)
-        do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend, n=1:5)
+        !$omp target teams distribute parallel do collapse(4)
+        do k = kstart, kend
+        do j = jstart, jend
+        do i = istart, iend
+        do n = 1, 5
           ii = i-istart+1 ; jj = j-jstart+1
           u5((ii-1)*5+n,jj,k) = r5((ii-1)*5+n,jj,k) - rho_ref
-        enddo
+        end do
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif
 
     if (use_rho_ref) then
-      do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = kstart, kend
+      do j = jstart, jend
+      do i = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         dz = e(i,j,K) - e(i,j,K+1)
         ! Use Boole's rule to estimate the pressure anomaly change.
@@ -943,9 +1011,15 @@ subroutine generic_plm_update_dpa(niblock, njblock, kstart, kend, tv, T_t, T_b, 
                   (rho_anom - C1_90*(16.0*(r5((ii-1)*5+4,jj,k)-r5((ii-1)*5+2,jj,k)) + &
                                      7.0*(r5((ii-1)*5+5,jj,k)-r5((ii-1)*5+1,jj,k))) )
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = kstart, kend
+      do j = jstart, jend
+      do i = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         dz = e(i,j,K) - e(i,j,K+1)
         ! Use Boole's rule to estimate the pressure anomaly change.
@@ -960,12 +1034,16 @@ subroutine generic_plm_update_dpa(niblock, njblock, kstart, kend, tv, T_t, T_b, 
                   (rho_anom - C1_90*(16.0*(u5((ii-1)*5+4,jj,k)-u5((ii-1)*5+2,jj,k)) + &
                                      7.0*(u5((ii-1)*5+5,jj,k)-u5((ii-1)*5+1,jj,k))) )
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     !$omp target exit data map(release: T5, S5, T25, TS5, S25, p5, r5, u5)
 
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine generic_plm_update_dpa
 
@@ -1058,17 +1136,25 @@ subroutine generic_plm_update_intx_dpa(niblock, njblock, kstart, kend, tv, T_t, 
 
   !$omp target enter data map(alloc: T15, S15, T215, TS15, S215, p15, r15, dz_x)
 
-  do concurrent (k=kstart:kend, jj=1:njblock, ii=1:15*niblock)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = kstart, kend
+  do jj = 1, njblock
+  do ii = 1, 15*niblock
     T215(ii,jj,k) = 0.0
     TS15(ii,jj,k) = 0.0
     S215(ii,jj,k) = 0.0
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   do jstart=HI%jsc,HI%jec,njblock ; do istart=Isq,Ieq,niblock
     jend = min(HI%jec, jstart+njblock-1) ; iend = min(Ieq, istart+niblock-1)
 
-    do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend) &
-        DO_LOCALITY(local(ii,jj,hWght,hWghtTop,hL,hR,iDenom,Ttl,Tbl,Ttr,Tbr,Stl,Sbl,Str,Sbr,w_left,pos))
+    !$omp target teams distribute parallel do collapse(3) private(ii, jj, hWght, hWghtTop, hL, hR, iDenom, Ttl, Tbl, Ttr, Tbr, Stl, Sbl, Str, Sbr, w_left, pos)
+    do k = kstart, kend
+    do j = jstart, jend
+    do i = istart, iend
       ii = i-istart+1 ; jj = j-jstart+1
       ! Corner values of T and S
       ! hWght is the distance measure by which the cell is violation of
@@ -1143,7 +1229,10 @@ subroutine generic_plm_update_intx_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         if (use_covarTS) TS15(pos+1:pos+5,jj,k) = (w_left*tv%covarTS(i,j,k)) + (w_right*tv%covarTS(i+1,j,k))
         if (use_varS) S215(pos+1:pos+5,jj,k) = (w_left*tv%varS(i,j,k)) + (w_right*tv%varS(i+1,j,k))
       enddo
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_q15(1,1) = 1 ; EOSdom_q15(1,2) = 15*(iend-istart+1)
     EOSdom_q15(2,1) = 1 ; EOSdom_q15(2,2) = jend-jstart+1
@@ -1164,7 +1253,10 @@ subroutine generic_plm_update_intx_dpa(niblock, njblock, kstart, kend, tv, T_t, 
 
     ! Use Boole's rule to estimate the pressure anomaly change.
     if (use_rho_ref) then
-      do concurrent(k=kstart:kend, j=jstart:jend, I=istart:iend) DO_LOCALITY(local(intz, pos, ii, jj, m))
+      !$omp target teams distribute parallel do collapse(3) private(intz, pos, ii, jj, m)
+      do k = kstart, kend
+      do j = jstart, jend
+      do I = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         intz(1) = dpa(i,j,k) ; intz(5) = dpa(i+1,j,k)
         do m = 2,4
@@ -1176,9 +1268,15 @@ subroutine generic_plm_update_intx_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         ! Use Boole's rule to integrate the bottom pressure anomaly values in x.
         intx_dpa(I,j,k) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                               12.0*intz(3))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent(k=kstart:kend, j=jstart:jend, I=istart:iend) DO_LOCALITY(local(intz, pos, ii, jj, m))
+      !$omp target teams distribute parallel do collapse(3) private(intz, pos, ii, jj, m)
+      do k = kstart, kend
+      do j = jstart, jend
+      do I = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         intz(1) = dpa(i,j,k) ; intz(5) = dpa(i+1,j,k)
         do m = 2,4
@@ -1190,10 +1288,14 @@ subroutine generic_plm_update_intx_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         ! Use Boole's rule to integrate the bottom pressure anomaly values in x.
         intx_dpa(I,j,k) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                                  12.0*intz(3))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
-  enddo ; enddo
+  enddo
+  enddo
 
   !$omp target exit data map(release: T15, S15, T215, TS15, S215, p15, r15, dz_x)
 
@@ -1288,16 +1390,25 @@ subroutine generic_plm_update_inty_dpa(niblock, njblock, kstart, kend, tv, T_t, 
 
   !$omp target enter data map(alloc: T15, S15, T215, TS15, S215, p15, r15, dz_y)
 
-  do concurrent (k=kstart:kend, jj=1:njblock, ii=1:15*niblock)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = kstart, kend
+  do jj = 1, njblock
+  do ii = 1, 15*niblock
     T215(ii,jj,k) = 0.0
     TS15(ii,jj,k) = 0.0
     S215(ii,jj,k) = 0.0
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   do jstart=Jsq,Jeq,njblock ; do istart=HI%isc,HI%iec,niblock
     jend = min(Jeq, jstart+njblock-1) ; iend = min(HI%iec, istart+niblock-1)
 
-    do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = kstart, kend
+    do j = jstart, jend
+    do i = istart, iend
       ii = i-istart+1 ; jj = j-jstart+1
       ! Corner values of T and S
       ! hWght is the distance measure by which the cell is violation of
@@ -1373,7 +1484,10 @@ subroutine generic_plm_update_inty_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         if (use_covarTS) TS15(pos+1:pos+5,jj,k) = (w_left*tv%covarTS(i,j,k)) + (w_right*tv%covarTS(i,j+1,k))
         if (use_varS) S215(pos+1:pos+5,jj,k) = (w_left*tv%varS(i,j,k)) + (w_right*tv%varS(i,j+1,k))
       enddo
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     EOSdom_h15(1,1) = 1 ; EOSdom_h15(1,2) = 15*(iend-istart+1)
     EOSdom_h15(2,1) = 1 ; EOSdom_h15(2,2) = jend-jstart+1
@@ -1394,7 +1508,10 @@ subroutine generic_plm_update_inty_dpa(niblock, njblock, kstart, kend, tv, T_t, 
 
     ! Use Boole's rule to estimate the pressure anomaly change.
     if (use_rho_ref) then
-      do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend) DO_LOCALITY(local(ii,jj,intz,pos))
+      !$omp target teams distribute parallel do collapse(3) private(ii, jj, intz, pos)
+      do k = kstart, kend
+      do j = jstart, jend
+      do i = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         intz(1) = dpa(i,j,k) ; intz(5) = dpa(i,j+1,k)
         do m = 2,4
@@ -1406,9 +1523,15 @@ subroutine generic_plm_update_inty_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         ! Use Boole's rule to integrate the values.
         inty_dpa(i,J,k) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                               12.0*intz(3))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (k=kstart:kend, j=jstart:jend, i=istart:iend) DO_LOCALITY(local(ii,jj,intz,pos))
+      !$omp target teams distribute parallel do collapse(3) private(ii, jj, intz, pos)
+      do k = kstart, kend
+      do j = jstart, jend
+      do i = istart, iend
         ii = i-istart+1 ; jj = j-jstart+1
         intz(1) = dpa(i,j,k) ; intz(5) = dpa(i,j+1,k)
         do m = 2,4
@@ -1420,9 +1543,13 @@ subroutine generic_plm_update_inty_dpa(niblock, njblock, kstart, kend, tv, T_t, 
         ! Use Boole's rule to integrate the values.
         inty_dpa(i,J,k) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + &
                                  12.0*intz(3))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
-  enddo ; enddo
+  enddo
+  enddo
 
   !$omp target exit data map(release: T15, S15, T215, TS15, S215, p15, r15, dz_y)
 
@@ -1554,7 +1681,8 @@ subroutine int_density_dz_generic_ppm(k, tv, T_t, T_b, S_t, S_b, e, &
   if (present(Z_0p)) then
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
       z0pres(i,j) = Z_0p(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   else
     z0pres(:,:) = 0.0
   endif
@@ -1755,7 +1883,8 @@ subroutine int_density_dz_generic_ppm(k, tv, T_t, T_b, S_t, S_b, e, &
       intx_dpa(I,j) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + 12.0*intz(3))
 
     enddo
-  enddo ; endif
+  enddo
+  endif
 
   ! 3. Compute horizontal integrals in the y direction
   if (present(inty_dpa)) then ; do J=Jsq,Jeq
@@ -1865,7 +1994,8 @@ subroutine int_density_dz_generic_ppm(k, tv, T_t, T_b, S_t, S_b, e, &
       ! Use Boole's rule to integrate the bottom pressure anomaly values in y.
       inty_dpa(i,J) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + 12.0*intz(3))
     enddo
-  enddo ; endif
+  enddo
+  endif
 
 end subroutine int_density_dz_generic_ppm
 
@@ -2153,7 +2283,8 @@ subroutine int_spec_vol_dp_generic_pcm(T, S, p_t, p_b, alpha_ref, HI, EOS, US, d
       intx_dza(i,j) = C1_90*(7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4)) + &
                              12.0*intp(3))
     enddo
-  enddo ; endif
+  enddo
+  endif
 
   if (present(inty_dza)) then ; do J=Jsq,Jeq
     do i=HI%isc,HI%iec
@@ -2217,7 +2348,8 @@ subroutine int_spec_vol_dp_generic_pcm(T, S, p_t, p_b, alpha_ref, HI, EOS, US, d
       inty_dza(i,j) = C1_90*(7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4)) + &
                              12.0*intp(3))
     enddo
-  enddo ; endif
+  enddo
+  endif
 
 end subroutine int_spec_vol_dp_generic_pcm
 
@@ -2442,7 +2574,8 @@ subroutine int_spec_vol_dp_generic_plm(T_t, T_b, S_t, S_b, p_t, p_b, alpha_ref, 
       intx_dza(I,j) = C1_90*((7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4))) + &
                              12.0*intp(3))
     enddo
-  enddo ; endif
+  enddo
+  endif
 
   ! 3. Compute horizontal integrals in the y direction
   if (present(inty_dza)) then ; do J=Jsq,Jeq
@@ -2513,7 +2646,8 @@ subroutine int_spec_vol_dp_generic_plm(T_t, T_b, S_t, S_b, p_t, p_b, alpha_ref, 
       inty_dza(i,J) = C1_90*((7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4))) + &
                              12.0*intp(3))
     enddo
-  enddo ; endif
+  enddo
+  endif
 
 end subroutine int_spec_vol_dp_generic_plm
 
@@ -2588,7 +2722,8 @@ subroutine diagnose_mass_weight_Z(z_t, z_b, bathyT, SSH, dz_neglect, MassWghtInt
     else
       MassWt_u(I,j) = 0.0
     endif
-  enddo ; enddo
+  enddo
+  enddo
 
   ! Calculate MassWt_v
   do J=Jsq,Jeq ; do i=HI%isc,HI%iec
@@ -2613,7 +2748,8 @@ subroutine diagnose_mass_weight_Z(z_t, z_b, bathyT, SSH, dz_neglect, MassWghtInt
     else
       MassWt_v(i,J) = 0.0
     endif
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine diagnose_mass_weight_Z
 
@@ -2696,7 +2832,8 @@ subroutine diagnose_mass_weight_p(p_t, p_b, bathyP, P_surf, dP_neglect, MassWght
     else
       MassWt_u(I,j) = 0.0
     endif
-  enddo ; enddo
+  enddo
+  enddo
 
   ! Calculate MassWt_v
   do J=Jsq,Jeq ; do i=HI%isc,HI%iec
@@ -2724,7 +2861,8 @@ subroutine diagnose_mass_weight_p(p_t, p_b, bathyP, P_surf, dP_neglect, MassWght
     else
       MassWt_v(i,J) = 0.0
     endif
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine diagnose_mass_weight_p
 

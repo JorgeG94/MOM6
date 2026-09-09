@@ -199,7 +199,8 @@ function reproducing_EFP_sum_2d(array, isr, ier, jsr, jer, overflow_check, err, 
         rs = rs - ival*pr(n)
         ints_sum(n) = ints_sum(n) + sgn*ival
       enddo
-    enddo ; enddo
+    enddo
+    enddo
     call carry_overflow(ints_sum, prec_error)
   endif
 
@@ -209,7 +210,11 @@ function reproducing_EFP_sum_2d(array, isr, ier, jsr, jer, overflow_check, err, 
       err = err+2
     if (NaN_error) &
       err = err+4
-    if (err > 0) then ; do n=1,efp_digits ; ints_sum(n) = 0 ; enddo ; endif
+    if (err > 0) then
+    do n=1,efp_digits
+    ints_sum(n) = 0
+    enddo
+    endif
   else
     if (NaN_error) then
       call MOM_error(FATAL, "NaN in input field of reproducing_EFP_sum(_2d).")
@@ -318,7 +323,8 @@ function reproducing_sum_2d(array, isr, ier, jsr, jer, EFP_sum, reproducing, &
     rsum(1) = 0.0
     do j=js,je ; do i=is,ie
       rsum(1) = rsum(1) + descale*array(i,j)
-    enddo ; enddo
+    enddo
+    enddo
     if (do_sum_across_PEs) call sum_across_PEs(rsum,1)
     sum = rsum(1) * I_unscale
 
@@ -440,7 +446,13 @@ function reproducing_sum_3d(array, isr, ier, jsr, jer, sums, EFP_sum, EFP_lay_su
       if (abs(max_mag_term) >= prec_error*pr(1)) err = err+1
       if (overflow_error) err = err+2
       if (NaN_error) err = err+2
-      if (err > 0) then ; do k=1,ke ; do n=1,efp_digits ; ints_sums(n,k) = 0 ; enddo ; enddo ; endif
+      if (err > 0) then
+      do k=1,ke
+      do n=1,efp_digits
+      ints_sums(n,k) = 0
+      enddo
+      enddo
+      endif
     else
       if (NaN_error) call MOM_error(FATAL, "NaN in input field of reproducing_sum(_3d).")
       if (abs(max_mag_term) >= prec_error*pr(1)) then
@@ -461,16 +473,25 @@ function reproducing_sum_3d(array, isr, ier, jsr, jer, sums, EFP_sum, EFP_lay_su
     enddo
     if (present(EFP_lay_sums)) then ; do k=1,ke
       EFP_lay_sums(k)%v(:) = ints_sums(:,k)
-    enddo ; endif
+    enddo
+    endif
 
     if (present(EFP_sum)) then
       EFP_sum%v(:) = 0
-      do k=1,ke ; call increment_ints(EFP_sum%v(:), ints_sums(:,k)) ; enddo
+      do k=1,ke
+      call increment_ints(EFP_sum%v(:), ints_sums(:,k))
+      enddo
     endif
 
     if (debug) then
-      do n=1,efp_digits ; ints_sum(n) = 0 ; enddo
-      do k=1,ke ; do n=1,efp_digits ; ints_sum(n) = ints_sum(n) + ints_sums(n,k) ; enddo ; enddo
+      do n=1,efp_digits
+      ints_sum(n) = 0
+      enddo
+      do k=1,ke
+      do n=1,efp_digits
+      ints_sum(n) = ints_sum(n) + ints_sums(n,k)
+      enddo
+      enddo
       write(mesg,'("3D RS: ", ES24.16, 6 Z17.16)') sum, ints_sum(1:efp_digits)
       call MOM_mesg(mesg, 3)
     endif
@@ -488,7 +509,11 @@ function reproducing_sum_3d(array, isr, ier, jsr, jer, sums, EFP_sum, EFP_lay_su
       if (abs(max_mag_term) >= prec_error*pr(1)) err = err+1
       if (overflow_error) err = err+2
       if (NaN_error) err = err+2
-      if (err > 0) then ; do n=1,efp_digits ; ints_sum(n) = 0 ; enddo ; endif
+      if (err > 0) then
+      do n=1,efp_digits
+      ints_sum(n) = 0
+      enddo
+      endif
     else
       if (NaN_error) call MOM_error(FATAL, "NaN in input field of reproducing_sum(_3d).")
       if (abs(max_mag_term) >= prec_error*pr(1)) then
@@ -516,7 +541,9 @@ function reproducing_sum_3d(array, isr, ier, jsr, jer, sums, EFP_sum, EFP_lay_su
     I_unscale = 0.0 ; if (abs(unscale) > 0.0) I_unscale = 1.0 / unscale
     sum = sum * I_unscale
     if (present(sums)) then
-      do k=1,ke ; sums(k) = sums(k) * I_unscale ; enddo
+      do k=1,ke
+      sums(k) = sums(k) * I_unscale
+      enddo
     endif
   endif
 
@@ -575,7 +602,9 @@ function ints_to_real(ints) result(r)
   integer :: i
 
   r = 0.0
-  do i=1,efp_digits ; r = r + pr(i)*ints(i) ; enddo
+  do i=1,efp_digits
+  r = r + pr(i)*ints(i)
+  enddo
 end function ints_to_real
 
 !> Increment an array of integers that constitutes an extended-fixed-point
@@ -717,10 +746,9 @@ subroutine increment_block_ints(array, is, ie, js, je, descale, ints_sum, &
     block_max_neg = 0.
 
     ! Compute the sum of each block
-    do concurrent (j=jbs:jbe, i=ibs:ibe) &
-        DO_LOCALITY(local(r, e, rmag, lnan, lovf)) &
-        DO_LOCALITY(reduce(+: block_sum)) &
-        DO_LOCALITY(reduce(max: block_max_pos, block_max_neg, inan, iovf))
+    !$omp target teams distribute parallel do collapse(2) private(r, e, rmag, lnan, lovf)
+    do j = jbs, jbe
+    do i = ibs, ibe
 
       ! Convert array(i,j) to EFP form
       r = descale * array(i,j)
@@ -738,7 +766,9 @@ subroutine increment_block_ints(array, is, ie, js, je, descale, ints_sum, &
 
       ! Add the EFP result (including potential carry bits)
       block_sum(:) = block_sum(:) + e(:)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     array_sum(:) = array_sum(:) + block_sum(:)
 
@@ -750,7 +780,8 @@ subroutine increment_block_ints(array, is, ie, js, je, descale, ints_sum, &
     ! Update maximum magnitudes
     max_pos = max(max_pos, block_max_pos)
     max_neg = max(max_neg, block_max_neg)
-  enddo ; enddo
+  enddo
+  enddo
 
   ! Finally, apply the cumulant result
   ints_sum(:) = ints_sum(:) + array_sum(:)
@@ -836,7 +867,8 @@ subroutine carry_overflow(int_sum, prec_error)
     num_carry = int(int_sum(i) * I_prec)
     int_sum(i) = int_sum(i) - num_carry*prec
     int_sum(i-1) = int_sum(i-1) + num_carry
-  endif ; enddo
+  endif
+  enddo
   if (abs(int_sum(1)) > prec_error) then
     overflow_error = .true.
   endif
@@ -860,7 +892,8 @@ subroutine regularize_ints(int_sum)
     num_carry = int(int_sum(i) * I_prec)
     int_sum(i) = int_sum(i) - num_carry*prec
     int_sum(i-1) = int_sum(i-1) + num_carry
-  endif ; enddo
+  endif
+  enddo
 
   ! Determine the sign of the final number.
   positive = .true.
@@ -875,12 +908,14 @@ subroutine regularize_ints(int_sum)
     do i=efp_digits,2,-1 ; if (int_sum(i) < 0) then
       int_sum(i) = int_sum(i) + prec
       int_sum(i-1) = int_sum(i-1) - 1
-    endif ; enddo
+    endif
+    enddo
   else
     do i=efp_digits,2,-1 ; if (int_sum(i) > 0) then
       int_sum(i) = int_sum(i) - prec
       int_sum(i-1) = int_sum(i-1) + 1
-    endif ; enddo
+    endif
+    enddo
   endif
 
 end subroutine regularize_ints
@@ -915,7 +950,9 @@ function EFP_minus(EFP1, EFP2)
                         !! subtracted from the first extended fixed point number
   integer :: i
 
-  do i=1,efp_digits ; EFP_minus%v(i) = -1*EFP2%v(i) ; enddo
+  do i=1,efp_digits
+  EFP_minus%v(i) = -1*EFP2%v(i)
+  enddo
 
   call increment_ints(EFP_minus%v(:), EFP1%v(:))
 end function EFP_minus
@@ -929,7 +966,9 @@ subroutine EFP_assign(EFP1, EFP2)
   ! variable on the RHS (EFP2) to the components of the variable on the LHS
   ! (EFP1).
 
-  do i=1,efp_digits ; EFP1%v(i) = EFP2%v(i) ; enddo
+  do i=1,efp_digits
+  EFP1%v(i) = EFP2%v(i)
+  enddo
 end subroutine EFP_assign
 
 !> Return the real number that an extended-fixed-point number corresponds with
@@ -1007,7 +1046,11 @@ subroutine EFP_list_sum_across_PEs(EFPs, nval, errors)
   ! overflow_error is an overflow error flag for the whole module.
   overflow_error = .false. ; error_found = .false.
 
-  do i=1,nval ; do n=1,efp_digits ; ints(n,i) = EFPs(i)%v(n) ; enddo ; enddo
+  do i=1,nval
+  do n=1,efp_digits
+  ints(n,i) = EFPs(i)%v(n)
+  enddo
+  enddo
 
   call sum_across_PEs(ints(:,:), efp_digits*nval)
 
@@ -1015,7 +1058,9 @@ subroutine EFP_list_sum_across_PEs(EFPs, nval, errors)
   do i=1,nval
     overflow_error = .false.
     call carry_overflow(ints(:,i), prec_error)
-    do n=1,efp_digits ; EFPs(i)%v(n) = ints(n,i) ; enddo
+    do n=1,efp_digits
+    EFPs(i)%v(n) = ints(n,i)
+    enddo
     if (present(errors)) errors(i) = overflow_error
     if (overflow_error) then
       write (mesg,'("EFP_list_sum_across_PEs error at ",i0," val was ",ES12.6, ", prec_error = ",ES12.6)') &
@@ -1055,7 +1100,9 @@ subroutine EFP_val_sum_across_PEs(EFP, error)
   ! overflow_error is an overflow error flag for the whole module.
   overflow_error = .false. ; error_found = .false.
 
-  do n=1,efp_digits ; ints(n) = EFP%v(n) ; enddo
+  do n=1,efp_digits
+  ints(n) = EFP%v(n)
+  enddo
 
   call sum_across_PEs(ints(:), efp_digits)
 
@@ -1063,7 +1110,9 @@ subroutine EFP_val_sum_across_PEs(EFP, error)
 
   overflow_error = .false.
   call carry_overflow(ints(:), prec_error)
-  do n=1,efp_digits ; EFP%v(n) = ints(n) ; enddo
+  do n=1,efp_digits
+  EFP%v(n) = ints(n)
+  enddo
   if (present(error)) error = overflow_error
   if (overflow_error) then
     write (mesg,'("EFP_val_sum_across_PEs error val was ",ES12.6, ", prec_error = ",ES12.6)') &

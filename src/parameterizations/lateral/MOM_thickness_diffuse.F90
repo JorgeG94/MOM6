@@ -228,7 +228,13 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
   !$omp target enter data map(alloc: MEKE%Kh) if(allocated(MEKE%Kh))
 
   if (allocated(MEKE%GM_src)) then
-    do concurrent (j=js:je, i=is:ie) ; MEKE%GM_src(i,j) = 0. ; enddo
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
+    MEKE%GM_src(i,j) = 0.
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   use_VarMix = .false. ; Resoln_scaled = .false. ; use_stored_slopes = .false.
@@ -252,14 +258,22 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
   !$omp target enter data map(alloc: KH_u_CFL, KH_v_CFL, Khth_Loc_u, Khth_Loc_v, int_slope_u, int_slope_v, &
   !$omp                     e, KH_u, KH_v, uhD, vhD) map(to: VarMix, VarMix%res_fn_u, VarMix%res_fn_v)
 
-  do concurrent (j=js:je, I=is-1:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do I = is-1, ie
     KH_u_CFL(I,j) = (0.25*CS%max_Khth_CFL) /  &
       (dt * ((G%IdxCu(I,j)*G%IdxCu(I,j)) + (G%IdyCu(I,j)*G%IdyCu(I,j))))
-  enddo
-  do concurrent (J=js-1:je, i=is:ie)
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(2)
+  do J = js-1, je
+  do i = is, ie
     KH_v_CFL(i,J) = (0.25*CS%max_Khth_CFL) / &
       (dt * ((G%IdxCv(i,J)*G%IdxCv(i,J)) + (G%IdyCv(i,J)*G%IdyCv(i,J))))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! Calculates interface heights, e, in [Z ~> m].
   if (CS%use_meso_sfn_ANN) then
@@ -271,217 +285,381 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
 
   ! Set the diffusivities.
   if (.not. CS%read_khth) then
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = CS%Khth
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else ! use 2d KHTH that was read in from file
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = 0.5 * (CS%khth2d(i,j) + CS%khth2d(i+1,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (use_VarMix) then
     if (use_Visbeck) then
       !$omp target update from( VarMix%L2u, VarMix%SN_u)
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         Khth_loc_u(I,j) = Khth_loc_u(I,j) + &
           CS%KHTH_Slope_Cff*VarMix%L2u(I,j) * VarMix%SN_u(I,j)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
   if (allocated(MEKE%Kh)) then
     if (CS%MEKE_GEOMETRIC) then
       !$omp target update from( VarMix%SN_u)
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         Khth_loc_u(I,j) = Khth_loc_u(I,j) + G%OBCmaskCu(I,j) * CS%MEKE_GEOMETRIC_alpha * &
                           0.5*(MEKE%MEKE(i,j)+MEKE%MEKE(i+1,j)) / &
                           (VarMix%SN_u(I,j) + CS%MEKE_GEOMETRIC_epsilon)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         Khth_loc_u(I,j) = Khth_loc_u(I,j) + MEKE%KhTh_fac*sqrt(MEKE%Kh(i,j)*MEKE%Kh(i+1,j))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
   if (Resoln_scaled) then
     !$omp target update from( VarMix%Res_fn_u )
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = Khth_loc_u(I,j) * VarMix%Res_fn_u(I,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (Depth_scaled) then
     !$omp target update from( VarMix%Depth_fn_u )
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = Khth_loc_u(I,j) * VarMix%Depth_fn_u(I,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (CS%Khth_Max > 0) then
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = max(CS%Khth_Min, min(Khth_loc_u(I,j), CS%Khth_Max))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       Khth_loc_u(I,j) = max(CS%Khth_Min, Khth_loc_u(I,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
-  do concurrent(j=js:je, I=is-1:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do I = is-1, ie
     KH_u(I,j,1) = min(KH_u_CFL(I,j), Khth_loc_u(I,j))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (khth_use_vert_struct) then
     if (CS%full_depth_khth_min) then
-      do concurrent (K=2:nz+1, j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do K = 2, nz+1
+      do j = js, je
+      do I = is-1, ie
         KH_u(I,j,K) = KH_u(I,j,1) * 0.5 * ( VarMix%khth_struct(i,j,k-1) + VarMix%khth_struct(i+1,j,k-1) )
         KH_u(I,j,K) = max(KH_u(I,j,K), CS%Khth_Min)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (K=2:nz+1, j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do K = 2, nz+1
+      do j = js, je
+      do I = is-1, ie
         KH_u(I,j,K) = KH_u(I,j,1) * 0.5 * ( VarMix%khth_struct(i,j,k-1) + VarMix%khth_struct(i+1,j,k-1) )
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   else
-    do concurrent (K=2:nz+1, j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do K = 2, nz+1
+    do j = js, je
+    do I = is-1, ie
       KH_u(I,j,K) = KH_u(I,j,1)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (use_VarMix) then
     if (use_QG_Leith) then
-      do concurrent (k=1:nz, j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do j = js, je
+      do I = is-1, ie
         KH_u(I,j,k) = VarMix%KH_u_QG(I,j,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
   if (CS%use_GME_thickness_diffuse) then
-    do concurrent (k=1:nz+1, j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz+1
+    do j = js, je
+    do I = is-1, ie
       CS%KH_u_GME(I,j,k) = KH_u(I,j,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (.not. CS%read_khth) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = CS%Khth
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else ! read KHTH from file
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = 0.5 * (CS%khth2d(i,j) + CS%khth2d(i,j+1))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (use_VarMix) then
     if (use_Visbeck) then
       !$omp target update from( VarMix%L2v, VarMix%SN_v )
-      do concurrent (J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         Khth_loc_v(i,J) = Khth_loc_v(i,J) + CS%KHTH_Slope_Cff*VarMix%L2v(i,J)*VarMix%SN_v(i,J)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
   if (allocated(MEKE%Kh)) then
     if (CS%MEKE_GEOMETRIC) then
       !$omp target update from( VarMix%SN_v )
-      do concurrent (J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         Khth_loc_v(i,J) = Khth_loc_v(i,J) + G%OBCmaskCv(i,J) * CS%MEKE_GEOMETRIC_alpha * &
                         0.5*(MEKE%MEKE(i,j)+MEKE%MEKE(i,j+1)) / &
                         (VarMix%SN_v(i,J) + CS%MEKE_GEOMETRIC_epsilon)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         Khth_loc_v(i,J) = Khth_loc_v(i,J) + MEKE%KhTh_fac*sqrt(MEKE%Kh(i,j)*MEKE%Kh(i,j+1))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
   if (Resoln_scaled) then
     !$omp target update from( VarMix%Res_fn_v )
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = Khth_loc_v(i,J) * VarMix%Res_fn_v(i,J)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (Depth_scaled) then
     !$omp target update from( VarMix%Depth_fn_v )
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = Khth_loc_v(i,J) * VarMix%Depth_fn_v(i,J)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (CS%Khth_Max > 0) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = max(CS%Khth_Min, min(Khth_loc_v(i,J), CS%Khth_Max))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       Khth_loc_v(i,J) = max(CS%Khth_Min, Khth_loc_v(i,J))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (CS%max_Khth_CFL > 0.0) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       KH_v(i,J,1) = min(KH_v_CFL(i,J), Khth_loc_v(i,J))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (khth_use_vert_struct) then
       if (CS%full_depth_khth_min) then
-      do concurrent (K=2:nz+1, J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do K = 2, nz+1
+      do J = js-1, je
+      do i = is, ie
         KH_v(i,J,K) = KH_v(i,J,1) * 0.5 * ( VarMix%khth_struct(i,j,k-1) + VarMix%khth_struct(i,j+1,k-1) )
         KH_v(i,J,K) = max(KH_v(i,J,K), CS%Khth_Min)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (K=2:nz+1, J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do K = 2, nz+1
+      do J = js-1, je
+      do i = is, ie
         KH_v(i,J,K) = KH_v(i,J,1) * 0.5 * ( VarMix%khth_struct(i,j,k-1) + VarMix%khth_struct(i,j+1,k-1) )
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   else
-    do concurrent (K=2:nz+1, J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do K = 2, nz+1
+    do J = js-1, je
+    do i = is, ie
       KH_v(i,J,K) = KH_v(i,J,1)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (use_VarMix) then
     if (use_QG_Leith) then
-      do concurrent (k=1:nz, J=js-1:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do J = js-1, je
+      do i = is, ie
         KH_v(i,J,k) = VarMix%KH_v_QG(i,J,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
   if (CS%use_GME_thickness_diffuse) then
-    do concurrent (k=1:nz+1, J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz+1
+    do J = js-1, je
+    do i = is, ie
       CS%KH_v_GME(i,J,k) = KH_v(i,J,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (allocated(MEKE%Kh)) then
     if (CS%MEKE_GEOMETRIC) then
       !$omp target update from( VarMix%SN_u, VarMix%SN_v )
       if (CS%MEKE_GEOM_answer_date < 20190101) then
-        do concurrent (j=js:je, i=is:ie)
+        !$omp target teams distribute parallel do collapse(2)
+        do j = js, je
+        do i = is, ie
           ! This does not give bitwise rotational symmetry.
           MEKE%Kh(i,j) = CS%MEKE_GEOMETRIC_alpha * MEKE%MEKE(i,j) / &
                          (0.25*(VarMix%SN_u(I,j)+VarMix%SN_u(I-1,j) + &
                                 VarMix%SN_v(i,J)+VarMix%SN_v(i,J-1)) + &
                           CS%MEKE_GEOMETRIC_epsilon)
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       else
-        do concurrent (j=js:je, i=is:ie)
+        !$omp target teams distribute parallel do collapse(2)
+        do j = js, je
+        do i = is, ie
           ! With the additional parentheses this gives bitwise rotational symmetry.
           MEKE%Kh(i,j) = CS%MEKE_GEOMETRIC_alpha * MEKE%MEKE(i,j) / &
                          (0.25*((VarMix%SN_u(I,j)+VarMix%SN_u(I-1,j)) + &
                                 (VarMix%SN_v(i,J)+VarMix%SN_v(i,J-1))) + &
                           CS%MEKE_GEOMETRIC_epsilon)
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif
   endif
 
-  do concurrent (K=1:nz+1, j=js:je, I=is-1:ie) ; int_slope_u(I,j,K) = 0.0 ; enddo
-  do concurrent (K=1:nz+1, J=js-1:je, i=is:ie) ; int_slope_v(i,J,K) = 0.0 ; enddo
+  !$omp target teams distribute parallel do collapse(3)
+  do K = 1, nz+1
+  do j = js, je
+  do I = is-1, ie
+  int_slope_u(I,j,K) = 0.0
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do K = 1, nz+1
+  do J = js-1, je
+  do i = is, ie
+  int_slope_v(i,J,K) = 0.0
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   !$omp target update from(e, Kh_u, Kh_v, Kh_u_CFL, Kh_v_CFL, int_slope_u, int_slope_v) &
   !$omp                if (CS%detangle_interfaces .or. (CS%Kh_eta_bg > 0.0) .or. (CS%Kh_eta_vel > 0.0) .or. CS%debug)
@@ -564,7 +742,8 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
       !$OMP parallel do default(shared)
       do j=js,je ; do i=is,ie
         MEKE%Rd_dx_h(i,j) = VarMix%Rd_dx_h(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
   endif
 
@@ -602,14 +781,16 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
           ! This expression is a 0/1 mask based on depths where there are thick layers:
           hu(I,j) = 0.0 ; if (h(i,j,k)*h(i+1,j,k) /= 0.0) hu(I,j) = 1.0
           KH_u_lay(I,j) = 0.5*(KH_u(I,j,k)+KH_u(I,j,k+1))
-        enddo ; enddo
+        enddo
+        enddo
         do J=js-1,je ; do i=is,ie
           ! This expression uses harmonic mean thicknesses:
           ! hv(i,J)       = 2.0*h(i,j,k)*h(i,j+1,k)/(h(i,j,k)+h(i,j+1,k)+h_neglect)
           ! This expression is a 0/1 mask based on depths where there are thick layers:
           hv(i,J) = 0.0 ; if (h(i,j,k)*h(i,j+1,k) /= 0.0) hv(i,J) = 1.0
           KH_v_lay(i,J) = 0.5*(KH_v(i,J,k)+KH_v(i,J,k+1))
-        enddo ; enddo
+        enddo
+        enddo
         ! diagnose diffusivity at T-points
         do j=js,je ; do i=is,ie
           Kh_t(i,j,k) = (((hu(I-1,j)*KH_u_lay(i-1,j)) + (hu(I,j)*KH_u_lay(I,j))) + &
@@ -617,7 +798,8 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
                         ((hu(I-1,j)+hu(I,j)) + (hv(i,J-1)+hv(i,J)) + 1.0e-20)
           ! Use this denominator instead if hu and hv are actual thicknesses rather than a 0/1 mask:
           !              ((hu(I-1,j)+hu(I,j)) + (hv(i,J-1)+hv(i,J)) + h_neglect)
-        enddo ; enddo
+        enddo
+        enddo
       enddo
 
       if (CS%Use_KH_in_MEKE) then
@@ -627,12 +809,14 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
           do j=js,je ; do i=is,ie
             MEKE%Kh_diff(i,j) = MEKE%Kh_diff(i,j) + Kh_t(i,j,k) * h(i,j,k)
             htot(i,j) = htot(i,j) + h(i,j,k)
-          enddo ; enddo
+          enddo
+          enddo
         enddo
 
         do j=js,je ; do i=is,ie
           MEKE%Kh_diff(i,j) = MEKE%Kh_diff(i,j) / MAX(CS%MEKE_min_depth_diff, htot(i,j))
-        enddo ; enddo
+        enddo
+        enddo
       endif
 
       if (CS%id_KH_t  > 0) call post_data(CS%id_KH_t,  KH_t,        CS%diag)
@@ -641,19 +825,37 @@ subroutine thickness_diffuse(h, uhtr, vhtr, tv, dt, G, GV, US, MEKE, VarMix, CDp
 
   endif
 
-  do concurrent (k=1:nz, j=js:je, I=is-1:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = is-1, ie
       uhtr(I,j,k) = uhtr(I,j,k) + uhD(I,j,k) * dt
       if (associated(CDp%uhGM)) CDp%uhGM(I,j,k) = uhD(I,j,k)
-  enddo
-  do concurrent (k=1:nz, J=js-1:je, i=is:ie)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = js-1, je
+  do i = is, ie
       vhtr(i,J,k) = vhtr(i,J,k) + vhD(i,J,k) * dt
       if (associated(CDp%vhGM)) CDp%vhGM(i,J,k) = vhD(i,J,k)
-  enddo
-  do concurrent (k=1:nz, j=js:je, i=is:ie)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do i = is, ie
     h(i,j,k) = h(i,j,k) - dt * G%IareaT(i,j) * &
         ((uhD(I,j,k) - uhD(I-1,j,k)) + (vhD(i,J,k) - vhD(i,J-1,k)))
     if (h(i,j,k) < GV%Angstrom_H) h(i,j,k) = GV%Angstrom_H
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! Whenever thickness changes let the diag manager know, target grids
   ! for vertical remapping may need to be regenerated.
@@ -907,14 +1109,26 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
   !$omp target enter data if(associated(tv%p_surf)) map(to: tv%p_surf)
   !$omp target enter data if(allocated(MEKE%GM_src)) map(to: MEKE%GM_src)
 
-  do concurrent (k=1:nz+1, j=G%jsd:G%jed, i=G%isdB:G%iedB)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz+1
+  do j = G%jsd, G%jed
+  do i = G%isdB, G%iedB
     Slope_x_PE(i,j,k) = 0.0
     hN2_x_PE(i,j,k) = 0.0
-  enddo
-  do concurrent (k=1:nz+1, j=G%jsdB:G%jedB, i=G%isd:G%ied)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz+1
+  do j = G%jsdB, G%jedB
+  do i = G%isd, G%ied
     Slope_y_PE(i,j,k) = 0.0
     hN2_y_PE(i,j,k) = 0.0
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   find_work = allocated(MEKE%GM_src)
   find_work = (allocated(CS%GMwork) .or. find_work)
@@ -936,7 +1150,9 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
        "cg1 must be associated when using FGNV streamfunction.")
 
   ! Find the maximum and minimum permitted streamfunction.
-  do concurrent (j=js-1:je+1, i=is-1:ie+1)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-1, je+1
+  do i = is-1, ie+1
     h_avail_rsum(i,j,1) = 0.0
     pres(i,j,1) = 0.0
     if (associated(tv%p_surf)) then ; pres(i,j,1) = tv%p_surf(i,j) ; endif
@@ -945,22 +1161,36 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
     h_avail_rsum(i,j,2) = h_avail(i,j,1)
     h_frac(i,j,1) = 1.0
     pres(i,j,2) = pres(i,j,1) + (GV%g_Earth*GV%H_to_RZ) * h(i,j,1)
-  enddo
-  do concurrent (j=js-1:je+1)
-    do k=2,nz ; do concurrent (i=is-1:ie+1)
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do
+  do j = js-1, je+1
+    do k=2,nz
+    do i = is-1, ie+1
       h_avail(i,j,k) = max(I4dt*G%areaT(i,j)*(h(i,j,k)-GV%Angstrom_H),0.0)
       h_avail_rsum(i,j,k+1) = h_avail_rsum(i,j,k) + h_avail(i,j,k)
       h_frac(i,j,k) = 0.0 ; if (h_avail(i,j,k) > 0.0) &
         h_frac(i,j,k) = h_avail(i,j,k) / h_avail_rsum(i,j,k+1)
       pres(i,j,K+1) = pres(i,j,K) + (GV%g_Earth*GV%H_to_RZ) * h(i,j,k)
-    enddo ; enddo
-  enddo
-  do concurrent (j=js:je, i=is-1:ie)
+    end do
+    enddo
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is-1, ie
     uhtot(I,j) = 0.0 ; Work_u(I,j) = 0.0
-  enddo
-  do concurrent (J=js-1:je, i=is:ie)
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(2)
+  do J = js-1, je
+  do i = is, ie
     vhtot(i,J) = 0.0 ; Work_v(i,J) = 0.0
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (CS%id_sfn_x > 0) then ; diag_sfn_x(:,:,1) = 0.0 ; diag_sfn_x(:,:,nz+1) = 0.0 ; endif
   if (CS%id_sfn_y > 0) then ; diag_sfn_y(:,:,1) = 0.0 ; diag_sfn_y(:,:,nz+1) = 0.0 ; endif
@@ -980,10 +1210,14 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
     EOSdom_u(2,2) = jje
     EOSdom_h1(1,2) = IIe+1
     EOSdom_h1(2,2) = jje
-    do concurrent (jj=1:jje, ii=1:IIe) DO_LOCALITY(local(i,j))
+    !$omp target teams distribute parallel do collapse(2) private(i, j)
+    do jj = 1, jje
+    do ii = 1, IIe
       j = jsb + jj - 1 ; i = IsbB + ii - 1
       dzN2_u(ii,jj,1) = 0. ; dzN2_u(ii,jj,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     ! below k loop is a performance bottleneck for GPU. However, cannot safely parallelize k
     ! without possibly changing answers:
     ! when calc_derivates changes from .true. to .false. (due to k < nk_linear), drdjA/B and drdkL/R
@@ -1000,22 +1234,30 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
 
       ! Calculate the zonal fluxes and gradients.
       if (calc_derivatives) then
-        do concurrent (jj=1:jje, ii=1:IIe) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, jje
+        do ii = 1, IIe
           j = jsb + jj - 1 ; i = IsbB + ii - 1
           pres_u(ii,jj) = 0.5*(pres(i,j,k) + pres(i+1,j,k))
           T_u(ii,jj) = 0.25*((T(i,j,k) + T(i+1,j,k)) + (T(i,j,k-1) + T(i+1,j,k-1)))
           S_u(ii,jj) = 0.25*((S(i,j,k) + S(i+1,j,k)) + (S(i,j,k-1) + S(i+1,j,k-1)))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
         call calculate_density_derivs(T_u, S_u, pres_u, drho_dT_u, drho_dS_u, &
                                       tv%eqn_of_state, EOSdom_u)
       endif
       if (use_stanley) then
-        do concurrent (jj=1:jje, ii=1:IIe+1) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, jje
+        do ii = 1, IIe+1
           j = jsb + jj - 1 ; i = IsbB + ii - 1
           pres_h(ii,jj) = pres(i,j,K)
           T_h(ii,jj) = 0.5*(T(i,j,k) + T(i,j,k-1))
           S_h(ii,jj) = 0.5*(S(i,j,k) + S(i,j,k-1))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
 
         ! The second line below would correspond to arguments
         !            drho_dS_dS, drho_dS_dT, drho_dT_dT, drho_dS_dP, drho_dT_dP, &
@@ -1031,8 +1273,9 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
       ! loop might consume/update drdiA/B and drdkL/R.
       ! Adding variables to local_init and local enables parallelization, but may change
       ! answers.
-      do concurrent (jj=1:jje, II=1:IIe) &
-        DO_LOCALITY(local_init(drdiA,drdiB,drdkL,drdkR) local(drdz,hg2A,hg2B,haA,haB,I,j))
+      !$omp target teams distribute parallel do collapse(2) private(drdz, hg2A, hg2B, haA, haB, I, j)
+      do jj = 1, jje
+      do II = 1, IIe
         j = jsb + jj - 1 ; I = IsbB + II - 1
         if (calc_derivatives) then
           ! Estimate the horizontal density gradients along layers.
@@ -1211,20 +1454,31 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
           Sfn_unlim_u(II,jj,K) = 0.
         endif ! if (k > nk_linear)
         if (CS%id_sfn_unlim_x>0) diag_sfn_unlim_x(I,j,K) = Sfn_unlim_u(II,jj,K)
-      enddo ! i-loop
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     enddo ! k-loop
 
     if (CS%use_FGNV_streamfn) then
-      do concurrent (k=1:nz, jj=1:jje, II=1:IIe, &
-                     G%OBCmaskCu(IsbB+II-1,jsb+jj-1)>0.) DO_LOCALITY(local(I,j))
+      !$omp target teams distribute parallel do collapse(3) private(I, j)
+      do k = 1, nz
+      do jj = 1, jje
+      do II = 1, IIe
+      if ((G%OBCmaskCu(IsbB+II-1,jsb+jj-1)>0.)) then
         j = jsb + jj - 1 ; I = IsbB + II - 1
         dz_harm = max( dz_neglect, &
               2. * dz(i,j,k) * dz(i+1,j,k) / ( ( dz(i,j,k) + dz(i+1,j,k) ) + dz_neglect ) )
         c2_dz_u(II,jj,k) = CS%FGNV_scale * ( 0.5*( cg1(i,j) + cg1(i+1,j) ) )**2 / dz_harm
-      enddo
+      end if
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       ! Solve an elliptic equation for the streamfunction following Ferrari et al., 2010.
-      do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(I,j))
+      !$omp target teams distribute parallel do collapse(2) private(I, j)
+      do jj = 1, jje
+      do II = 1, IIe
         j = jsb + jj - 1 ; I = IsbB + II - 1
         if (G%OBCmaskCu(I,j)>0.) then
           do K=2,nz
@@ -1237,11 +1491,15 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
             Sfn_unlim_u(II,jj,K) = 0.
           enddo
         endif
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
-    do concurrent (jj=1:jje) DO_LOCALITY(local(j))
+    !$omp target teams distribute parallel do private(j, I)
+    do jj = 1, jje
       j = jsb + jj - 1
-      do K=nz,2,-1 ; do concurrent (II=1:IIe) DO_LOCALITY(local(I))
+      do K=nz,2,-1
+      do II = 1, IIe
         I = IsbB + II - 1
 
         if (allocated(tv%SpV_avg) .and. (find_work .or. (k > nk_linear)) ) then
@@ -1328,9 +1586,12 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
               ((e(i,j,K) + e(i,j,K+1)) + (e(i+1,j,K) + e(i+1,j,K+1))) )
         endif
 
-      enddo ; enddo
-    enddo ! end of k-loop
-  enddo ; enddo ! end of ijblock-loop
+      end do
+      enddo
+    end do
+    !$omp end target teams distribute parallel do
+  enddo
+  enddo  ! end of ijblock-loop
 
   ! Calculate the meridional fluxes and gradients.
 
@@ -1341,10 +1602,14 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
     JJe = JebB-JsbB+1
     EOSdom_v(1,2) = iie
     EOSdom_v(2,2) = JJe
-    do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,J))
+    !$omp target teams distribute parallel do collapse(2) private(i, J)
+    do JJ = 1, JJe
+    do ii = 1, iie
       J = JsbB + JJ - 1 ; i = isb + ii - 1
       dzN2_v(ii,JJ,1) = 0. ; dzN2_v(ii,JJ,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     ! below k loop is a performance bottleneck for GPU. However, cannot safely parallelize k
     ! without possibly changing answers:
     ! when calc_derivates changes from .true. to .false. (due to k < nk_linear), drdjA/B and drdkL/R
@@ -1360,17 +1625,23 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
          (find_work .or. .not. present_slope_y .or. CS%use_FGNV_streamfn .or. use_stanley)
 
       if (calc_derivatives) then
-        do concurrent (jj=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, JJe
+        do ii = 1, iie
           j = JsbB + jj - 1 ; i = isb + ii - 1
           pres_v(ii,JJ) = 0.5*(pres(i,j,K) + pres(i,j+1,K))
           T_v(ii,JJ) = 0.25*((T(i,j,k) + T(i,j+1,k)) + (T(i,j,k-1) + T(i,j+1,k-1)))
           S_v(ii,JJ) = 0.25*((S(i,j,k) + S(i,j+1,k)) + (S(i,j,k-1) + S(i,j+1,k-1)))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
         call calculate_density_derivs(T_v, S_v, pres_v, drho_dT_v, drho_dS_v, &
                                       tv%eqn_of_state, EOSdom_v)
       endif
       if (use_stanley) then
-        do concurrent (jj=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, JJe
+        do ii = 1, iie
           j = JsbB + jj - 1 ; i = isb + ii - 1
           pres_h(ii,JJ) = pres(i,j,K)
           T_h(ii,JJ) = 0.5*(T(i,j,k) + T(i,j,k-1))
@@ -1379,7 +1650,9 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
           pres_hr(ii,JJ) = pres(i,j+1,K)
           T_hr(ii,JJ) = 0.5*(T(i,j+1,k) + T(i,j+1,k-1))
           S_hr(ii,JJ) = 0.5*(S(i,j+1,k) + S(i,j+1,k-1))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
 
         ! The second line below would correspond to arguments
         !            drho_dS_dS, drho_dS_dT, drho_dT_dT, drho_dS_dP, drho_dT_dP, &
@@ -1390,8 +1663,9 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
                      scrap, scrap, drho_dT_dT_hr, scrap, scrap, &
                      tv%eqn_of_state, EOSdom_v)
       endif
-      do concurrent (jj=1:JJe, ii=1:iie) &
-        DO_LOCALITY(local_init(drdjA,drdjB,drdkL,drdkR) local(i,j))
+      !$omp target teams distribute parallel do collapse(2) private(i, j)
+      do jj = 1, JJe
+      do ii = 1, iie
         j = JsbB + jj - 1 ; i = isb + ii - 1
         if (calc_derivatives) then
           ! Estimate the horizontal density gradients along layers.
@@ -1571,20 +1845,31 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
           Sfn_unlim_v(ii,JJ,K) = 0.
         endif ! if (k > nk_linear)
         if (CS%id_sfn_unlim_y>0) diag_sfn_unlim_y(i,J,K) = Sfn_unlim_v(ii,JJ,K)
-      enddo ! (J,i) concurrent loop
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     enddo ! k-loop
 
     if (CS%use_FGNV_streamfn) then
-      do concurrent (k=1:nz, JJ=1:JJe, ii=1:iie, &
-                     G%OBCmaskCv(isb+ii-1,JsbB+JJ-1)>0.) DO_LOCALITY(local(i,J))
+      !$omp target teams distribute parallel do collapse(3) private(i, J)
+      do k = 1, nz
+      do JJ = 1, JJe
+      do ii = 1, iie
+      if ((G%OBCmaskCv(isb+ii-1,JsbB+JJ-1)>0.)) then
         J = JsbB + JJ - 1 ; i = isb + ii - 1
         dz_harm = max( dz_neglect, &
               2. * dz(i,j,k) * dz(i,j+1,k) / ( ( dz(i,j,k) + dz(i,j+1,k) ) + dz_neglect ) )
         c2_dz_v(ii,JJ,k) = CS%FGNV_scale * ( 0.5*( cg1(i,j) + cg1(i,j+1) ) )**2 / dz_harm
-      enddo
+      end if
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       ! Solve an elliptic equation for the streamfunction following Ferrari et al., 2010.
-      do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,J))
+      !$omp target teams distribute parallel do collapse(2) private(i, J)
+      do JJ = 1, JJe
+      do ii = 1, iie
         J = JsbB + JJ - 1 ; i = isb + ii - 1
         if (G%OBCmaskCv(i,J)>0.) then
           do K=2,nz
@@ -1596,12 +1881,16 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
             Sfn_unlim_v(ii,JJ,K) = 0.
           enddo
         endif
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
-    do concurrent (JJ=1:JJe) DO_LOCALITY(local(J))
+    !$omp target teams distribute parallel do private(J, i)
+    do JJ = 1, JJe
       J = JsbB + JJ - 1
-      do K=nz,2,-1 ; do concurrent (ii=1:iie) DO_LOCALITY(local(i))
+      do K=nz,2,-1
+      do ii = 1, iie
         i = isb + ii - 1
         if (allocated(tv%SpV_avg) .and. (find_work .or. (k > nk_linear)) ) then
           Rho_avg = ( ((h(i,j,k) + h(i,j,k-1)) + (h(i,j+1,k) + h(i,j+1,k-1))) + 4.0*hn_2 ) / &
@@ -1685,14 +1974,29 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
              ((e(i,j,K) + e(i,j,K+1)) + (e(i,j+1,K) + e(i,j+1,K+1))) )
         endif
 
-      enddo ; enddo
-    enddo ! end of k-loop
-  enddo ; enddo ! end of ijblock-loop
+      end do
+      enddo
+    end do
+    !$omp end target teams distribute parallel do
+  enddo
+  enddo  ! end of ijblock-loop
 
   ! In layer 1, enforce the boundary conditions that Sfn(z=0) = 0.0
   if (.not.find_work .or. .not.(use_EOS)) then
-    do concurrent (j=js:je, I=is-1:ie) ; uhD(I,j,1) = -uhtot(I,j) ; enddo
-    do concurrent (J=js-1:je, i=is:ie) ; vhD(i,J,1) = -vhtot(i,J) ; enddo
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
+    uhD(I,j,1) = -uhtot(I,j)
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
+    vhD(i,J,1) = -vhtot(i,J)
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
     do jsb=js,je,njj ; do IsbB=is-1,ie,nIIB-1
       IebB = min(IsbB+nIIB-2, ie)
@@ -1700,17 +2004,23 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
       IIe = IebB-IsbB+1
       jje = jeb-jsb+1
       if (use_EOS) then
-        do concurrent (jj=1:jje, ii=1:IIe) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, jje
+        do ii = 1, IIe
           j = jsb + jj - 1 ; i = IsbB + ii - 1
           pres_u(ii,jj) = 0.5*(pres(i,j,1) + pres(i+1,j,1))
           T_u(ii,jj) = 0.5*(T(i,j,1) + T(i+1,j,1))
           S_u(ii,jj) = 0.5*(S(i,j,1) + S(i+1,j,1))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
         call calculate_density_derivs(T_u, S_u, pres_u, drho_dT_u, drho_dS_u, &
                                       tv%eqn_of_state, reshape([1, 1, &
                                           IIe, jje], [2,2]))
       endif
-      do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(I,j))
+      !$omp target teams distribute parallel do collapse(2) private(I, j)
+      do jj = 1, jje
+      do II = 1, IIe
         j = jsb + jj - 1 ; I = IsbB + II - 1
         uhD(I,j,1) = -uhtot(I,j)
 
@@ -1733,8 +2043,11 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
               ( (uhD(I,j,1) * drdiB) * 0.25 * &
                 ((e(i,j,1) + e(i,j,2)) + (e(i+1,j,1) + e(i+1,j,2))) )
         endif
-      enddo
-    enddo ; enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+    enddo
+    enddo
 
     do JsbB=js-1,je,nJJB ; do isb=is,ie,nii
       ieb = min(isb+nii-1, ie)
@@ -1742,17 +2055,23 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
       iie = ieb-isb+1
       JJe = JebB-JsbB+1
       if (use_EOS) then
-        do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,J))
+        !$omp target teams distribute parallel do collapse(2) private(i, J)
+        do JJ = 1, JJe
+        do ii = 1, iie
           J = JsbB + JJ - 1 ; i = isb + ii - 1
           pres_v(ii,JJ) = 0.5*(pres(i,j,1) + pres(i,j+1,1))
           T_v(ii,JJ) = 0.5*(T(i,j,1) + T(i,j+1,1))
           S_v(ii,JJ) = 0.5*(S(i,j,1) + S(i,j+1,1))
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
         call calculate_density_derivs(T_v, S_v, pres_v, drho_dT_v, drho_dS_v, &
                                       tv%eqn_of_state, reshape([1, 1, &
                                           iie, JJe], [2,2]))
       endif
-      do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,J))
+      !$omp target teams distribute parallel do collapse(2) private(i, J)
+      do JJ = 1, JJe
+      do ii = 1, iie
         J = JsbB + JJ - 1 ; i = isb + ii - 1
         vhD(i,J,1) = -vhtot(i,J)
 
@@ -1769,11 +2088,17 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
         Work_v(i,J) = Work_v(i,J) - G_scale * &
             ( (vhD(i,J,1) * drdjB) * 0.25 * &
               ((e(i,j,1) + e(i,j,2)) + (e(i,j+1,1) + e(i,j+1,2))) )
-      enddo
-    enddo ; enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+    enddo
+    enddo
   endif
 
-  if (find_work) then ; do concurrent (J=js:je, i=is:ie)
+  if (find_work) then
+  !$omp target teams distribute parallel do collapse(2)
+  do J = js, je
+  do i = is, ie
     ! Note that the units of Work_v and Work_u are [R Z L4 T-3 ~> W], while Work_h is in [R Z L2 T-3 ~> W m-2].
     Work_h = 0.5 * G%IareaT(i,j) * &
       ((Work_u(I-1,j) + Work_u(I,j)) + (Work_v(i,J-1) + Work_v(i,J)))
@@ -1789,36 +2114,57 @@ subroutine thickness_diffuse_full(h, e, Kh_u, Kh_v, tv, uhD, vhD, cg1, dt, G, GV
       enddo
       skeb_ebt_norm2(i,j) = GV%H_to_RZ * (skeb_ebt_norm2(i,j) + h_neglect)
     endif
-  enddo ; endif
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  endif
 
   if (skeb_use_gm) then
     ! This block spreads the GM work down through the column using the ebt vertical structure, squared.
     ! Note the sign convention.
-    do concurrent (k=1:nz, j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = js, je
+    do i = is, ie
       STOCH%skeb_diss(i,j,k) = STOCH%skeb_diss(i,j,k) - skeb_gm_work(i,j) * &
                                VarMix%ebt_struct(i,j,k)**2 / skeb_ebt_norm2(i,j)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (find_work .and. CS%GM_src_alt) then ; if (allocated(MEKE%GM_src)) then
     if (CS%MEKE_src_answer_date >= 20240601) then
-      do concurrent (j=js:je, i=is:ie) ; do k=nz,1,-1
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
+      do k=nz,1,-1
         PE_release_h = -0.25 * GV%H_to_RZ * &
                          ( ((KH_u(I,j,k)*(Slope_x_PE(I,j,k)**2) * hN2_x_PE(I,j,k)) + &
                             (Kh_u(I-1,j,k)*(Slope_x_PE(I-1,j,k)**2) * hN2_x_PE(I-1,j,k))) + &
                            ((Kh_v(i,J,k)*(Slope_y_PE(i,J,k)**2) * hN2_y_PE(i,J,k)) + &
                             (Kh_v(i,J-1,k)*(Slope_y_PE(i,J-1,k)**2) * hN2_y_PE(i,J-1,k))) )
         MEKE%GM_src(i,j) = MEKE%GM_src(i,j) + PE_release_h
-      enddo ; enddo
+      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent(j=js:je, i=is:ie) ; do k=nz,1,-1
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
+      do k=nz,1,-1
         PE_release_h = -0.25 * GV%H_to_RZ * &
                            ((KH_u(I,j,k)*(Slope_x_PE(I,j,k)**2) * hN2_x_PE(I,j,k)) + &
                             (Kh_u(I-1,j,k)*(Slope_x_PE(I-1,j,k)**2) * hN2_x_PE(I-1,j,k)) + &
                             (Kh_v(i,J,k)*(Slope_y_PE(i,J,k)**2) * hN2_y_PE(i,J,k)) + &
                             (Kh_v(i,J-1,k)*(Slope_y_PE(i,J-1,k)**2) * hN2_y_PE(i,J-1,k)))
         MEKE%GM_src(i,j) = MEKE%GM_src(i,j) + PE_release_h
-      enddo ; enddo
+      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (CS%debug) then
@@ -1927,13 +2273,19 @@ subroutine add_interface_Kh(G, GV, US, CS, Kh_u, Kh_v, Kh_u_CFL, Kh_v_CFL, int_s
     int_slope_u(I,j,K) = (int_slope_u(I,j,K)*Kh_u(I,j,K) + CS%Kh_eta_u(I,j)) / &
                          (Kh_u(I,j,K) + CS%Kh_eta_u(I,j))
     Kh_u(I,j,K) = min(Kh_u(I,j,K) + CS%Kh_eta_u(I,j), Kh_u_CFL(I,j))
-  endif ; enddo ; enddo ; enddo
+  endif
+  enddo
+  enddo
+  enddo
 
   do k=1,nz+1 ; do J=js-1,je ; do i=is,ie ; if (CS%Kh_eta_v(i,J) > 0.0) then
     int_slope_v(i,J,K) = (int_slope_v(i,J,K)*Kh_v(i,J,K) + CS%Kh_eta_v(i,J)) / &
                          (Kh_v(i,J,K) + CS%Kh_eta_v(i,J))
     Kh_v(i,J,K) = min(Kh_v(i,J,K) + CS%Kh_eta_v(i,J), Kh_v_CFL(i,J))
-  endif ; enddo ; enddo ; enddo
+  endif
+  enddo
+  enddo
+  enddo
 
 end subroutine add_interface_Kh
 
@@ -2056,23 +2408,29 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
 
   do j=js-1,je+1 ; do i=is-1,ie+1
     de_top(i,j,k_top) = 0.0 ; de_bot(i,j) = 0.0
-  enddo ; enddo
+  enddo
+  enddo
   do k=k_top+1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
     de_top(i,j,k) = de_top(i,j,k-1) + h(i,j,k-1)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
 
   do j=js,je ; do I=is-1,ie
     Kh_lay_u(I,j,nz) = 0.0 ; Kh_lay_u(I,j,k_top) = 0.0
-  enddo ; enddo
+  enddo
+  enddo
   do J=js-1,je ; do i=is,ie
     Kh_lay_v(i,J,nz) = 0.0 ; Kh_lay_v(i,J,k_top) = 0.0
-  enddo ; enddo
+  enddo
+  enddo
 
   do k=nz-1,k_top+1,-1
     ! Find the diffusivities associated with each layer.
     do j=js-1,je+1 ; do i=is-1,ie+1
       de_bot(i,j) = de_bot(i,j) + h(i,j,k+1)
-    enddo ; enddo
+    enddo
+    enddo
 
     do j=js,je ; do I=is-1,ie ; if (G%OBCmaskCu(I,j) > 0.0) then
       if (h(i,j,k) > h(i+1,j,k)) then
@@ -2084,7 +2442,9 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
       endif
       jag_Rat = (h2 - h1)**2 / (h2 + h1 + h_neglect)**2
       KH_lay_u(I,j,k) = (Kh_scale * KH_u_CFL(I,j)) * jag_Rat**2
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
 
     do J=js-1,je ; do i=is,ie ; if (G%OBCmaskCv(i,J) > 0.0) then
       if (h(i,j,k) > h(i,j+1,k)) then
@@ -2096,7 +2456,9 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
       endif
       jag_Rat = (h2 - h1)**2 / (h2 + h1 + h_neglect)**2
       KH_lay_v(i,J,k) = (Kh_scale * KH_v_CFL(i,J)) * jag_Rat**2
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
   enddo
 
   ! Limit the diffusivities
@@ -2119,7 +2481,8 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
           Kh_bg(I,K) = KH_u(I,j,K) ; Kh(I,K) = Kh_bg(I,K)
           Kh_min_max_p(I,K) = Kh_bg(I,K) ; Kh_min_max_m(I,K) = Kh_bg(I,K)
           Kh_detangle(I,K) = 0.0
-        enddo ; enddo
+        enddo
+        enddo
       else ! This is a v-column.
         do i=ish,ie
           do_i(i) = (G%OBCmaskCv(i,J) > 0.0) ; Kh_Max_max(I) = KH_v_CFL(i,J)
@@ -2128,7 +2491,8 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
           Kh_bg(I,K) = KH_v(I,j,K) ; Kh(I,K) = Kh_bg(I,K)
           Kh_min_max_p(I,K) = Kh_bg(I,K) ; Kh_min_max_m(I,K) = Kh_bg(I,K)
           Kh_detangle(I,K) = 0.0
-        enddo ; enddo
+        enddo
+        enddo
       endif
 
       ! Determine the limits on the diffusivities.
@@ -2239,7 +2603,9 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
             Kh_max_p(I,K) = Rsl ; Kh0_max_p(I,K) = adH * I_sl
           endif
         endif
-      endif ; enddo ; enddo ! I-loop & k-loop
+      endif
+      enddo
+      enddo  ! I-loop & k-loop
 
       do k=k_top,nz+1,nz+1-k_top ; do i=ish,ie ; if (do_i(i)) then
         ! The diffusivities at k_top and nz+1 are both fixed.
@@ -2249,7 +2615,9 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
         Kh_max_p(I,k) = 0.0 ; Kh0_max_p(I,k) = 0.0
         Kh_min_max_p(I,K) = Kh_bg(I,K)
         Kh_min_max_m(I,K) = Kh_bg(I,K)
-      endif ; enddo ; enddo ! I-loop and k_top/nz+1 loop
+      endif
+      enddo
+      enddo  ! I-loop and k_top/nz+1 loop
 
       ! Search for Kh that satisfy...
       !    Kh(I,K) >= Kh_min_m(I,K)*Kh(I,K-1) + Kh0_min_m(I,K)
@@ -2265,14 +2633,18 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
 
         if (Kh0_max_m(I,K) > Kh_bg(I,K)) Kh(I,K) = min(Kh(I,K), Kh0_max_m(I,K))
         if (Kh0_max_p(I,K) > Kh_bg(I,K)) Kh(I,K) = min(Kh(I,K), Kh0_max_p(I,K))
-      endif ; enddo ; enddo ! I-loop & k-loop
+      endif
+      enddo
+      enddo  ! I-loop & k-loop
       ! This is still true... do i=ish,ie ; Kh(I,nz+1) = Kh_bg(I,nz+1) ; enddo
       do K=nz,k_top+1,-1 ; do i=ish,ie ; if (do_i(i)) then
         Kh(I,k) = max(Kh(I,K), min(Kh_min_p(I,K)*Kh(I,K+1) + Kh0_min_p(I,K), Kh(I,K+1)))
 
         Kh_Max = max(Kh_min_max_p(I,K), Kh_max_p(I,K)*Kh(I,K+1) + Kh0_max_p(I,K))
         Kh(I,k) = min(Kh(I,k), Kh_Max)
-      endif ; enddo ; enddo ! I-loop & k-loop
+      endif
+      enddo
+      enddo  ! I-loop & k-loop
       !  All non-zero min constraints on one diffusivity are max constraints on
       ! another layer, so the min constraints can now be discounted.
 
@@ -2280,7 +2652,9 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
         do K=k_top+1,nz ; do i=ish,ie ; if (do_i(i)) then
           Kh_Max = max(Kh_min_max_m(I,K), Kh_max_m(I,K)*Kh(I,K-1) + Kh0_max_m(I,K))
           if (Kh(I,k) > Kh_Max) Kh(I,k) = Kh_Max
-        endif ; enddo ; enddo  ! i- and K-loops
+        endif
+        enddo
+        enddo  ! i- and K-loops
 
       ! This code tests the solutions...
 !     do i=ish,ie
@@ -2338,7 +2712,8 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
             int_slope_u(I,j,K) = dKh / Kh(I,K)
             KH_u(I,j,K) = Kh(I,K)
           endif
-        enddo ; enddo
+        enddo
+        enddo
       else ! This is a v-column.
         do K=k_top+1,nz ; do i=ish,ie
           if (Kh(i,K) > KH_v(i,J,K)) then
@@ -2346,7 +2721,8 @@ subroutine add_detangling_Kh(h, e, Kh_u, Kh_v, KH_u_CFL, KH_v_CFL, tv, dt, G, GV
             int_slope_v(i,J,K) = dKh / Kh(i,K)
             KH_v(i,J,K) = Kh(i,K)
           endif
-        enddo ; enddo
+        enddo
+        enddo
       endif
 
     enddo ! j-loop
@@ -2482,11 +2858,13 @@ subroutine thickness_diffuse_init(Time, G, GV, US, param_file, diag, CDp, CS)
     do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
       grid_sp = sqrt((2.0*G%dxCu(I,j)**2 * G%dyCu(I,j)**2) / ((G%dxCu(I,j)**2) + (G%dyCu(I,j)**2)))
       CS%Kh_eta_u(I,j) = G%OBCmaskCu(I,j) * MAX(0.0, CS%Kh_eta_bg + CS%Kh_eta_vel * grid_sp)
-    enddo ; enddo
+    enddo
+    enddo
     do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
       grid_sp = sqrt((2.0*G%dxCv(i,J)**2 * G%dyCv(i,J)**2) / ((G%dxCv(i,J)**2) + (G%dyCv(i,J)**2)))
       CS%Kh_eta_v(i,J) = G%OBCmaskCv(i,J) * MAX(0.0, CS%Kh_eta_bg + CS%Kh_eta_vel * grid_sp)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (CS%max_Khth_CFL < 0.0) CS%max_Khth_CFL = 0.0
@@ -2713,11 +3091,15 @@ subroutine thickness_diffuse_get_KH(CS, KH_u_GME, KH_v_GME, G, GV)
 
   do k=1,GV%ke+1 ; do j = G%jsc, G%jec ; do I = G%isc-1, G%iec
     KH_u_GME(I,j,k) = CS%KH_u_GME(I,j,k)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
 
   do k=1,GV%ke+1 ; do J = G%jsc-1, G%jec ; do i = G%isc, G%iec
     KH_v_GME(i,J,k) = CS%KH_v_GME(i,J,k)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
 
 end subroutine thickness_diffuse_get_KH
 

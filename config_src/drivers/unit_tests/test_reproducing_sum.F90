@@ -75,7 +75,8 @@ use MOM_hor_index, only : hor_index_type, hor_index_init
     ! Actual round off error for adding tot_std + array(i,j)
     error_bound = error_bound + max( abs(tot_std), abs(array(i,j)) ) * epsilon(error_bound)
     tot_std = tot_std + array(i,j)
-  enddo ; enddo
+  enddo
+  enddo
   call sum_across_PEs( error_bound )
   call sum_across_PEs( tot_std )
   N = n_global(1) * n_global(2)
@@ -108,7 +109,8 @@ use MOM_hor_index, only : hor_index_type, hor_index_init
     jg = j + HI%jdg_offset - 1 ! 0 .. Nj-1
     ig = i + HI%idg_offset - 1 ! 0 .. Ni-1
     array(i,j) = 1 + ig + n_global(1) * jg
-  enddo ; enddo
+  enddo
+  enddo
   tot_std = 0.5 * real(N) * real(N + 1) ! tot_std will contain analytic solution
   tot_R = reproducing_sum(array, HI%isc, HI%iec, HI%jsc, HI%jec)
   if (abs(tot_R - tot_std) > 0.) then
@@ -192,7 +194,9 @@ subroutine generate_array_of_values(D, HI, n_global)
   PI = 4.0*atan(1.0)
 
   !  Calculate the depth of the bottom.
-  do concurrent( j=HI%jsc:HI%jec, i=HI%isc:HI%iec )
+  !$omp target teams distribute parallel do collapse(2)
+  do j = HI%jsc, HI%jec
+  do i = HI%isc, HI%iec
     x = real( i + HI%idg_offset ) / real( n_global(1) )
     y = real( j + HI%idg_offset ) / real( n_global(2) )
     D(i,j) = -3000.0  * ( y*(1.0 + 0.6*cos(4.0*PI*x)) &
@@ -200,7 +204,9 @@ subroutine generate_array_of_values(D, HI, n_global)
                           + 0.05*cos(10.0*PI*x) - 0.7 )
     if (D(i,j) > 3000.0) D(i,j) = 3000.0
     if (D(i,j) < 1.) D(i,j) = 0.
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
 end subroutine generate_array_of_values
 

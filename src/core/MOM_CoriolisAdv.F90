@@ -292,9 +292,13 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
   !$omp target enter data map(alloc: Area_h, Area_q)
 
-  do concurrent (j=Js_q:Je_q+1, I=Is_q:Ie_q+1)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = Js_q, Je_q+1
+  do I = Is_q, Ie_q+1
     Area_h(i,j) = G%mask2dT(i,j) * G%areaT(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (associated(OBC)) then
     !$omp target update from(Area_h)
@@ -324,10 +328,14 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     !$omp target update to(Area_h)
   endif
 
-  do concurrent (J=Js_q:Je_q, I=Is_q:Ie_q)
+  !$omp target teams distribute parallel do collapse(2)
+  do J = Js_q, Je_q
+  do I = Is_q, Ie_q
     Area_q(i,j) = (Area_h(i,j) + Area_h(i+1,j+1)) + &
                   (Area_h(i+1,j) + Area_h(i,j+1))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   Stokes_VF = .false.
   if (present(Waves)) then ; if (associated(Waves)) then
@@ -380,57 +388,105 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     ! First calculate the contributions to the circulation around the q-point.
     if (Stokes_VF) then
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
-        do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do J = Js_q, Je_q
+        do I = Is_q, Ie_q
           k = k_start + kk - 1
           dvSdx(I,J,kk) = (-Waves%us_y(i+1,J,k)*G%dyCv(i+1,J)) - &
                            (-Waves%us_y(i,J,k)*G%dyCv(i,J))
           duSdy(I,J,kk) = (-Waves%us_x(I,j+1,k)*G%dxCu(I,j+1)) - &
                            (-Waves%us_x(I,j,k)*G%dxCu(I,j))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
       if (.not. Waves%Passive_Stokes_VF) then
-        do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do J = Js_q, Je_q
+        do I = Is_q, Ie_q
           k = k_start + kk - 1
           dvdx(I,J,kk) = ((v(i+1,J,k)-Waves%us_y(i+1,J,k))*G%dyCv(i+1,J)) - &
                           ((v(i,J,k)-Waves%us_y(i,J,k))*G%dyCv(i,J))
           dudy(I,J,kk) = ((u(I,j+1,k)-Waves%us_x(I,j+1,k))*G%dxCu(I,j+1)) - &
                           ((u(I,j,k)-Waves%us_x(I,j,k))*G%dxCu(I,j))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       else
-        do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do J = Js_q, Je_q
+        do I = Is_q, Ie_q
           k = k_start + kk - 1
           dvdx(I,J,kk) = (v(i+1,J,k)*G%dyCv(i+1,J)) - (v(i,J,k)*G%dyCv(i,J))
           dudy(I,J,kk) = (u(I,j+1,k)*G%dxCu(I,j+1)) - (u(I,j,k)*G%dxCu(I,j))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     else
-      do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Js_q, Je_q
+      do I = Is_q, Ie_q
         k = k_start + kk - 1
         dvdx(I,J,kk) = (v(i+1,J,k)*G%dyCv(i+1,J)) - (v(i,J,k)*G%dyCv(i,J))
         dudy(I,J,kk) = (u(I,j+1,k)*G%dxCu(I,j+1)) - (u(I,j,k)*G%dxCu(I,j))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
-    do concurrent (kk=1:kmax, J=Js_q:Je_q, i=Is_q:Ie_q+1) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do J = Js_q, Je_q
+    do i = Is_q, Ie_q+1
       k = k_start + kk - 1
       hArea_v(i,J,kk) = 0.5*((Area_h(i,j) * h(i,j,k)) + (Area_h(i,j+1) * h(i,j+1,k)))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (kk=1:kmax, j=Js_q:Je_q+1, I=Is_q:Ie_q) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do j = Js_q, Je_q+1
+    do I = Is_q, Ie_q
       k = k_start + kk - 1
       hArea_u(I,j,kk) = 0.5*((Area_h(i,j) * h(i,j,k)) + (Area_h(i+1,j) * h(i+1,j,k)))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (CS%Coriolis_En_Dis) then
-      do concurrent (kk=1:kmax, J=Jsq:Jeq+1, I=is-1:ie) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq, Jeq+1
+      do I = is-1, ie
         k = k_start + kk - 1
         uh_center(I,j,kk) = 0.5 * ((G%dy_Cu(I,j)*pbv%por_face_areaU(I,j,k)) * u(I,j,k)) * (h(i,j,k) + h(i+1,j,k))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
-      do concurrent (kk=1:kmax, J=js-1:je, i=Isq:Ieq+1) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = js-1, je
+      do i = Isq, Ieq+1
         k = k_start + kk - 1
         vh_center(i,J,kk) = 0.5 * ((G%dx_Cv(i,J)*pbv%por_face_areaV(i,J,k)) * v(i,J,k)) * (h(i,j,k) + h(i,j+1,k))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! Adjust circulation components to relative vorticity and thickness projected onto
@@ -587,76 +643,142 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     endif
 
     if (CS%no_slip) then
-      do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do J = Js_q, Je_q
+      do I = Is_q, Ie_q
         rel_vort(I,J,kk) = (2.0 - G%mask2dBu(I,J)) * (dvdx(I,J,kk) - dudy(I,J,kk)) * G%IareaBu(I,J)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (Stokes_VF) then
         if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
-          do concurrent (kk=1:kmax, J=Jsq-1:Jeq+1, I=Isq-1:Ieq+1)
+          !$omp target teams distribute parallel do collapse(3)
+          do kk = 1, kmax
+          do J = Jsq-1, Jeq+1
+          do I = Isq-1, Ieq+1
             stk_vort(I,J,kk) = (2.0 - G%mask2dBu(I,J)) * (dvSdx(I,J,kk) - duSdy(I,J,kk)) * G%IareaBu(I,J)
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       endif
     else
-      do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do J = Js_q, Je_q
+      do I = Is_q, Ie_q
         rel_vort(I,J,kk) = G%mask2dBu(I,J) * (dvdx(I,J,kk) - dudy(I,J,kk)) * G%IareaBu(I,J)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (Stokes_VF) then
         if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
-          do concurrent (kk=1:kmax, J=Jsq-1:Jeq+1, I=Isq-1:Ieq+1)
+          !$omp target teams distribute parallel do collapse(3)
+          do kk = 1, kmax
+          do J = Jsq-1, Jeq+1
+          do I = Isq-1, Ieq+1
             stk_vort(I,J,kk) = (2.0 - G%mask2dBu(I,J)) * (dvSdx(I,J,kk) - duSdy(I,J,kk)) * G%IareaBu(I,J)
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       endif
     endif
 
-    do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q)
+    !$omp target teams distribute parallel do collapse(3)
+    do kk = 1, kmax
+    do J = Js_q, Je_q
+    do I = Is_q, Ie_q
       abs_vort(I,J,kk) = G%CoriolisBu(I,J) + rel_vort(I,J,kk)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(hArea_q))
+    !$omp target teams distribute parallel do collapse(3) private(hArea_q)
+    do kk = 1, kmax
+    do J = Js_q, Je_q
+    do I = Is_q, Ie_q
       hArea_q = (hArea_u(I,j,kk) + hArea_u(I,j+1,kk)) + (hArea_v(i,J,kk) + hArea_v(i+1,J,kk))
       Ih_q(I,J,kk) = Area_q(I,J) / (hArea_q + vol_neglect)
       q(I,J,kk) = abs_vort(I,J,kk) * Ih_q(I,J,kk)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     ! NOTE: `h_q` is only used by WENO and was pulled out of the above loop to
     !   improve GPU performance, but it may need to be moved back.
     if (use_weno) then
-      do concurrent (kk=1:kmax, J=Js_q:Je_q, I=Is_q:Ie_q) DO_LOCALITY(local(hArea_q))
+      !$omp target teams distribute parallel do collapse(3) private(hArea_q)
+      do kk = 1, kmax
+      do J = Js_q, Je_q
+      do I = Is_q, Ie_q
         hArea_q = (hArea_u(I,j,kk) + hArea_u(I,j+1,kk)) + (hArea_v(i,J,kk) + hArea_v(i+1,J,kk))
         h_q(I,J,kk) = hArea_q / max(Area_q(I,J), area_neglect)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (Stokes_VF) then
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
-        do concurrent (kk=1:kmax, J=js-1:Jeq, I=is-1:Ieq)
+        !$omp target teams distribute parallel do collapse(3)
+        do kk = 1, kmax
+        do J = js-1, Jeq
+        do I = is-1, Ieq
           qS(I,J,kk) = stk_vort(I,J,kk) * Ih_q(I,J,kk)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif
 
     if (CS%id_rv > 0) then
-      do concurrent (kk=1:kmax, J=Jsq-1:Jeq+1, I=Isq-1:Ieq+1) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq-1, Jeq+1
+      do I = Isq-1, Ieq+1
         k = k_start + kk - 1
         RV(I,J,k) = rel_vort(I,J,kk)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (CS%id_PV > 0) then
-      do concurrent (kk=1:kmax, J=Jsq-1:Jeq+1, I=Isq-1:Ieq+1) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq-1, Jeq+1
+      do I = Isq-1, Ieq+1
         k = k_start + kk - 1
         PV(I,J,k) = q(I,J,kk)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (associated(AD%rv_x_v) .or. associated(AD%rv_x_u)) then
-      do concurrent (kk=1:kmax, J=Jsq-1:Jeq+1, I=Isq-1:Ieq+1)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do J = Jsq-1, Jeq+1
+      do I = Isq-1, Ieq+1
         q2(I,J,kk) = rel_vort(I,J,kk) * Ih_q(I,J,kk)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     !   a, b, c, and d are combinations of neighboring potential
@@ -664,28 +786,48 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     ! scheme.  All are defined at u grid points.
 
     if (CS%Coriolis_Scheme == ARAKAWA_HSU90) then
-      do concurrent (kk=1:kmax, j=Jsq:Jeq+1, I=is-1:Ieq)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do j = Jsq, Jeq+1
+      do I = is-1, Ieq
         a(I,j,kk) = (q(I,J,kk) + (q(I+1,J,kk) + q(I,J-1,kk))) * C1_12
         d(I,j,kk) = ((q(I,J,kk) + q(I+1,J-1,kk)) + q(I,J-1,kk)) * C1_12
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
-      do concurrent (kk=1:kmax, j=Jsq:Jeq+1, I=Isq:Ieq)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do j = Jsq, Jeq+1
+      do I = Isq, Ieq
         b(I,j,kk) = (q(I,J,kk) + (q(I-1,J,kk) + q(I,J-1,kk))) * C1_12
         c(I,j,kk) = ((q(I,J,kk) + q(I-1,J-1,kk)) + q(I,J-1,kk)) * C1_12
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == ARAKAWA_LAMB81) then
-      do concurrent (kk=1:kmax, j=Jsq:Jeq+1, I=Isq:Ieq+1)
+      !$omp target teams distribute parallel do collapse(3)
+      do kk = 1, kmax
+      do j = Jsq, Jeq+1
+      do I = Isq, Ieq+1
         a(I-1,j,kk) = (2.0*(q(I,J,kk) + q(I-1,J-1,kk)) + (q(I-1,J,kk) + q(I,J-1,kk))) * C1_24
         d(I-1,j,kk) = ((q(I,j,kk) + q(I-1,J-1,kk)) + 2.0*(q(I-1,J,kk) + q(I,J-1,kk))) * C1_24
         b(I,j,kk) =   ((q(I,J,kk) + q(I-1,J-1,kk)) + 2.0*(q(I-1,J,kk) + q(I,J-1,kk))) * C1_24
         c(I,j,kk) =   (2.0*(q(I,J,kk) + q(I-1,J-1,kk)) + (q(I-1,J,kk) + q(I,J-1,kk))) * C1_24
         ep_u(i,j,kk) = ((q(I,J,kk) - q(I-1,J-1,kk)) + (q(I-1,J,kk) - q(I,J-1,kk))) * C1_24
         ep_v(i,j,kk) = (-(q(I,J,kk) - q(I-1,J-1,kk)) + (q(I-1,J,kk) - q(I,J-1,kk))) * C1_24
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == AL_BLEND) then
       ! Fe_m2 and rat_lin are k-independent; computed before the block loop.
-      do concurrent (kk=1:kmax, j=Jsq:Jeq+1, I=Isq:Ieq+1) &
-          DO_LOCALITY(local(min_Ihq, max_Ihq, rat_m1, AL_wt, Sad_wt))
+      !$omp target teams distribute parallel do collapse(3) private(min_Ihq, max_Ihq, rat_m1, AL_wt, Sad_wt)
+      do kk = 1, kmax
+      do j = Jsq, Jeq+1
+      do I = Isq, Ieq+1
         min_Ihq = MIN(Ih_q(I-1,J-1,kk), Ih_q(I,J-1,kk), Ih_q(I-1,J,kk), Ih_q(I,J,kk))
         max_Ihq = MAX(Ih_q(I-1,J-1,kk), Ih_q(I,J-1,kk), Ih_q(I-1,J,kk), Ih_q(I,J,kk))
         rat_m1 = 1.0e15
@@ -722,7 +864,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
                          2.0 * (q(I,J,kk) + q(I-1,J-1,kk)) ) * C1_24
         ep_u(i,j,kk) = AL_wt  * ((q(I,J,kk) - q(I-1,J-1,kk)) + (q(I-1,J,kk) - q(I,J-1,kk))) * C1_24
         ep_v(i,j,kk) = AL_wt * (-(q(I,J,kk) - q(I-1,J-1,kk)) + (q(I-1,J,kk) - q(I,J-1,kk))) * C1_24
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! .and. SADOURNEY75_ENERGY ??
@@ -730,7 +875,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     !  c1 = 1.0-1.5*RANGE ; c2 = 1.0-RANGE ; c3 = 2.0 ; slope = 0.5
       c1 = 1.0-1.5*0.5 ; c2 = 1.0-0.5 ; c3 = 2.0 ; slope = 0.5
 
-      do concurrent (kk=1:kmax, j=Jsq:Jeq+1, I=is-1:ie) DO_LOCALITY(local(k, uhc, uhm))
+      !$omp target teams distribute parallel do collapse(3) private(k, uhc, uhm)
+      do kk = 1, kmax
+      do j = Jsq, Jeq+1
+      do I = is-1, ie
         k = k_start + kk - 1
         uhc = uh_center(I,j,kk)
         uhm = uh(I,j,k)
@@ -751,9 +899,15 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         else
           uh_max(I,j,kk) = uhm ; uh_min(I,j,kk) = uhc
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
-      do concurrent (kk=1:kmax, J=js-1:je, i=Isq:Ieq+1) DO_LOCALITY(local(k, vhc, vhm))
+      !$omp target teams distribute parallel do collapse(3) private(k, vhc, vhm)
+      do kk = 1, kmax
+      do J = js-1, je
+      do i = Isq, Ieq+1
         k = k_start + kk - 1
         vhc = vh_center(i,J,kk)
         vhm = vh(i,J,k)
@@ -774,7 +928,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
         else
           vh_max(i,J,kk) = vhm ; vh_min(i,J,kk) = vhc
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! Calculate KE and the gradient of KE
@@ -787,7 +944,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     if (CS%Coriolis_Scheme == SADOURNY75_ENERGY) then
       if (CS%Coriolis_En_Dis) then
         ! Energy dissipating biased scheme, Hallberg 200x
-        do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k, temp1, temp2))
+        !$omp target teams distribute parallel do collapse(3) private(k, temp1, temp2)
+        do kk = 1, kmax
+        do j = js, je
+        do I = Isq, Ieq
           k = k_start + kk - 1
           if (q(I,J,kk)*u(I,j,k) == 0.0) then
             temp1 = q(I,J,kk) * ( (vh_max(i,j,kk)+vh_max(i+1,j,kk)) &
@@ -806,37 +966,60 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
             temp2 = q(I,J-1,kk) * (vh_min(i,j-1,kk)+vh_min(i+1,j-1,kk))
           endif
           CAu(I,j,k) = 0.25 * G%IdxCu(I,j) * (temp1 + temp2)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       else
         ! Energy conserving scheme, Sadourny 1975
-        do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do j = js, je
+        do I = Isq, Ieq
           k = k_start + kk - 1
           CAu(I,j,k) = 0.25 * &
             ((q(I,J,kk) * (vh(i+1,J,k) + vh(i,J,k))) + &
              (q(I,J-1,kk) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     elseif (CS%Coriolis_Scheme == SADOURNY75_ENSTRO) then
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         CAu(I,j,k) = 0.125 * (G%IdxCu(I,j) * (q(I,J,kk) + q(I,J-1,kk))) * &
                      ((vh(i+1,J,k) + vh(i,J,k)) + (vh(i,J-1,k) + vh(i+1,J-1,k)))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif ((CS%Coriolis_Scheme == ARAKAWA_HSU90) .or. &
             (CS%Coriolis_Scheme == ARAKAWA_LAMB81) .or. &
             (CS%Coriolis_Scheme == AL_BLEND)) then
       ! (Global) Energy and (Local) Enstrophy conserving, Arakawa & Hsu 1990
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         CAu(I,j,k) = (((a(I,j,kk) * vh(i+1,J,k)) +  (c(I,j,kk) * vh(i,J-1,k)))  + &
                       ((b(I,j,kk) * vh(i,J,k)) +  (d(I,j,kk) * vh(i+1,J-1,k)))) * G%IdxCu(I,j)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == ROBUST_ENSTRO) then
       ! An enstrophy conserving scheme robust to vanishing layers
       ! Note: Heffs are in lieu of h_at_v that should be returned by the
       !       continuity solver. AJA
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) &
-          DO_LOCALITY(local(k, Heff1, Heff2, Heff3, Heff4, VHeff, QVHeff))
+      !$omp target teams distribute parallel do collapse(3) private(k, Heff1, Heff2, Heff3, Heff4, VHeff, QVHeff)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         Heff1 = abs(vh(i,J,k) * G%IdxCv(i,J)) / (eps_vel+abs(v(i,J,k)))
         Heff1 = max(Heff1, min(h(i,j,k),h(i,j+1,k)))
@@ -860,7 +1043,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
                        - ((abs_vort(I,J,kk)-abs_vort(I,J-1,kk))*abs(VHeff)) )
           CAu(I,j,k) = (QVHeff / ( h_tiny + ((Heff1+Heff4) + (Heff2+Heff3)) ) ) * G%IdxCu(I,j)
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == wenovi7th_PV_ENSTRO) then
       do k=k_start,k_end ! TODO: port
         kk = k - k_start + 1
@@ -911,7 +1097,8 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAu(I,j,k) = (q_u * v_u)
 
         endif
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAu(:,:,k))
       enddo
     elseif (CS%Coriolis_Scheme == wenovi5th_PV_ENSTRO) then
@@ -951,7 +1138,8 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           endif
           CAu(I,j,k) = (q_u * v_u)
         endif
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAu(:,:,k))
       enddo
     elseif (CS%Coriolis_Scheme == wenovi3rd_PV_ENSTRO) then
@@ -981,7 +1169,8 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           endif
           CAu(I,j,k) = (q_u * v_u)
         endif
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAu(:,:,k))
       enddo
     endif
@@ -989,27 +1178,42 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     ! Add in the additional terms with Arakawa & Lamb.
     if ((CS%Coriolis_Scheme == ARAKAWA_LAMB81) .or. &
         (CS%Coriolis_Scheme == AL_BLEND)) then
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         CAu(I,j,k) = CAu(I,j,k) + &
               ((ep_u(i,j,kk)*uh(I-1,j,k)) - (ep_u(i+1,j,kk)*uh(I+1,j,k))) * G%IdxCu(I,j)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (Stokes_VF) then
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
         ! Computing the diagnostic Stokes contribution to CAu
-        do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do j = js, je
+        do I = Isq, Ieq
           k = k_start + kk - 1
           CAuS(I,j,k) = 0.25 * &
                 ((qS(I,J,kk) * (vh(i+1,J,k) + vh(i,J,k))) + &
                  (qS(I,J-1,kk) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif
 
     if (CS%bound_Coriolis) then
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k, fv1, fv2, fv3, fv4, max_fv, min_fv))
+      !$omp target teams distribute parallel do collapse(3) private(k, fv1, fv2, fv3, fv4, max_fv, min_fv)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         fv1 = abs_vort(I,J,kk) * v(i+1,J,k)
         fv2 = abs_vort(I,J,kk) * v(i,J,k)
@@ -1021,20 +1225,35 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         CAu(I,j,k) = min(CAu(I,j,k), max_fv)
         CAu(I,j,k) = max(CAu(I,j,k), min_fv)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! Term - d(KE)/dx.
-    do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do j = js, je
+    do I = Isq, Ieq
       k = k_start + kk - 1
       CAu(I,j,k) = CAu(I,j,k) - KEx(I,j,kk)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (associated(AD%gradKEu)) then
-      do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do j = js, je
+      do I = Isq, Ieq
         k = k_start + kk - 1
         AD%gradKEu(I,j,k) = -KEx(I,j,kk)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! Calculate the tendencies of meridional velocity due to the Coriolis
@@ -1043,7 +1262,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
     if (CS%Coriolis_Scheme == SADOURNY75_ENERGY) then
       if (CS%Coriolis_En_Dis) then
         ! Energy dissipating biased scheme, Hallberg 200x
-        do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k, temp1, temp2))
+        !$omp target teams distribute parallel do collapse(3) private(k, temp1, temp2)
+        do kk = 1, kmax
+        do J = Jsq, Jeq
+        do i = is, ie
           k = k_start + kk - 1
           if (q(I-1,J,kk)*v(i,J,k) == 0.0) then
             temp1 = q(I-1,J,kk) * ( (uh_max(i-1,j,kk)+uh_max(i-1,j+1,kk)) &
@@ -1062,39 +1284,62 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
             temp2 = q(I,J,kk) * (uh_min(i,j,kk)+uh_min(i,j+1,kk))
           endif
           CAv(i,J,k) = -0.25 * G%IdyCv(i,J) * (temp1 + temp2)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       else
         ! Energy conserving scheme, Sadourny 1975
-        do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do J = Jsq, Jeq
+        do i = is, ie
           k = k_start + kk - 1
           CAv(i,J,k) = - 0.25* &
               ((q(I-1,J,kk)*(uh(I-1,j,k) + uh(I-1,j+1,k))) + &
                (q(I,J,kk)*(uh(I,j,k) + uh(I,j+1,k)))) * G%IdyCv(i,J)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     elseif (CS%Coriolis_Scheme == SADOURNY75_ENSTRO) then
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         CAv(i,J,k) = -0.125 * (G%IdyCv(i,J) * (q(I-1,J,kk) + q(I,J,kk))) * &
                      ((uh(I-1,j,k) + uh(I-1,j+1,k)) + (uh(I,j,k) + uh(I,j+1,k)))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif ((CS%Coriolis_Scheme == ARAKAWA_HSU90) .or. &
             (CS%Coriolis_Scheme == ARAKAWA_LAMB81) .or. &
             (CS%Coriolis_Scheme == AL_BLEND)) then
       ! (Global) Energy and (Local) Enstrophy conserving, Arakawa & Hsu 1990
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         CAv(i,J,k) = - (((a(I-1,j,kk)   * uh(I-1,j,k)) + &
                          (c(I,j+1,kk)   * uh(I,j+1,k)))  &
                       + ((b(I,j,kk)     * uh(I,j,k)) +   &
                          (d(I-1,j+1,kk) * uh(I-1,j+1,k)))) * G%IdyCv(i,J)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == ROBUST_ENSTRO) then
       ! An enstrophy conserving scheme robust to vanishing layers
       ! Note: Heffs are in lieu of h_at_u that should be returned by the
       !       continuity solver. AJA
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) &
-          DO_LOCALITY(local(k, Heff1, Heff2, Heff3, Heff4, UHeff, QUHeff))
+      !$omp target teams distribute parallel do collapse(3) private(k, Heff1, Heff2, Heff3, Heff4, UHeff, QUHeff)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         Heff1 = abs(uh(I,j,k) * G%IdyCu(I,j)) / (eps_vel+abs(u(I,j,k)))
         Heff1 = max(Heff1, min(h(i,j,k),h(i+1,j,k)))
@@ -1121,7 +1366,10 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - QUHeff / &
                        (h_tiny + ((Heff1+Heff4) +(Heff2+Heff3)) ) * G%IdyCv(i,J)
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (CS%Coriolis_Scheme == wenovi7th_PV_ENSTRO) then
       do k=k_start,k_end ! TODO: port
         kk = k - k_start + 1
@@ -1173,7 +1421,8 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
         endif
 
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAv(:,:,k))
       enddo
     elseif (CS%Coriolis_Scheme == wenovi5th_PV_ENSTRO) then
@@ -1216,7 +1465,8 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
         endif
 
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAv(:,:,k))
       enddo
     elseif (CS%Coriolis_Scheme == wenovi3rd_PV_ENSTRO) then
@@ -1249,34 +1499,50 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
           CAv(i,J,k) = - (q_v * u_v)
         endif
 
-      enddo ; enddo
+      enddo
+      enddo
         !$omp target update to(CAv(:,:,k))
       enddo
     endif
     ! Add in the additonal terms with Arakawa & Lamb.
     if ((CS%Coriolis_Scheme == ARAKAWA_LAMB81) .or. &
         (CS%Coriolis_Scheme == AL_BLEND)) then
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         CAv(i,J,k) = CAv(i,J,k) + &
               ((ep_v(i,j,kk)*vh(i,J-1,k)) - (ep_v(i,j+1,kk)*vh(i,J+1,k))) * G%IdyCv(i,J)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (Stokes_VF) then
       if (CS%id_CAuS>0 .or. CS%id_CAvS>0) then
         ! Computing the diagnostic Stokes contribution to CAv
-        do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+        !$omp target teams distribute parallel do collapse(3) private(k)
+        do kk = 1, kmax
+        do J = Jsq, Jeq
+        do i = is, ie
           k = k_start + kk - 1
           CAvS(i,J,k) = 0.25 * &
                 ((qS(I,J,kk) * (uh(I,j+1,k) + uh(I,j,k))) + &
                  (qS(I-1,J,kk) * (uh(I-1,j,k) + uh(I-1,j+1,k)))) * G%IdyCv(i,J)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif
 
     if (CS%bound_Coriolis) then
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k, fu1, fu2, fu3, fu4, max_fu, min_fu))
+      !$omp target teams distribute parallel do collapse(3) private(k, fu1, fu2, fu3, fu4, max_fu, min_fu)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         fu1 = -abs_vort(I,J,kk) * u(I,j+1,k)
         fu2 = -abs_vort(I,J,kk) * u(I,j,k)
@@ -1288,62 +1554,101 @@ subroutine CorAdCalc(u, v, h, uh, vh, CAu, CAv, OBC, AD, G, GV, US, CS, pbv, Wav
 
         CAv(I,j,k) = min(CAv(I,j,k), max_fu)
         CAv(I,j,k) = max(CAv(I,j,k), min_fu)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     ! Term - d(KE)/dy.
-    do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do J = Jsq, Jeq
+    do i = is, ie
       k = k_start + kk - 1
       CAv(i,J,k) = CAv(i,J,k) - KEy(i,J,kk)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     if (associated(AD%gradKEv)) then
-      do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+      !$omp target teams distribute parallel do collapse(3) private(k)
+      do kk = 1, kmax
+      do J = Jsq, Jeq
+      do i = is, ie
         k = k_start + kk - 1
         AD%gradKEv(i,J,k) = -KEy(i,J,kk)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (associated(AD%rv_x_u) .or. associated(AD%rv_x_v)) then
       ! Calculate the Coriolis-like acceleration due to relative vorticity.
       if (CS%Coriolis_Scheme == SADOURNY75_ENERGY) then
         if (associated(AD%rv_x_u)) then
-          do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+          !$omp target teams distribute parallel do collapse(3) private(k)
+          do kk = 1, kmax
+          do J = Jsq, Jeq
+          do i = is, ie
             k = k_start + kk - 1
             AD%rv_x_u(i,J,k) = - 0.25* &
               ((q2(I-1,j,kk)*(uh(I-1,j,k) + uh(I-1,j+1,k))) + &
                (q2(I,j,kk)*(uh(I,j,k) + uh(I,j+1,k)))) * G%IdyCv(i,J)
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
 
         if (associated(AD%rv_x_v)) then
-          do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+          !$omp target teams distribute parallel do collapse(3) private(k)
+          do kk = 1, kmax
+          do j = js, je
+          do I = Isq, Ieq
             k = k_start + kk - 1
             AD%rv_x_v(I,j,k) = 0.25 * &
               ((q2(I,j,kk) * (vh(i+1,J,k) + vh(i,J,k))) + &
                (q2(I,j-1,kk) * (vh(i,J-1,k) + vh(i+1,J-1,k)))) * G%IdxCu(I,j)
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       else
         if (associated(AD%rv_x_u)) then
-          do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(local(k))
+          !$omp target teams distribute parallel do collapse(3) private(k)
+          do kk = 1, kmax
+          do J = Jsq, Jeq
+          do i = is, ie
             k = k_start + kk - 1
             AD%rv_x_u(i,J,k) = -G%IdyCv(i,J) * C1_12 * &
               (((((q2(I,J,kk) + q2(I-1,J-1,kk)) + q2(I-1,J,kk)) * uh(I-1,j,k)) + &
                 (((q2(I-1,J,kk) + q2(I,J+1,kk)) + q2(I,J,kk)) * uh(I,j+1,k))) + &
                ((((q2(I-1,J,kk) + q2(I,J-1,kk)) + q2(I,J,kk)) * uh(I,j,k))+ &
                 (((q2(I,J,kk) + q2(I-1,J+1,kk)) + q2(I-1,J,kk)) * uh(I-1,j+1,k))))
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
 
         if (associated(AD%rv_x_v)) then
-          do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq) DO_LOCALITY(local(k))
+          !$omp target teams distribute parallel do collapse(3) private(k)
+          do kk = 1, kmax
+          do j = js, je
+          do I = Isq, Ieq
             k = k_start + kk - 1
             AD%rv_x_v(I,j,k) = G%IdxCu(I,j) * C1_12 * &
               (((((q2(I+1,J,kk) + q2(I,J-1,kk)) + q2(I,J,kk)) * vh(i+1,J,k)) + &
                 (((q2(I-1,J-1,kk) + q2(I,J,kk)) + q2(I,J-1,kk)) * vh(i,J-1,k))) + &
                ((((q2(I-1,J,kk) + q2(I,J-1,kk)) + q2(I,J,kk)) * vh(i,J,k)) + &
                 (((q2(I+1,J-1,kk) + q2(I,J,kk)) + q2(I,J-1,kk)) * vh(i+1,J-1,k))))
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       endif
     endif
@@ -1451,37 +1756,53 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, k_start, k_end, nkblock, G, GV, US, CS)
     ! The following calculation of Kinetic energy includes the metric terms
     ! identified in Arakawa & Lamb 1982 as important for KE conservation.  It
     ! also includes the possibility of partially-blocked tracer cell faces.
-    do concurrent (kk=1:kmax, j=Jsq:Jeq+1, i=Isq:Ieq+1) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       k = k_start + kk - 1
       KE(i,j,kk) = ( ( (G%areaCu( I ,j)*(u( I ,j,k)*u( I ,j,k))) + &
                        (G%areaCu(I-1,j)*(u(I-1,j,k)*u(I-1,j,k))) ) + &
                      ( (G%areaCv(i, J )*(v(i, J ,k)*v(i, J ,k))) + &
                        (G%areaCv(i,J-1)*(v(i,J-1,k)*v(i,J-1,k))) ) )*0.25*G%IareaT(i,j)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   elseif (CS%KE_Scheme == KE_SIMPLE_GUDONOV) then
     ! The following discretization of KE is based on the one-dimensional Gudonov
     ! scheme which does not take into account any geometric factors
-    do concurrent (kk=1:kmax, j=Jsq:Jeq+1, i=Isq:Ieq+1) &
-        DO_LOCALITY(local(k, up, um, vp, vm, up2, um2, vp2, vm2))
+    !$omp target teams distribute parallel do collapse(3) private(k, up, um, vp, vm, up2, um2, vp2, vm2)
+    do kk = 1, kmax
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       k = k_start + kk - 1
       up = 0.5*( u(I-1,j,k) + ABS( u(I-1,j,k) ) ) ; up2 = up*up
       um = 0.5*( u( I ,j,k) - ABS( u( I ,j,k) ) ) ; um2 = um*um
       vp = 0.5*( v(i,J-1,k) + ABS( v(i,J-1,k) ) ) ; vp2 = vp*vp
       vm = 0.5*( v(i, J ,k) - ABS( v(i, J ,k) ) ) ; vm2 = vm*vm
       KE(i,j,kk) = ( max(up2,um2) + max(vp2,vm2) ) *0.5
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   elseif (CS%KE_Scheme == KE_GUDONOV) then
     ! The following discretization of KE is based on the one-dimensional Gudonov
     ! scheme but has been adapted to take horizontal grid factors into account
-    do concurrent (kk=1:kmax, j=Jsq:Jeq+1, i=Isq:Ieq+1) &
-        DO_LOCALITY(local(k, up, um, vp, vm, up2a, um2a, vp2a, vm2a))
+    !$omp target teams distribute parallel do collapse(3) private(k, up, um, vp, vm, up2a, um2a, vp2a, vm2a)
+    do kk = 1, kmax
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       k = k_start + kk - 1
       up = 0.5*( u(I-1,j,k) + ABS( u(I-1,j,k) ) ) ; up2a = up*up*G%areaCu(I-1,j)
       um = 0.5*( u( I ,j,k) - ABS( u( I ,j,k) ) ) ; um2a = um*um*G%areaCu( I ,j)
       vp = 0.5*( v(i,J-1,k) + ABS( v(i,J-1,k) ) ) ; vp2a = vp*vp*G%areaCv(i,J-1)
       vm = 0.5*( v(i, J ,k) - ABS( v(i, J ,k) ) ) ; vm2a = vm*vm*G%areaCv(i, J )
       KE(i,j,kk) = ( max(um2a,up2a) + max(vm2a,vp2a) )*0.5*G%IareaT(i,j)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   elseif (CS%KE_Scheme == KE_UP3) then
     ! The following discretization of KE is based on the one-dimensional third-order
     ! upwind scheme which does not take horizontal grid factors into account
@@ -1526,7 +1847,8 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, k_start, k_end, nkblock, G, GV, US, CS)
           endif
 
           KE(i,j,kk) = ( (um*um) + (vm*vm) )*0.5
-        enddo ; enddo
+        enddo
+        enddo
       else
         do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
           ! compute the masking to make sure that inland values are not used
@@ -1564,20 +1886,33 @@ subroutine gradKE(u, v, h, KE, KEx, KEy, k_start, k_end, nkblock, G, GV, US, CS)
           endif
 
           KE(i,j,kk) = ( (um*um) + (vm*vm) )*0.5
-        enddo ; enddo
+        enddo
+        enddo
       endif
     enddo
   endif
 
   ! Term - d(KE)/dx.
-  do concurrent (kk=1:kmax, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do kk = 1, kmax
+  do j = js, je
+  do I = Isq, Ieq
     KEx(I,j,kk) = (KE(i+1,j,kk) - KE(i,j,kk)) * G%IdxCu_OBCmask(I,j)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! Term - d(KE)/dy.
-  do concurrent (kk=1:kmax, J=Jsq:Jeq, i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do kk = 1, kmax
+  do J = Jsq, Jeq
+  do i = is, ie
     KEy(i,J,kk) = (KE(i,j+1,kk) - KE(i,j,kk)) * G%IdyCv_OBCmask(i,J)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine gradKE
 
 !> Reconstruct the scalar (e.g., pv, vorticity) onto point i-1/2 using a third-order upwind scheme

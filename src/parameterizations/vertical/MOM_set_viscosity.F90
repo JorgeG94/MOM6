@@ -404,22 +404,34 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
   if ((nkml>0) .and. .not.use_BBL_EOS) then
     EOSdom(1,1) = Isq - (G%isd-1) ;  EOSdom(1,2) = G%iec+1 - (G%isd-1)
     EOSdom(2,1) = Jsq - (G%jsd-1) ;  EOSdom(2,2) = G%jec+1 - (G%jsd-1)
-    do concurrent (j=Jsq:Jeq+1, i=Isq:Ieq+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       p_ref(i,j) = tv%P_Ref
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     do k=1,nkmb
       call calculate_density(tv%T(:,:,k), tv%S(:,:,k), p_ref, Rml(:,:,k), tv%eqn_of_state, EOSdom)
     enddo
   endif
 
-  do concurrent (J=js-1:je, i=is-1:ie+1)
+  !$omp target teams distribute parallel do collapse(2)
+  do J = js-1, je
+  do i = is-1, ie+1
     D_v(i,J) = 0.5*(G%bathyT(i,j) + G%bathyT(i,j+1))
     mask_v(i,J) = G%mask2dCv(i,J)
-  enddo
-  do concurrent (j=js-1:je+1, I=is-1:ie)
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-1, je+1
+  do I = is-1, ie
     D_u(I,j) = 0.5*(G%bathyT(i,j) + G%bathyT(i+1,j))
     mask_u(I,j) = G%mask2dCu(I,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (associated(OBC) .and. CS%Channel_drag) then
     !$omp target update from(mask_u, mask_v, D_u, D_v)
@@ -430,7 +442,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
       !$OMP parallel do default(shared)
       do J=Js_OBC,Je_OBC ; do i=is_OBC,ie_OBC
         if (OBC%segnum_v(i,J) > 0) D_v(i,J) = G%bathyT(i,j) !  OBC_DIRECTION_N
-      enddo ; enddo
+      enddo
+      enddo
     endif
     if (OBC%v_S_OBCs_on_PE) then
       !$omp target update from(D_v)
@@ -439,7 +452,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
       !$OMP parallel do default(shared)
       do J=Js_OBC,Je_OBC ; do i=is_OBC,ie_OBC
         if (OBC%segnum_v(i,J) < 0) D_v(i,J) = G%bathyT(i,j+1) !  OBC_DIRECTION_S
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(D_v)
     endif
     if (OBC%u_E_OBCs_on_PE) then
@@ -449,7 +463,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
       !$OMP parallel do default(shared)
       do j=js_OBC,je_OBC ; do I=Is_OBC,Ie_OBC
         if (OBC%segnum_u(I,j) > 0) D_u(I,j) = G%bathyT(i,j) !  OBC_DIRECTION_E
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(D_u)
     endif
     if (OBC%u_W_OBCs_on_PE) then
@@ -458,7 +473,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
       !$OMP parallel do default(shared)
       do j=js_OBC,je_OBC ; do I=Is_OBC,Ie_OBC
         if (OBC%segnum_u(I,j) < 0) D_u(I,j) = G%bathyT(i+1,j) !  OBC_DIRECTION_W
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     do n=1,OBC%number_of_segments
@@ -489,21 +505,39 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
   endif
 
   if (.not.use_BBL_EOS) then
-    do concurrent (k=1:nz, j=G%jsdB:G%Jedb, i=G%isdB:G%iedB)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = G%jsdB, G%Jedb
+    do i = G%isdB, G%iedB
       Rml_vel(i,j,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   ! Resetting Ray_[uv] is required by body force drag.
   if (allocated(visc%Ray_u)) then
-    do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isdB:G%iedB)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = G%jsd, G%jed
+    do i = G%isdB, G%iedB
       visc%Ray_u(i,j,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (allocated(visc%Ray_v)) then
-    do concurrent (k=1:nz, j=G%jsdB:G%jedB, i=G%isd:G%ied)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = G%jsdB, G%jedB
+    do i = G%isd, G%ied
       visc%Ray_v(i,j,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   !$omp target enter data map(alloc: S_vel, T_vel, SpV_vel, h_vel, h_at_vel, dz_vel, &
@@ -520,21 +554,23 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
       jstart = Jsq
     endif
 
-    do concurrent (j=jstart:Jeq)
+    !$omp target teams distribute parallel do private(k, cdrag_sqrt)
+    do j = jstart, Jeq
       if (m==1) then
-        do concurrent (i=is:ie)
+        do i = is, ie
           do_i(i,j) = (G%mask2dCu(I,j) > 0.0)
-        enddo
+        end do
       else
-        do concurrent (i=is:ie)
+        do i = is, ie
           do_i(i,j) = (G%mask2dCv(i,J) > 0.0)
-        enddo
+        end do
       endif
 
       ! Calculate thickness at velocity points (u or v depending on value of m).
       ! Also interpolate the ML density or T/S properties.
       if (m==1) then ! u-points
-        do concurrent (k=1:nz, I=is:ie)
+        do k = 1, nz
+        do I = is, ie
           if (do_i(I,j)) then
             if (u(I,j,k) * (h(i+1,j,k) - h(i,j,k)) >= 0) then
               ! If the flow is from thin to thick then bias towards the thinner thickness
@@ -550,19 +586,33 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
           endif
           h_vel(I,j,k) = 0.5 * (h(i,j,k) + h(i+1,j,k))
           dz_vel(I,j,k) = 0.5 * (dz(i,j,k) + dz(i+1,j,k))
-        enddo
-        if (use_BBL_EOS) then ; do concurrent (k=1:nz, I=is:ie)
+        end do
+        end do
+        if (use_BBL_EOS) then
+        do k = 1, nz
+        do I = is, ie
           ! Perhaps these should be thickness weighted.
           T_vel(I,j,k) = 0.5 * (tv%T(i,j,k) + tv%T(i+1,j,k))
           S_vel(I,j,k) = 0.5 * (tv%S(i,j,k) + tv%S(i+1,j,k))
-        enddo ; else ; do concurrent (k=1:nkmb, I=is:ie)
+        end do
+        end do
+        else
+        do k = 1, nkmb
+        do I = is, ie
           Rml_vel(I,j,k) = 0.5 * (Rml(i,j,k) + Rml(i+1,j,k))
-        enddo ; endif
-        if (allocated(tv%SpV_avg)) then ; do concurrent (k=1:nz, I=is:ie)
+        end do
+        end do
+        endif
+        if (allocated(tv%SpV_avg)) then
+        do k = 1, nz
+        do I = is, ie
           SpV_vel(I,j,k) = 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i+1,j,k))
-        enddo ; endif
+        end do
+        end do
+        endif
       else ! v-points
-        do concurrent (k=1:nz, i=is:ie)
+        do k = 1, nz
+        do i = is, ie
           if (do_i(i,j)) then
             if (v(i,J,k) * (h(i,j+1,k) - h(i,j,k)) >= 0) then
               ! If the flow is from thin to thick then bias towards the thinner thickness
@@ -578,24 +628,37 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
           endif
           h_vel(i,j,k) = 0.5 * (h(i,j,k) + h(i,j+1,k))
           dz_vel(i,j,k) = 0.5 * (dz(i,j,k) + dz(i,j+1,k))
-        enddo
-        if (use_BBL_EOS) then ; do concurrent (k=1:nz, i=is:ie)
+        end do
+        end do
+        if (use_BBL_EOS) then
+        do k = 1, nz
+        do i = is, ie
           ! Perhaps these should be thickness weighted.
           T_vel(i,j,k) = 0.5 * (tv%T(i,j,k) + tv%T(i,j+1,k))
           S_vel(i,j,k) = 0.5 * (tv%S(i,j,k) + tv%S(i,j+1,k))
-        enddo ; else ; do concurrent (k=1:nkmb, i=is:ie)
+        end do
+        end do
+        else
+        do k = 1, nkmb
+        do i = is, ie
           Rml_vel(i,j,k) = 0.5 * (Rml(i,j,k) + Rml(i,j+1,k))
-        enddo ; endif
-        if (allocated(tv%SpV_avg)) then ; do concurrent (k=1:nz, i=is:ie)
+        end do
+        end do
+        endif
+        if (allocated(tv%SpV_avg)) then
+        do k = 1, nz
+        do i = is, ie
           SpV_vel(i,j,k) = 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i,j+1,k))
-        enddo ; endif
+        end do
+        end do
+        endif
       endif
 
       if (associated(OBC)) then ; if (OBC%number_of_segments > 0) then
         ! Apply a zero gradient projection of thickness across OBC points.
         if (m==1) then
-          do concurrent (I=is:ie, do_i(I,j) .and. (OBC%segnum_u(I,j) /= 0)) &
-              DO_LOCALITY(local(k))
+          do I = is, ie
+          if ((do_i(I,j) .and. (OBC%segnum_u(I,j) /= 0))) then
             if (OBC%segnum_u(I,j) > 0) then  ! OBC_DIRECTION_E
               do k=1,nz
                 h_at_vel(I,j,k) = h(i,j,k) ; h_vel(I,j,k) = h(i,j,k)
@@ -612,7 +675,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
               endif
               if (allocated(tv%SpV_avg)) then ; do k=1,nz
                 SpV_vel(I,j,k) = tv%SpV_avg(i,j,k)
-              enddo ; endif
+              enddo
+              endif
             elseif (OBC%segnum_u(I,j) < 0) then  ! OBC_DIRECTION_W
               do k=1,nz
                 h_at_vel(I,j,k) = h(i+1,j,k) ; h_vel(I,j,k) = h(i+1,j,k)
@@ -629,12 +693,14 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
               endif
               if (allocated(tv%SpV_avg)) then ; do k=1,nz
                 SpV_vel(I,j,k) = tv%SpV_avg(i+1,j,k)
-              enddo ; endif
+              enddo
+              endif
             endif
-          enddo
+          end if
+          end do
         else
-          do concurrent (i=is:ie, do_i(i,j) .and. (OBC%segnum_v(i,J) /= 0)) &
-              DO_LOCALITY(local(k))
+          do i = is, ie
+          if ((do_i(i,j) .and. (OBC%segnum_v(i,J) /= 0))) then
             if (OBC%segnum_v(i,J) > 0) then  ! OBC_DIRECTION_N
               do k=1,nz
                 h_at_vel(i,j,k) = h(i,j,k) ; h_vel(i,j,k) = h(i,j,k)
@@ -651,7 +717,8 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
               endif
               if (allocated(tv%SpV_avg)) then ; do k=1,nz
                 SpV_vel(i,j,k) = tv%SpV_avg(i,j,k)
-              enddo ;  endif
+              enddo
+              endif
             elseif (OBC%segnum_v(i,J) < 0) then  ! OBC_DIRECTION_S
               do k=1,nz
                 h_at_vel(i,j,k) = h(i,j+1,k) ; h_vel(i,j,k) = h(i,j+1,k)
@@ -668,33 +735,41 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
               endif
               if (allocated(tv%SpV_avg)) then ; do k=1,nz
                 SpV_vel(i,j,k) = tv%SpV_avg(i,j+1,k)
-              enddo ; endif
+              enddo
+              endif
             endif
-          enddo
+          end if
+          end do
         endif
       endif ; endif
 
       ! Set the "back ground" friction velocity scale to either the tidal amplitude or place-holder constant
       if (CS%BBL_use_tidal_bg) then
-        do concurrent (i=is:ie, do_i(i,j)) ; if (m==1) then
+        do i = is, ie
+        if ((do_i(i,j))) then
+        if (m==1) then
           u2_bg(I,j) = tideampfac2_x_0p5 * ( G%mask2dT(i,j)*(CS%tideamp(i,j)*CS%tideamp(i,j))+ &
                            G%mask2dT(i+1,j)*(CS%tideamp(i+1,j)*CS%tideamp(i+1,j)) )
         else
           u2_bg(i,j) = tideampfac2_x_0p5 * ( G%mask2dT(i,j)*(CS%tideamp(i,j)*CS%tideamp(i,j))+ &
                            G%mask2dT(i,j+1)*(CS%tideamp(i,j+1)*CS%tideamp(i,j+1)) )
-        endif ; enddo
+        endif
+        end if
+        end do
       else
-        do concurrent (i=is:ie, do_i(i,j))
+        do i = is, ie
+        if ((do_i(i,j))) then
           u2_bg(i,j) = CS%drag_bg_vel * CS%drag_bg_vel
-        enddo
+        end if
+        end do
       endif
 
       if (use_BBL_EOS .or. CS%body_force_drag .or. .not.CS%linear_drag) then
         ! Calculate the mean velocity magnitude over the bottommost CS%Hbbl of
         ! the water column for determining the quadratic bottom drag.
         ! Used in ustar(i,j)
-        do concurrent (i=is:ie, do_i(i,j)) DO_LOCALITY(local(k, cdrag_sqrt)) &
-            DO_LOCALITY(local_init(cdrag_sqrt_H, cdrag_sqrt_H_RL))
+        do i = is, ie
+        if ((do_i(i,j))) then
           htot_vel = 0.0 ; hwtot = 0.0 ; hutot = 0.0
           dztot_vel = 0.0 ; dzwtot = 0.0
           Thtot = 0.0 ; Shtot = 0.0 ; SpV_htot = 0.0
@@ -768,10 +843,10 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
           elseif (CS%id_bbl_v>0 .and. m==2) then
             if (hwtot > 0.0) CS%bbl_v(i,J) = hutot/hwtot
           endif
-        enddo
+        end if
+        end do
       else
-        do concurrent (i=is:ie) DO_LOCALITY(local(cdrag_sqrt)) &
-            DO_LOCALITY(local_init(cdrag_sqrt_H))
+        do i = is, ie
           if (CS%bottomdragmap) then
             if (m==1) then
               cdrag_sqrt = sqrt(CS%cdrag_u(i,j))
@@ -781,26 +856,41 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
             cdrag_sqrt_H = cdrag_sqrt * US%L_to_m * GV%m_to_H
           endif
           ustar(i,j) = cdrag_sqrt_H * CS%drag_bg_vel
-        enddo
+        end do
       endif ! Not linear_drag
 
       if (use_BBL_EOS) then
         if (associated(tv%p_surf)) then
-          if (m==1) then ; do concurrent (i=is:ie) ; press(I,j) = 0.5*(tv%p_surf(i,j) + tv%p_surf(i+1,j)) ; enddo
-          else ; do concurrent (i=is:ie) ; press(i,j) = 0.5*(tv%p_surf(i,j) + tv%p_surf(i,j+1)) ; enddo ; endif
+          if (m==1) then
+          do i = is, ie
+          press(I,j) = 0.5*(tv%p_surf(i,j) + tv%p_surf(i+1,j))
+          end do
+          else
+          do i = is, ie
+          press(i,j) = 0.5*(tv%p_surf(i,j) + tv%p_surf(i,j+1))
+          end do
+          endif
         else
-          do concurrent (i=is:ie) ; press(i,j) = 0.0 ; enddo
+          do i = is, ie
+          press(i,j) = 0.0
+          end do
         endif
 
-        do concurrent (i=is:ie, .not.do_i(i,j)) ; T_EOS(i,j) = 0.0 ; S_EOS(i,j) = 0.0 ; enddo
+        do i = is, ie
+        if ((.not.do_i(i,j))) then
+        T_EOS(i,j) = 0.0
+        S_EOS(i,j) = 0.0
+        end if
+        end do
 
-        do concurrent (i=is:ie)
+        do i = is, ie
           do k=1,nz
             press(i,j) = press(i,j) + (GV%H_to_RZ*GV%g_Earth) * h_vel(i,j,k)
           enddo
-        enddo
+        end do
       endif
-    enddo ! end of j loop
+    end do
+    !$omp end target teams distribute parallel do
 
     if (use_BBL_EOS) then
       EOSdom(1,1) = is-G%IsdB+1 ; EOSdom(1,2) = ie-G%IsdB+1
@@ -1207,7 +1297,9 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
         visc%bbl_thick_v(i,J) = bbl_thick
         if (allocated(visc%Kv_bbl_v)) visc%Kv_bbl_v(i,J) = kv_bbl
       endif
-    endif ; enddo ; enddo ! end of i & j loops
+    endif
+    enddo
+    enddo  ! end of i & j loops
   enddo ! end of m loop
 
   !$omp target exit data map(release: dz, tv, tv%T, tv%S, S_vel, T_vel, SpV_vel, h_vel, h_at_vel, &
@@ -1800,7 +1892,7 @@ end subroutine test_L_open_concave
 !> Determine the normalized open length of each interface for convex bathymetry (from the ocean
 !! perspective) using Newton's method iterations.  In this case there is a single open region
 !! with the minimum depth at one edge of the cell.
-pure subroutine find_L_open_convex(vol_below, D_vel, Dp, Dm, L, GV, US, CS)
+subroutine find_L_open_convex(vol_below, D_vel, Dp, Dm, L, GV, US, CS)
   type(verticalGrid_type),     intent(in)  :: GV   !< The ocean's vertical grid structure.
   real, dimension(SZK_(GV)+1), intent(in)  :: vol_below  !< The volume below each interface, normalized by
                                                    !! the full horizontal area of a velocity cell [Z ~> m]
@@ -1988,7 +2080,8 @@ pure function set_v_at_u(v, h, G, GV, i, j, k, mask2dCv, OBC)
 
   do j0 = -1,0 ; do i0 = 0,1 ; i1 = i+i0 ; J1 = J+j0
     hwt(i0,j0) = (h(i1,j1,k) + h(i1,j1+1,k)) * mask2dCv(i1,J1)
-  enddo ; enddo
+  enddo
+  enddo
 
   if (associated(OBC)) then ; if (OBC%number_of_segments > 0) then
     do j0 = -1,0 ; do i0 = 0,1 ; if (OBC%segnum_v(i+i0,J+j0) /= 0) then
@@ -1998,7 +2091,9 @@ pure function set_v_at_u(v, h, G, GV, i, j, k, mask2dCv, OBC)
       elseif (OBC%segnum_v(i1,J1) < 0) then !  OBC_DIRECTION_S
         hwt(i0,j0) = 2.0 * h(i1,J1+1,k) * mask2dCv(i1,J1)
       endif
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
   endif ; endif
 
   hwt_tot = (hwt(0,-1) + hwt(1,0)) + (hwt(1,-1) + hwt(0,0))
@@ -2034,7 +2129,8 @@ pure function set_u_at_v(u, h, G, GV, i, j, k, mask2dCu, OBC)
 
   do j0 = 0,1 ; do i0 = -1,0 ; I1 = I+i0 ; j1 = j+j0
     hwt(i0,j0) = (h(i1,j1,k) + h(i1+1,j1,k)) * mask2dCu(I1,j1)
-  enddo ; enddo
+  enddo
+  enddo
 
   if (associated(OBC)) then ; if (OBC%number_of_segments > 0) then
     do j0 = 0,1 ; do i0 = -1,0 ; if ((OBC%segnum_u(I+i0,j+j0) /= 0)) then
@@ -2044,7 +2140,9 @@ pure function set_u_at_v(u, h, G, GV, i, j, k, mask2dCu, OBC)
       elseif (OBC%segnum_u(I1,j1) < 0) then ! OBC_DIRECTION_W
         hwt(i0,j0) = 2.0 * h(I1+1,j1,k) * mask2dCu(I1,j1)
       endif
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
   endif ; endif
 
   hwt_tot = (hwt(-1,0) + hwt(0,1)) + (hwt(0,0) + hwt(-1,1))
@@ -2299,11 +2397,13 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
     !$OMP parallel do default(shared)
     do J=js-1,je ; do i=is-1,ie+1
       mask_v(i,J) = G%mask2dCv(i,J)
-    enddo ; enddo
+    enddo
+    enddo
     !$OMP parallel do default(shared)
     do j=js-1,je+1 ; do I=is-1,ie
       mask_u(I,j) = G%mask2dCu(I,j)
-    enddo ; enddo
+    enddo
+    enddo
 
     if (associated(OBC)) then ; do n=1,OBC%number_of_segments
       ! Project bottom depths across cell-corner points in the OBCs.
@@ -2321,7 +2421,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           if (OBC%segment(n)%direction == OBC_DIRECTION_W) mask_v(i,J) = 0.0
         enddo
       endif
-    enddo ; endif
+    enddo
+    endif
 
   endif
 
@@ -2333,7 +2434,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
     EOSdom(2,1) = 1 ; EOSdom(2,2) = jje
     if (CS%dynamic_viscous_ML) then
       do_any = .false.
-      do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(i,j) reduce(.or.:do_any))
+      !$omp target teams distribute parallel do collapse(2) private(i, j)
+      do jj = 1, jje
+      do II = 1, IIe
         I = IsbB + II - 1
         j = jsb + jj - 1
 
@@ -2356,7 +2459,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           U_star = max(CS%ustar_min, 0.5*(U_star_2d(i,j) + U_star_2d(i+1,j)))
           Idecay_len_TKE(II,jj) = (absf / U_star) * CS%TKE_decay
         endif
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (do_any) then
         !$omp target
@@ -2380,14 +2485,17 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
                 Rhtot(II,jj) = Rhtot(II,jj) + 0.5 * (h(i,j,k) + h(i+1,j,k)) * GV%Rlay(k)
               endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
         enddo
         !$omp end target
 
         k2 = max(1,nkml)
         if (use_EOS .and. (nz>nkml)) then
           ! Find dRho/dT and dRho_dS.
-          do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(i,j))
+          !$omp target teams distribute parallel do collapse(2) private(i, j)
+          do jj = 1, jje
+          do II = 1, IIe
             I = IsbB + II - 1
             j = jsb + jj - 1
 
@@ -2397,7 +2505,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
             I_2hlay = 1.0 / (h(i,j,k2) + h(i+1,j,k2) + h_neglect)
             T_EOS(II,jj) = ((h(i,j,k2)*tv%T(i,j,k2)) + (h(i+1,j,k2)*tv%T(i+1,j,k2))) * I_2hlay
             S_EOS(II,jj) = ((h(i,j,k2)*tv%S(i,j,k2)) + (h(i+1,j,k2)*tv%S(i+1,j,k2))) * I_2hlay
-          enddo
+          end do
+          end do
+          !$omp end target teams distribute parallel do
           call calculate_density_derivs(T_EOS, S_EOS, press, dR_dT, dR_dS, &
                                         tv%eqn_of_state, EOSdom)
           if (nonBous_ML) then
@@ -2464,7 +2574,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               if (do_ij(II,jj)) do_any = .true.
 #endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
 
 #ifndef __NVCOMPILER_OPENMP_GPU
           if (.not.do_any) exit ! All columns are done.
@@ -2489,20 +2600,25 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
                 Rhtot(II,jj) = Rhtot(II,jj) + 0.5 * (h(i,j,k) + h(i+1,j,k)) * GV%Rlay(k)
               endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
         enddo
         !$omp end target teams
       endif
 
       if (do_any) then
-        do concurrent (jj=1:jje, II=1:IIe) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do jj = 1, jje
+        do II = 1, IIe
           I = IsbB + II - 1
           j = jsb + jj - 1
 
           if (do_ij(II,jj)) then
             visc%nkml_visc_u(I,j) = k_massive(II,jj)
           endif
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
     endif ! dynamic_viscous_ML
 
@@ -2518,7 +2634,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
         else
           do_ij(II,jj) = .true. ; do_any_shelf = .true.
         endif
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (do_any_shelf) then
@@ -2541,7 +2658,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           dz_at_vel(II,jj,k) = 0.0
           ustar(II,jj) = 0.0
         endif
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
 
       do jj=1,jje ; do II=1,IIe
         I = IsbB + II - 1
@@ -2577,7 +2696,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               Shtot(II,jj) = Shtot(II,jj) + &
                 hweight * 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i+1,j,k))
             endif
-          enddo ; endif
+          enddo
+          endif
 
           if ((hwtot <= 0.0) .or. (CS%linear_drag .and. .not.allocated(tv%SpV_avg))) then
             ustar(II,jj) = cdrag_sqrt_H * CS%drag_bg_vel
@@ -2596,7 +2716,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           endif ; endif
           ! if (allocated(tv%SpV_avg)) SpV_av(I) = SpVhtot(I) / hwtot
         endif
-      enddo ; enddo ! I-loop
+      enddo
+      enddo  ! I-loop
 
       if (use_EOS) then
         do jj=1,jje
@@ -2690,9 +2811,11 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           visc%tbl_thick_shelf_u(I,j) = tbl_thick
           visc%Kv_tbl_shelf_u(I,j) = max(CS%Kv_TBL_min, cdrag_sqrt*ustar1*tbl_thick)
         endif
-      enddo ; enddo ! I-loop
+      enddo
+      enddo  ! I-loop
     endif ! do_any_shelf
-  enddo ; enddo
+  enddo
+  enddo
 
   do JsbB=Jsq,Jeq,nJJB ; do isb=is,ie,nIIB
     JebB=min(Jeq,JsbB+nJJB-1) ; ieb=min(ie,isb+nIIB-1)
@@ -2702,7 +2825,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
     EOSdom(2,1) = 1 ; EOSdom(2, 2) = JJe
     if (CS%dynamic_viscous_ML) then
       do_any = .false.
-      do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j) reduce(.or.:do_any))
+      !$omp target teams distribute parallel do collapse(2) private(i, j)
+      do JJ = 1, JJe
+      do ii = 1, iie
         i = isb + ii - 1
         J = JsbB + JJ - 1
 
@@ -2727,7 +2852,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           Idecay_len_TKE(ii,JJ) = (absf / U_star) * CS%TKE_decay
 
         endif
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (do_any) then
         !$omp target
@@ -2751,14 +2878,17 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
                 Rhtot(ii,JJ) = Rhtot(ii,JJ) + 0.5 * (h(i,j,k) + h(i,j+1,k)) * GV%Rlay(k)
               endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
         enddo
         !$omp end target
 
         if (use_EOS .and. (nz > nkml)) then
           k2 = max(1,nkml)
           ! Find dRho/dT and dRho_dS.
-          do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j))
+          !$omp target teams distribute parallel do collapse(2) private(i, j)
+          do JJ = 1, JJe
+          do ii = 1, iie
             i = isb + ii - 1
             J = JsbB + JJ - 1
 
@@ -2769,7 +2899,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
             I_2hlay = 1.0 / (h(i,j,k2) + h(i,j+1,k2) + h_neglect)
             T_EOS(ii,JJ) = ((h(i,j,k2)*tv%T(i,j,k2)) + (h(i,j+1,k2)*tv%T(i,j+1,k2))) * I_2hlay
             S_EOS(ii,JJ) = ((h(i,j,k2)*tv%S(i,j,k2)) + (h(i,j+1,k2)*tv%S(i,j+1,k2))) * I_2hlay
-          enddo
+          end do
+          end do
+          !$omp end target teams distribute parallel do
           call calculate_density_derivs(T_EOS, S_EOS, press, dR_dT, dR_dS, &
                                         tv%eqn_of_state, EOSdom)
           if (nonBous_ML) then
@@ -2839,7 +2971,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               if (do_ij(ii,JJ)) do_any = .true.
 #endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
 
 ! on GPU, faster to do all k iterations, instead of exit early.
 #ifndef __NVCOMPILER_OPENMP_GPU
@@ -2864,21 +2997,26 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
                 Rhtot(ii,JJ) = Rhtot(ii,JJ) + 0.5 * (h(i,j,k) + h(i,j+1,k)) * GV%Rlay(k)
               endif
             endif
-          enddo ; enddo
+          enddo
+          enddo
 
         enddo
         !$omp end target teams
       endif
 
       if (do_any) then
-        do concurrent (JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i,j))
+        !$omp target teams distribute parallel do collapse(2) private(i, j)
+        do JJ = 1, JJe
+        do ii = 1, iie
           i = isb + ii - 1
           J = JsbB + JJ - 1
 
           if (do_ij(ii,JJ)) then
             visc%nkml_visc_v(i,J) = k_massive(ii,JJ)
           endif
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
 
     endif ! dynamic_viscous_ML
@@ -2895,7 +3033,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
         else
           do_ij(ii,JJ) = .true. ; do_any_shelf = .true.
         endif
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (do_any_shelf) then
@@ -2918,7 +3057,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           dz_at_vel(ii,JJ,k) = 0.0
           ustar(ii,JJ) = 0.0
         endif
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
 
       do JJ=1,JJe ; do ii=1,iie
         i = isb + ii - 1
@@ -2954,7 +3095,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               Shtot(ii,JJ) = Shtot(ii,JJ) + &
                 hweight * 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i,j+1,k))
             endif
-          enddo ; endif
+          enddo
+          endif
 
           if ((hwtot <= 0.0) .or. (CS%linear_drag .and. .not.allocated(tv%SpV_avg))) then
             ustar(ii,JJ) = cdrag_sqrt_H * CS%drag_bg_vel
@@ -2972,7 +3114,8 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
             T_EOS(ii,JJ) = 0.0 ; S_EOS(ii,JJ) = 0.0
           endif ; endif
         endif
-      enddo ; enddo ! I-loop
+      enddo
+      enddo  ! I-loop
 
       if (use_EOS) then
         do JJ=1,JJe
@@ -3067,10 +3210,12 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           visc%Kv_tbl_shelf_v(i,J) = max(CS%Kv_TBL_min, cdrag_sqrt*ustar1*tbl_thick)
 
         endif
-      enddo ; enddo ! i-loop
+      enddo
+      enddo  ! i-loop
     endif ! do_any_shelf
 
-  enddo ; enddo ! J-loop at v-points
+  enddo
+  enddo  ! J-loop at v-points
 
   !$omp target exit data map(release: U_star_2d, htot, dztot, Thtot, Shtot, SpV_htot, Rhtot, &
   !$omp   uhtot, vhtot, Idecay_len_TKE, dR_dT, dR_dS, dSpV_dT, dSpV_dS, ustar, press, T_EOS, &
@@ -3654,11 +3799,15 @@ subroutine set_visc_init(Time, G, GV, US, param_file, diag, visc, CS, restart_CS
       do j=js,je ; do I=is-1,ie ; if (G%mask2dCu(I,j) > 0) then
         CS%cdrag_u(I,j) = (G%mask2dT(i,j) * cdrag_h(i,j) + G%mask2dT(i+1,j) * cdrag_h(i+1,j)) / &
                           (G%mask2dT(i,j) + G%mask2dT(i+1,j))
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
       do J=js-1,je ; do i=is,ie ; if (G%mask2dCv(i,J) > 0) then
         CS%cdrag_v(i,J) = (G%mask2dT(i,j) * cdrag_h(i,j) + G%mask2dT(i,j+1) * cdrag_h(i,j+1)) / &
                           (G%mask2dT(i,j) + G%mask2dT(i,j+1))
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
       deallocate(cdrag_h)
     endif
     if (CS%BBL_use_tidal_bg) then

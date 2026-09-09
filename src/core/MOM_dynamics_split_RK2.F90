@@ -435,15 +435,33 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   !$omp target enter data map(alloc: u_bc_accel, v_bc_accel, eta_pred, uh_in, vh_in)
   !$omp target enter data map(alloc: up, vp, hp, dz, h_tmp)
 
-  do concurrent (k=1:nz, j=G%jsd:G%jed, I=G%IsdB:G%IedB)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = G%jsd, G%jed
+  do I = G%IsdB, G%IedB
     up(I,j,k) = 0.0
-  enddo
-  do concurrent (k=1:nz, J=G%JsdB:G%JedB, i=G%isd:G%ied)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = G%JsdB, G%JedB
+  do i = G%isd, G%ied
     vp(i,J,k) = 0.0
-  enddo
-  do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isd:G%ied)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = G%jsd, G%jed
+  do i = G%isd, G%ied
     hp(i,j,k) = h(i,j,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
   ! TODO: hp needs accurate +/-2 halos.
 
   ! Update CFL truncation value as function of time
@@ -479,10 +497,14 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 
     do k=1,nz ; do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
       u_old_rad_OBC(I,j,k) = u_av(I,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     do k=1,nz ; do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
       v_old_rad_OBC(i,J,k) = v_av(i,J,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   BT_cont_BT_thick = .false.
@@ -533,7 +555,8 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
     !$OMP parallel do default(shared)
     do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1
       eta_PF_start(i,j) = CS%eta_PF(i,j) - pres_to_eta * (p_surf_begin(i,j) - p_surf_end(i,j))
-    enddo ; enddo
+    enddo
+    enddo
   endif
   ! Stokes shear force contribution to pressure gradient
   Use_Stokes_PGF = present(Waves)
@@ -552,12 +575,14 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
         do k=1,nz
           do j=js,je ; do I=Isq,Ieq
             CS%PFu(I,j,k) = CS%PFu(I,j,k) + CS%PFu_Stokes(I,j,k)
-          enddo ; enddo
+          enddo
+          enddo
         enddo
         do k=1,nz
           do J=Jsq,Jeq ; do i=is,ie
              CS%PFv(i,J,k) = CS%PFv(i,J,k) + CS%PFv_Stokes(i,J,k)
-          enddo ; enddo
+          enddo
+          enddo
         enddo
       endif
     endif
@@ -595,12 +620,24 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 ! u_bc_accel = CAu + PFu + diffu(u[n-1])
   call cpu_clock_begin(id_clock_btforce)
 
-  do concurrent (k=1:nz, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = Isq, Ieq
     u_bc_accel(I,j,k) = (CS%CAu_pred(I,j,k) + CS%PFu(I,j,k)) + CS%diffu(I,j,k)
-  enddo
-  do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq, Jeq
+  do i = is, ie
     v_bc_accel(i,J,k) = (CS%CAv_pred(i,J,k) + CS%PFv(i,J,k)) + CS%diffv(i,J,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (associated(CS%OBC)) then
     !$omp target update from(u_bc_accel, v_bc_accel)
@@ -627,12 +664,24 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 
   call cpu_clock_begin(id_clock_vertvisc)
 
-  do concurrent (k=1:nz, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = Isq, Ieq
     up(I,j,k) = G%mask2dCu(I,j) * (u_inst(I,j,k) + dt * u_bc_accel(I,j,k))
-  enddo
-  do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq, Jeq
+  do i = is, ie
     vp(i,J,k) = G%mask2dCv(i,J) * (v_inst(i,J,k) + dt * v_bc_accel(i,J,k))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call enable_averages(dt, Time_local, CS%diag)
   call viscous_ML_block_sizes(CS%set_visc_CSp, G, nIIB, nJJB)
@@ -734,15 +783,27 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   dt_pred = dt * CS%be
   call cpu_clock_begin(id_clock_mom_update)
 
-  do concurrent (k=1:nz, J=Jsq:Jeq,i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq, Jeq
+  do i = is, ie
     vp(i,J,k) = G%mask2dCv(i,J) * (v_inst(i,J,k) + dt_pred * &
                     (v_bc_accel(i,J,k) + CS%v_accel_bt(i,J,k)))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent (k=1:nz, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = Isq, Ieq
     up(I,j,k) = G%mask2dCu(I,j) * (u_inst(I,j,k) + dt_pred * &
                     (u_bc_accel(I,j,k) + CS%u_accel_bt(I,j,k)))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call cpu_clock_end(id_clock_mom_update)
 
@@ -877,9 +938,15 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   endif
 
   ! h_av = (h + hp)/2
-  do concurrent (k=1:nz, j=js-cor_stencil:je+cor_stencil, i=is-cor_stencil:ie+cor_stencil)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js-cor_stencil, je+cor_stencil
+  do i = is-cor_stencil, ie+cor_stencil
     h_av(i,j,k) = 0.5*(h(i,j,k) + hp(i,j,k))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! The correction phase of the time step starts here.
   call enable_averages(dt, Time_local, CS%diag)
@@ -898,9 +965,15 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
     ! hp <- (1-begw)*h_in + begw*hp
     ! Back up hp to the value it would have had after a time-step of
     ! begw*dt.  hp is not used again until recalculated by continuity.
-    do concurrent (k=1:nz, j=js-2:je+2, i=is-2:ie+2)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = js-2, je+2
+    do i = is-2, ie+2
       hp(i,j,k) = (1.0-CS%begw)*h(i,j,k) + CS%begw*hp(i,j,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     ! PFu = d/dx M(hp,T,S)
     ! pbce = dM/deta
@@ -920,12 +993,14 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
           do k=1,nz
             do j=js,je ; do I=Isq,Ieq
               CS%PFu(I,j,k) = CS%PFu(I,j,k) + CS%PFu_Stokes(I,j,k)
-            enddo ; enddo
+            enddo
+            enddo
           enddo
           do k=1,nz
             do J=Jsq,Jeq ; do i=is,ie
               CS%PFv(i,J,k) = CS%PFv(i,J,k) + CS%PFv_Stokes(i,J,k)
-            enddo ; enddo
+            enddo
+            enddo
           enddo
         endif
       endif
@@ -979,13 +1054,25 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 ! u_bc_accel = CAu + PFu + diffu(u[n-1])
   call cpu_clock_begin(id_clock_btforce)
 
-  do concurrent (k=1:nz, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = Isq, Ieq
     u_bc_accel(I,j,k) = (CS%Cau(I,j,k) + CS%PFu(I,j,k)) + CS%diffu(I,j,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent (k=1:nz, J=Jsq:Jeq,i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq, Jeq
+  do i = is, ie
     v_bc_accel(i,J,k) = (CS%Cav(i,J,k) + CS%PFv(i,J,k)) + CS%diffv(i,J,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (associated(CS%OBC)) then
     !$omp target update from(u_bc_accel, v_bc_accel)
@@ -1026,12 +1113,20 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 
   if (CS%id_deta_dt>0) then
     !$omp target update from(eta, eta_pred)
-    do j=js,je ; do i=is,ie ; deta_dt(i,j) = (eta_pred(i,j) - eta(i,j))*Idt_bc ; enddo ; enddo
+    do j=js,je
+    do i=is,ie
+    deta_dt(i,j) = (eta_pred(i,j) - eta(i,j))*Idt_bc
+    enddo
+    enddo
   endif
 
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     eta(i,j) = eta_pred(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call cpu_clock_end(id_clock_btstep)
   if (showCallTree) call callTree_leave("btstep()")
@@ -1043,14 +1138,26 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
 
   ! u = u + dt*( u_bc_accel + u_accel_bt )
   call cpu_clock_begin(id_clock_mom_update)
-  do concurrent (k=1:nz, j=js:je, I=Isq:Ieq)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do I = Isq, Ieq
     u_inst(I,j,k) = G%mask2dCu(I,j) * (u_inst(I,j,k) + dt * &
                     (u_bc_accel(I,j,k) + CS%u_accel_bt(I,j,k)))
-  enddo
-  do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq, Jeq
+  do i = is, ie
     v_inst(i,J,k) = G%mask2dCv(i,J) * (v_inst(i,J,k) + dt * &
                     (v_bc_accel(i,J,k) + CS%v_accel_bt(i,J,k)))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
   call cpu_clock_end(id_clock_mom_update)
 
   if (CS%debug) then
@@ -1123,9 +1230,15 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   if (showCallTree) call callTree_wayPoint("done with vertvisc (step_MOM_dyn_split_RK2)")
 
 ! Later, h_av = (h_in + h_out)/2, but for now use h_av to store h_in.
-  do concurrent (k=1:nz, j=js-cor_stencil:je+cor_stencil, i=is-cor_stencil:ie+cor_stencil)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js-cor_stencil, je+cor_stencil
+  do i = is-cor_stencil, ie+cor_stencil
     h_av(i,j,k) = h(i,j,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call do_group_pass(CS%pass_visc_rem, G%Domain, clock=id_clock_pass, omp_offload=.true.)
 
@@ -1140,9 +1253,15 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   ! h  = h + dt * div . uh
   ! u_av and v_av adjusted so their mass transports match uhbt and vhbt.
   call cpu_clock_begin(id_clock_continuity)
-  do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isd:G%ied)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = G%jsd, G%jed
+  do i = G%isd, G%ied
     h_tmp(i,j,k) = h(i,j,k)
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call continuity(u_inst, v_inst, h_tmp, h, uh, vh, dt, G, GV, US, CS%continuity_CSp, CS%OBC, pbv, &
                   uhbt=CS%uhbt, vhbt=CS%vhbt, visc_rem_u=CS%visc_rem_u, visc_rem_v=CS%visc_rem_v, &
@@ -1172,22 +1291,40 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   endif
 
 ! h_av = (h_in + h_out)/2 . Going in to this line, h_av = h_in.
-  do concurrent (k=1:nz, j=js-cor_stencil:je+cor_stencil, i=is-cor_stencil:ie+cor_stencil)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js-cor_stencil, je+cor_stencil
+  do i = is-cor_stencil, ie+cor_stencil
     h_av(i,j,k) = 0.5*(h_av(i,j,k) + h(i,j,k))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (G%nonblocking_updates) then
     call complete_group_pass(CS%pass_av_uvh, G%Domain, clock=id_clock_pass)
     !$omp target update to(u_av, v_av, uh, vh)
   endif
 
-  do concurrent (k=1:nz, j=js-cor_stencil:je+cor_stencil, I=Isq-cor_stencil:Ieq+cor_stencil)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js-cor_stencil, je+cor_stencil
+  do I = Isq-cor_stencil, Ieq+cor_stencil
     uhtr(I,j,k) = uhtr(I,j,k) + uh(I,j,k) * dt
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent (k=1:nz, J=Jsq-cor_stencil:Jeq+cor_stencil, i=is-cor_stencil:ie+cor_stencil)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do J = Jsq-cor_stencil, Jeq+cor_stencil
+  do i = is-cor_stencil, ie+cor_stencil
     vhtr(i,J,k) = vhtr(i,J,k) + vh(i,J,k) * dt
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   !$omp target exit data map(release: u_bc_accel, v_bc_accel, eta_pred, uh_in, vh_in)
   !$omp target exit data map(delete: hp, up, vp, dz, h_tmp)
@@ -1237,7 +1374,9 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
     ueffA(:,:,:) = 0
     do k=1,nz ; do j=js,je ; do I=Isq,Ieq
       if (abs(up(I,j,k)) > 0.) ueffA(I,j,k) = uh(I,j,k) / up(I,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     call post_data(CS%id_ueffA, ueffA, CS%diag)
   endif
 
@@ -1245,7 +1384,9 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
     veffA(:,:,:) = 0
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
       if (abs(vp(i,J,k)) > 0.) veffA(i,J,k) = vh(i,J,k) / vp(i,J,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     call post_data(CS%id_veffA, veffA, CS%diag)
   endif
 
@@ -1742,16 +1883,26 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
     ! dimensions as h, either m or kg m-3.
     !   CS%eta(:,:) = 0.0 already from initialization.
     if (GV%Boussinesq) then
-      do j=js,je ; do i=is,ie ; CS%eta(i,j) = -GV%Z_to_H * G%bathyT(i,j) ; enddo ; enddo
+      do j=js,je
+      do i=is,ie
+      CS%eta(i,j) = -GV%Z_to_H * G%bathyT(i,j)
+      enddo
+      enddo
     endif
     do k=1,nz ; do j=js,je ; do i=is,ie
       CS%eta(i,j) = CS%eta(i,j) + h(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     call set_initialized(CS%eta, trim(eta_rest_name), restart_CS)
     !$omp target update to(CS%eta)
   endif
   ! Copy eta into an output array.
-  do j=js,je ; do i=is,ie ; eta(i,j) = CS%eta(i,j) ; enddo ; enddo
+  do j=js,je
+  do i=is,ie
+  eta(i,j) = CS%eta(i,j)
+  enddo
+  enddo
 
   !$omp target enter data map (alloc: CS%barotropic_CSp)
   call barotropic_init(u, v, h, Time, G, GV, US, param_file, diag, &
@@ -1771,8 +1922,20 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
 
   if (.not. query_initialized(CS%u_av, "u2", restart_CS) .or. &
       .not. query_initialized(CS%v_av, "v2", restart_CS)) then
-    do k=1,nz ; do j=jsd,jed ; do I=IsdB,IedB ; CS%u_av(I,j,k) = u(I,j,k) ; enddo ; enddo ; enddo
-    do k=1,nz ; do J=JsdB,JedB ; do i=isd,ied ; CS%v_av(i,J,k) = v(i,J,k) ; enddo ; enddo ; enddo
+    do k=1,nz
+    do j=jsd,jed
+    do I=IsdB,IedB
+    CS%u_av(I,j,k) = u(I,j,k)
+    enddo
+    enddo
+    enddo
+    do k=1,nz
+    do J=JsdB,JedB
+    do i=isd,ied
+    CS%v_av(i,J,k) = v(i,J,k)
+    enddo
+    enddo
+    enddo
     call set_initialized(CS%u_av, "u2", restart_CS)
     call set_initialized(CS%v_av, "v2", restart_CS)
   endif
@@ -1792,9 +1955,15 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
       if (read_uv .and. read_h2) then
         call pass_var(CS%h_av, G%Domain, clock=id_clock_pass_init)
       else
-        do concurrent (k=1:nz, j=jsd:jed, i=isd:ied)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, nz
+        do j = jsd, jed
+        do i = isd, ied
           h_tmp(i,j,k) = h(i,j,k)
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
         !$omp target update to(CS%u_av, CS%v_av, CS%h_av, uh, vh)
         call continuity(CS%u_av, CS%v_av, h, h_tmp, uh, vh, dt, G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
         !$omp target update from(CS%u_av, CS%v_av, CS%h_av, uh, vh)
@@ -1803,9 +1972,15 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
         call pass_var(h_tmp, G%Domain, clock=id_clock_pass_init)
         !$omp target update to(h_tmp)
 
-        do concurrent (k=1:nz, j=jsd:jed, i=isd:ied)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, nz
+        do j = jsd, jed
+        do i = isd, ied
           CS%h_av(i,j,k) = 0.5*(h(i,j,k) + h_tmp(i,j,k))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
       call pass_vector(CS%u_av, CS%v_av, G%Domain, halo=cor_stencil, clock=id_clock_pass_init, complete=.false.)
       call pass_vector(uh, vh, G%Domain, halo=cor_stencil, clock=id_clock_pass_init, complete=.true.)
@@ -1820,12 +1995,20 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
     ! This call is just here to initialize uh and vh.
     if (.not. query_initialized(uh, "uh", restart_CS) .or. &
         .not. query_initialized(vh, "vh", restart_CS)) then
-      do k=1,nz ; do j=jsd,jed ; do i=isd,ied ; h_tmp(i,j,k) = h(i,j,k) ; enddo ; enddo ; enddo
+      do k=1,nz
+      do j=jsd,jed
+      do i=isd,ied
+      h_tmp(i,j,k) = h(i,j,k)
+      enddo
+      enddo
+      enddo
       call continuity(u, v, h, h_tmp, uh, vh, dt, G, GV, US, CS%continuity_CSp, CS%OBC, pbv)
       call pass_var(h_tmp, G%Domain, clock=id_clock_pass_init)
       do k=1,nz ; do j=jsd,jed ; do i=isd,ied
         CS%h_av(i,j,k) = 0.5*(h(i,j,k) + h_tmp(i,j,k))
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
       call set_initialized(uh, "uh", restart_CS)
       call set_initialized(vh, "vh", restart_CS)
       call set_initialized(CS%h_av, "h2", restart_CS)

@@ -740,14 +740,22 @@ subroutine calculate_density_array_2d_Roquet_rho(this, T, S, pressure, rho, dom,
   js = dom(2,1) ; je = dom(2,2)
 
   if (present(rho_ref)) then
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       rho(i,j) = density_anomaly_elem_Roquet_rho_loc(T(i,j), S(i,j), &
           pressure(i,j), rho_ref)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       rho(i,j) = density_elem_Roquet_rho_loc( T(i,j), S(i,j), pressure(i,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 end subroutine calculate_density_array_2d_Roquet_rho
 
@@ -779,14 +787,26 @@ subroutine calculate_density_array_3d_Roquet_rho(this, T, S, pressure, rho, dom,
   ! through the polymorphic "this" binding, which causes runtime errors in do concurrent
   ! regions offloaded to the GPU with nvfortran.
   if (present(rho_ref)) then
-    do concurrent (k=ks:ke, j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = ks, ke
+    do j = js, je
+    do i = is, ie
       rho(i,j,k) = density_anomaly_elem_Roquet_rho_loc(T(i,j,k), S(i,j,k), &
           pressure(i,j,k), rho_ref)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (k=ks:ke, j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = ks, ke
+    do j = js, je
+    do i = is, ie
       rho(i,j,k) = density_elem_Roquet_rho_loc(T(i,j,k), S(i,j,k), pressure(i,j,k))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 end subroutine calculate_density_array_3d_Roquet_rho
 
@@ -816,10 +836,14 @@ subroutine calculate_density_derivs_2d_Roquet_rho(this, T, S, pressure, &
 
   ! NOTE: There is an implicit copy of `this` which cannot yet be prevented.
 
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     call calculate_density_derivs_elem_Roquet_rho_loc(T(i,j), S(i,j), &
         pressure(i,j), drho_dT(i,j), drho_dS(i,j))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine calculate_density_derivs_2d_Roquet_rho
 
 !> Calculate the in-situ density derivatives for 3D array inputs and outputs.
@@ -850,10 +874,16 @@ subroutine calculate_density_derivs_3d_Roquet_rho(this, T, S, pressure, &
   ! The element subroutine is called via its free-function (_loc) form rather than
   ! through the polymorphic "this" binding, which causes runtime errors in do concurrent
   ! regions offloaded to the GPU with nvfortran.
-  do concurrent (k=ks:ke, j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = ks, ke
+  do j = js, je
+  do i = is, ie
     call calculate_density_derivs_elem_Roquet_rho_loc(T(i,j,k), S(i,j,k), &
         pressure(i,j,k), drho_dT(i,j,k), drho_dS(i,j,k))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine calculate_density_derivs_3d_Roquet_rho
 
 !> Calculate the second derivatives of density for 2D array inputs and outputs.
@@ -889,10 +919,14 @@ subroutine calculate_density_second_derivs_2d_Roquet_rho(this, T, S, pressure, &
   ! The element subroutine is called via its free-function (_loc) form rather than
   ! through the polymorphic "this" binding, which causes runtime errors in do concurrent
   ! regions offloaded to the GPU with nvfortran.
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     call calculate_density_second_derivs_elem_Roquet_rho_loc(T(i,j), S(i,j), pressure(i,j), &
         drho_dS_dS(i,j), drho_dS_dT(i,j), drho_dT_dT(i,j), drho_dS_dP(i,j), drho_dT_dP(i,j))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine calculate_density_second_derivs_2d_Roquet_rho
 
 !> Calculate the in-situ specific volume for 1D array inputs and outputs.

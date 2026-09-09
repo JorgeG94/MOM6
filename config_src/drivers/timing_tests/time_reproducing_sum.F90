@@ -122,7 +122,9 @@ subroutine generate_array_of_values(D, HI, n_global)
   PI = 4.0*atan(1.0)
 
   !  Calculate the depth of the bottom.
-  do concurrent( j=HI%jsc:HI%jec, i=HI%isc:HI%iec )
+  !$omp target teams distribute parallel do collapse(2)
+  do j = HI%jsc, HI%jec
+  do i = HI%isc, HI%iec
     x = real( i + HI%idg_offset ) / real( n_global(1) )
     y = real( j + HI%idg_offset ) / real( n_global(2) )
     D(i,j) = -3000.0  * ( y*(1.0 + 0.6*cos(4.0*PI*x)) &
@@ -130,7 +132,9 @@ subroutine generate_array_of_values(D, HI, n_global)
                           + 0.05*cos(10.0*PI*x) - 0.7 )
     if (D(i,j) > 3000.0) D(i,j) = 3000.0
     if (D(i,j) < 1.) D(i,j) = 0.
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
 end subroutine generate_array_of_values
 

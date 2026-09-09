@@ -231,16 +231,24 @@ subroutine calc_depth_function(G, CS)
   ! For efficiency, the reciprocal of H0 should be used instead.
   H0 = CS%depth_scaled_khth_h0
   expo = CS%depth_scaled_khth_exp
-  do concurrent( j=js:je, i=is-1:Ieq ) DO_LOCALITY(local(h1,h2))
+  !$omp target teams distribute parallel do collapse(2) private(h1, h2)
+  do j = js, je
+  do i = is-1, Ieq
     h1 = max(G%meanSL(i,j) + G%bathyT(i,j), 0.0)
     h2 = max(G%meanSL(i+1,j) + G%bathyT(i+1,j), 0.0)
     CS%Depth_fn_u(I,j) = (MIN(1.0, (0.5 * (h1 + h2)) / H0))**expo
-  enddo
-  do concurrent( J=js-1:Jeq, i=is:ie ) DO_LOCALITY(local(h1,h2))
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(2) private(h1, h2)
+  do J = js-1, Jeq
+  do i = is, ie
     h1 = max(G%meanSL(i,j) + G%bathyT(i,j), 0.0)
     h2 = max(G%meanSL(i,j+1) + G%bathyT(i,j+1), 0.0)
     CS%Depth_fn_v(i,J) = (MIN(1.0, (0.5 * (h1 + h2)) / H0))**expo
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
 end subroutine calc_depth_function
 
@@ -310,41 +318,57 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
   if (CS%BS_EBT_power>0.) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%BS_struct(i,j,k) = CS%ebt_struct(i,j,k)**CS%BS_EBT_power
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (CS%BS_use_sqg_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%BS_struct(i,j,k) = CS%sqg_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   if (CS%khth_use_ebt_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%khth_struct(i,j,k) = CS%ebt_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (CS%khth_use_sqg_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%khth_struct(i,j,k) = CS%sqg_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   if (CS%khtr_use_ebt_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%khtr_struct(i,j,k) = CS%ebt_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (CS%khtr_use_sqg_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%khtr_struct(i,j,k) = CS%sqg_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   if (CS%kdgl90_use_ebt_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%kdgl90_struct(i,j,k) = CS%ebt_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (CS%kdgl90_use_sqg_struct) then
     do k=1,nz ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
       CS%kdgl90_struct(i,j,k) = CS%sqg_struct(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   ! Calculate and store the ratio between deformation radius and grid-spacing
@@ -352,10 +376,14 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
   if (CS%calculate_rd_dx) then
     if (.not. allocated(CS%Rd_dx_h)) call MOM_error(FATAL, &
       "calc_resoln_function: %Rd_dx_h is not associated with calculate_rd_dx.")
-    do concurrent( j=js-1:je+1, i=is-1:ie+1 )
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js-1, je+1
+    do i = is-1, ie+1
       CS%Rd_dx_h(i,j) = CS%cg1(i,j) / &
             (sqrt(CS%f2_dx2_h(i,j) + CS%cg1(i,j)*CS%beta_dx2_h(i,j)))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     if (query_averaging_enabled(CS%diag)) then
       if (CS%id_Rd_dx > 0) then
         !$omp target update from(CS%Rd_dx_h)
@@ -413,12 +441,17 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
       else
         cg1_q(I,J) = 0.25 * ((CS%cg1(i,j) + CS%cg1(i+1,j+1)) + (CS%cg1(i+1,j) + CS%cg1(i,j+1)))
       endif
-    enddo ; enddo
+    enddo
+    enddo
     !$omp target update to(cg1_q)
   else
-    do concurrent( J=js-1:Jeq, I=is-1:Ieq )
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, Jeq
+    do I = is-1, Ieq
       cg1_q(I,J) = 0.25 * ((CS%cg1(i,j) + CS%cg1(i+1,j+1)) + (CS%cg1(i+1,j) + CS%cg1(i,j+1)))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   !   Every branch of the chain below except Res_fn_power_visc == 2 runs on the host, so
@@ -436,7 +469,8 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
       else
         CS%Res_fn_h(i,j) = 1.0
       endif
-    enddo ; enddo
+    enddo
+    enddo
     do J=js-1,Jeq ; do I=is-1,Ieq
       dx_term = CS%f2_dx2_q(I,J) +  cg1_q(I,J) * CS%beta_dx2_q(I,J)
       if ((CS%Res_coef_visc * cg1_q(I,J))**2 > dx_term) then
@@ -444,41 +478,54 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
       else
         CS%Res_fn_q(I,J) = 1.0
       endif
-    enddo ; enddo
+    enddo
+    enddo
   elseif (CS%Res_fn_power_visc == 2) then
-    do concurrent( j=js-1:je+1, i=is-1:ie+1 ) DO_LOCALITY(local(dx_term))
+    !$omp target teams distribute parallel do collapse(2) private(dx_term)
+    do j = js-1, je+1
+    do i = is-1, ie+1
       dx_term = CS%f2_dx2_h(i,j) + CS%cg1(i,j)*CS%beta_dx2_h(i,j)
       CS%Res_fn_h(i,j) = dx_term / (dx_term + (CS%Res_coef_visc * CS%cg1(i,j))**2)
-    enddo
-    do concurrent( J=js-1:Jeq, I=is-1:Ieq ) DO_LOCALITY(local(dx_term))
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(2) private(dx_term)
+    do J = js-1, Jeq
+    do I = is-1, Ieq
       dx_term = CS%f2_dx2_q(I,J) +  cg1_q(I,J) * CS%beta_dx2_q(I,J)
       CS%Res_fn_q(I,J) = dx_term / (dx_term + (CS%Res_coef_visc * cg1_q(I,J))**2)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   elseif (mod(CS%Res_fn_power_visc, 2) == 0) then
     power_2 = CS%Res_fn_power_visc / 2
     do j=js-1,je+1 ; do i=is-1,ie+1
       dx_term = (US%L_T_to_m_s**2*(CS%f2_dx2_h(i,j) + CS%cg1(i,j)*CS%beta_dx2_h(i,j)))**power_2
       CS%Res_fn_h(i,j) = dx_term / &
           (dx_term + (CS%Res_coef_visc * US%L_T_to_m_s*CS%cg1(i,j))**CS%Res_fn_power_visc)
-    enddo ; enddo
+    enddo
+    enddo
     do J=js-1,Jeq ; do I=is-1,Ieq
       dx_term = (US%L_T_to_m_s**2*(CS%f2_dx2_q(I,J) + cg1_q(I,J) * CS%beta_dx2_q(I,J)))**power_2
       CS%Res_fn_q(I,J) = dx_term / &
           (dx_term + (CS%Res_coef_visc * US%L_T_to_m_s*cg1_q(I,J))**CS%Res_fn_power_visc)
-    enddo ; enddo
+    enddo
+    enddo
   else
     do j=js-1,je+1 ; do i=is-1,ie+1
       dx_term = (US%L_T_to_m_s*sqrt(CS%f2_dx2_h(i,j) + &
                                     CS%cg1(i,j)*CS%beta_dx2_h(i,j)))**CS%Res_fn_power_visc
       CS%Res_fn_h(i,j) = dx_term / &
          (dx_term + (CS%Res_coef_visc * US%L_T_to_m_s*CS%cg1(i,j))**CS%Res_fn_power_visc)
-    enddo ; enddo
+    enddo
+    enddo
     do J=js-1,Jeq ; do I=is-1,Ieq
       dx_term = (US%L_T_to_m_s*sqrt(CS%f2_dx2_q(I,J) + &
                                     cg1_q(I,J) * CS%beta_dx2_q(I,J)))**CS%Res_fn_power_visc
       CS%Res_fn_q(I,J) = dx_term / &
           (dx_term + (CS%Res_coef_visc * US%L_T_to_m_s*cg1_q(I,J))**CS%Res_fn_power_visc)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   !$omp target update to(CS%Res_fn_h, CS%Res_fn_q) if (CS%Res_fn_power_visc /= 2)
@@ -490,11 +537,13 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         CS%Res_fn_u(I,j) = 0.5*(CS%Res_fn_h(i,j) + CS%Res_fn_h(i+1,j))
         if (OBC%segnum_u(I,j) > 0) CS%Res_fn_u(I,j) = CS%Res_fn_h(i,j) ! Eastern OBC
         if (OBC%segnum_u(I,j) < 0) CS%Res_fn_u(I,j) = CS%Res_fn_h(i+1,j) ! Western OBC
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do I=is-1,Ieq
         CS%Res_fn_u(I,j) = 0.5*(CS%Res_fn_h(i,j) + CS%Res_fn_h(i+1,j))
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (apply_v_OBC) then
@@ -502,11 +551,13 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         CS%Res_fn_v(i,J) = 0.5*(CS%Res_fn_h(i,j) + CS%Res_fn_h(i,j+1))
         if (OBC%segnum_v(i,J) > 0) CS%Res_fn_v(i,J) = CS%Res_fn_h(i,j) ! Northern OBC
         if (OBC%segnum_v(i,J) < 0) CS%Res_fn_v(i,J) = CS%Res_fn_h(i,j+1) ! Southern OBC
-      enddo ; enddo
+      enddo
+      enddo
     else
       do J=js-1,Jeq ; do i=is,ie
         CS%Res_fn_v(i,J) = 0.5*(CS%Res_fn_h(i,j) + CS%Res_fn_h(i,j+1))
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     !$omp target update to(CS%Res_fn_u, CS%Res_fn_v)
@@ -516,12 +567,17 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         cg1_u(I,j) = 0.5 * (CS%cg1(i,j) + CS%cg1(i+1,j))
         if (OBC%segnum_u(I,j) > 0) cg1_u(I,j) = CS%cg1(i,j) ! Eastern OBC
         if (OBC%segnum_u(I,j) < 0) cg1_u(I,j) = CS%cg1(i+1,j) ! Western OBC
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(cg1_u)
     else
-      do concurrent( j=js:je, I=is-1:Ieq )
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, Ieq
         cg1_u(I,j) = 0.5 * (CS%cg1(i,j) + CS%cg1(i+1,j))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     if (apply_v_OBC) then
@@ -529,12 +585,17 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         cg1_v(i,J) = 0.5 * (CS%cg1(i,j) + CS%cg1(i,j+1))
         if (OBC%segnum_v(i,J) > 0) cg1_v(i,J) = CS%cg1(i,j) ! Northern OBC
         if (OBC%segnum_v(i,J) < 0) cg1_v(i,J) = CS%cg1(i,j+1) ! Southern OBC
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(cg1_v)
     else
-      do concurrent( J=js-1:Jeq, i=is:ie )
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, Jeq
+      do i = is, ie
         cg1_v(i,J) = 0.5 * (CS%cg1(i,j) + CS%cg1(i,j+1))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
     !$omp target update from(cg1_u, cg1_v) if (CS%Res_fn_power_khth /= 2)
 
@@ -546,7 +607,8 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         else
           CS%Res_fn_u(I,j) = 1.0
         endif
-      enddo ; enddo
+      enddo
+      enddo
       do J=js-1,Jeq ; do i=is,ie
         dx_term = CS%f2_dx2_v(i,J) + cg1_v(i,J) * CS%beta_dx2_v(i,J)
         if ((CS%Res_coef_khth * cg1_v(i,J))**2 > dx_term) then
@@ -554,41 +616,54 @@ subroutine calc_resoln_function(h, tv, G, GV, US, CS, MEKE, OBC, dt)
         else
           CS%Res_fn_v(i,J) = 1.0
         endif
-      enddo ; enddo
+      enddo
+      enddo
     elseif (CS%Res_fn_power_khth == 2) then
-      do concurrent( j=js:je, I=is-1:Ieq ) DO_LOCALITY(local(dx_term))
+      !$omp target teams distribute parallel do collapse(2) private(dx_term)
+      do j = js, je
+      do I = is-1, Ieq
         dx_term = CS%f2_dx2_u(I,j) + cg1_u(I,j) * CS%beta_dx2_u(I,j)
         CS%Res_fn_u(I,j) = dx_term / (dx_term + (CS%Res_coef_khth * cg1_u(I,j))**2)
-      enddo
-      do concurrent( J=js-1:Jeq, i=is:ie ) DO_LOCALITY(local(dx_term))
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(2) private(dx_term)
+      do J = js-1, Jeq
+      do i = is, ie
         dx_term = CS%f2_dx2_v(i,J) + cg1_v(i,J) * CS%beta_dx2_v(i,J)
         CS%Res_fn_v(i,J) = dx_term / (dx_term + (CS%Res_coef_khth * cg1_v(i,J))**2)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (mod(CS%Res_fn_power_khth, 2) == 0) then
       power_2 = CS%Res_fn_power_khth / 2
       do j=js,je ; do I=is-1,Ieq
         dx_term = (US%L_T_to_m_s**2 * (CS%f2_dx2_u(I,j) + cg1_u(I,j) * CS%beta_dx2_u(I,j)))**power_2
         CS%Res_fn_u(I,j) = dx_term / &
             (dx_term + (CS%Res_coef_khth * US%L_T_to_m_s*cg1_u(I,j))**CS%Res_fn_power_khth)
-      enddo ; enddo
+      enddo
+      enddo
       do J=js-1,Jeq ; do i=is,ie
         dx_term = (US%L_T_to_m_s**2 * (CS%f2_dx2_v(i,J) + cg1_v(i,J) * CS%beta_dx2_v(i,J)))**power_2
         CS%Res_fn_v(i,J) = dx_term / &
             (dx_term + (CS%Res_coef_khth * US%L_T_to_m_s*cg1_v(i,J))**CS%Res_fn_power_khth)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do I=is-1,Ieq
         dx_term = (US%L_T_to_m_s*sqrt(CS%f2_dx2_u(I,j) + &
                                       cg1_u(I,j) * CS%beta_dx2_u(I,j)))**CS%Res_fn_power_khth
         CS%Res_fn_u(I,j) = dx_term / &
             (dx_term + (CS%Res_coef_khth * US%L_T_to_m_s*cg1_u(I,j))**CS%Res_fn_power_khth)
-      enddo ; enddo
+      enddo
+      enddo
       do J=js-1,Jeq ; do i=is,ie
         dx_term = (US%L_T_to_m_s*sqrt(CS%f2_dx2_v(i,J) + &
                                       cg1_v(i,J) * CS%beta_dx2_v(i,J)))**CS%Res_fn_power_khth
         CS%Res_fn_v(i,J) = dx_term / &
             (dx_term + (CS%Res_coef_khth * US%L_T_to_m_s*cg1_v(i,J))**CS%Res_fn_power_khth)
-      enddo ; enddo
+      enddo
+      enddo
     endif
     !$omp target update to(CS%Res_fn_u, CS%Res_fn_v) if (CS%Res_fn_power_khth /= 2)
   endif
@@ -676,23 +751,27 @@ subroutine calc_sqg_struct(h, tv, G, GV, US, CS, dt, MEKE, OBC)
     if (allocated(MEKE%Le)) then
       do j=js,je ; do i=is,ie
         Le(i,j) = MEKE%Le(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         Le(i,j) = sqrt(G%areaT(i,j))
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     do j=js,je ; do i=is,ie
       ! Setting the structure averaged over the top layer to 1 is consistent with it being well mixed.
       CS%sqg_struct(i,j,1) = 1.0
-    enddo ; enddo
+    enddo
+    enddo
 
     if (CS%interpolated_sqg_struct) then
       do j=js,je ; do i=is,ie
         f(i,j) = max(0.25 * abs((G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J-1)) + &
                          (G%CoriolisBu(I-1,J) + G%CoriolisBu(I,J-1))), f_subround)
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(h)
       !$omp target enter data map(alloc: e)
       call find_eta(h, tv, G, GV, US, e, halo_size=2)  !### Could be halo_size=1?
@@ -719,13 +798,16 @@ subroutine calc_sqg_struct(h, tv, G, GV, US, CS, dt, MEKE, OBC)
         dzc = 0.25 * ((dzu(I-1,j,K) + dzu(I,j,K)) + (dzv(i,J-1,K) + dzv(i,J,K)))
         CS%sqg_struct(i,j,k) = CS%sqg_struct(i,j,k-1) * &
                 exp(-CS%sqg_expo * (dzc * sqrt(N2)/(f(i,j) * Le(i,j))))
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         I_f_Le(i,j) = 1.0 / &
             (Le(i,j) * max(0.25*((abs(G%CoriolisBu(I,J)) + abs(G%CoriolisBu(I-1,J-1))) + &
                                  (abs(G%CoriolisBu(I-1,J)) + abs(G%CoriolisBu(I,J-1)))), f_subround))
-      enddo ; enddo
+      enddo
+      enddo
 
       call thickness_to_dz(h, tv, dz, G, GV, US)
 
@@ -735,7 +817,11 @@ subroutine calc_sqg_struct(h, tv, G, GV, US, CS, dt, MEKE, OBC)
         ! Set the pressure at the topmost interior interface.
         p_i(:,:) = 0.0
         if (associated(tv%p_surf)) then
-          do j=js,je ; do i=is,ie ; p_i(i,j) = tv%p_surf(i,j) ; enddo ; enddo
+          do j=js,je
+          do i=is,ie
+          p_i(i,j) = tv%p_surf(i,j)
+          enddo
+          enddo
         endif
         if (.not.allocated(tv%SpV_avg)) GxSpV = GV%g_Earth / GV%Rho0
         do K=2,nz ; do j=js,je
@@ -761,13 +847,16 @@ subroutine calc_sqg_struct(h, tv, G, GV, US, CS, dt, MEKE, OBC)
             ! CS%sqg_struct(i,j,k) = CS%sqg_struct(i,j,k-1) * &
             !         exp(-CS%sqg_expo * (dz_int(i,j,K) * sqrt(N2) * I_f_Le(i,j)) )
           enddo
-        enddo ; enddo
+        enddo
+        enddo
       else ! (GV%Boussinesq .and. .not.use_EOS) then
         do K=2,nz ; do j=js,je ; do i=is,ie
           dz_int = 0.5*(dz(i,j,k-1) + dz(i,j,k))  ! Thickness around interface [Z ~> m]
           CS%sqg_struct(i,j,k) = CS%sqg_struct(i,j,k-1) * &
                     exp(-CS%sqg_expo * (sqrt(GV%g_prime(K) * dz_int) * I_f_Le(i,j)) )
-        enddo ; enddo ; enddo
+        enddo
+        enddo
+        enddo
       endif
     endif
   endif
@@ -971,12 +1060,16 @@ subroutine calc_Visbeck_coeffs_old(h, slope_x, slope_y, N2_u, N2_v, G, GV, US, C
     do j=js-1,je+1 ; do I=is-1,ie ; if (OBC%segnum_u(I,j) /= 0) then
       if (OBC%segnum_u(I,j) > 0) OBC_dir_u(I,j) = 1   !  OBC_DIRECTION_E
       if (OBC%segnum_u(I,j) < 0) OBC_dir_u(I,j) = -1  !  OBC_DIRECTION_W
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
    !$OMP parallel do default(shared)
     do J=js-1,je ; do i=is-1,ie+1 ; if (OBC%segnum_v(i,J) /= 0) then
       if (OBC%segnum_v(i,J) > 0) OBC_dir_v(i,J) = 1   ! OBC_DIRECTION_N
       if (OBC%segnum_v(i,J) < 0) OBC_dir_v(i,J) = -1  !  OBC_DIRECTION_S
-    endif ; enddo ; enddo
+    endif
+    enddo
+    enddo
 
     ! Use the masked product of the 4 (or 2) thicknesses around a velocity-point interface for weights.
     !$OMP parallel do default(shared)
@@ -989,7 +1082,8 @@ subroutine calc_Visbeck_coeffs_old(h, slope_x, slope_y, N2_u, N2_v, G, GV, US, C
         elseif (OBC_dir_u(I,j) == -1) then  ! OBC_DIRECTION_W
           h4_u(I,j,K) = G%mask2dCu(I,j) * ( (h(i+1,j,k)**2) * (h(i+1,j,k-1)**2) )
         endif
-      enddo ; enddo
+      enddo
+      enddo
       do J=js-1,je ; do i=is-1,ie+1
         if (OBC_dir_v(i,J) == 0) then
           h4_v(i,J,K) = G%mask2dCv(i,J) * ( (h(i,j,k)*h(i,j+1,k)) * (h(i,j,k-1)*h(i,j+1,k-1)) )
@@ -998,30 +1092,38 @@ subroutine calc_Visbeck_coeffs_old(h, slope_x, slope_y, N2_u, N2_v, G, GV, US, C
         elseif (OBC_dir_v(i,J) == -1) then  ! OBC_DIRECTION_S
           h4_v(i,J,K) = G%mask2dCv(i,J) * ( (h(i,j+1,k)**2) * (h(i,j+1,k-1)**2) )
         endif
-      enddo ; enddo
+      enddo
+      enddo
     enddo
   else  ! The land mask is sufficient and there are no special considerations taken at OBC points.
     ! Use the masked product of the 4 thicknesses around a velocity-point interface for weights.
-    do concurrent(K=2:nz)
-      do concurrent(j=js-1:je+1, I=is-1:ie)
+    !$omp target teams distribute parallel do
+    do K = 2, nz
+      do j = js-1, je+1
+      do I = is-1, ie
         h4_u(I,j,K) = G%mask2dCu(I,j) * ( (h(i,j,k)*h(i+1,j,k)) * (h(i,j,k-1)*h(i+1,j,k-1)) )
-      enddo
-      do concurrent(J=js-1:je, i=is-1:ie+1)
+      end do
+      end do
+      do J = js-1, je
+      do i = is-1, ie+1
         h4_v(i,J,K) = G%mask2dCv(i,J) * ( (h(i,j,k)*h(i,j+1,k)) * (h(i,j,k-1)*h(i,j+1,k-1)) )
-      enddo
-    enddo
+      end do
+      end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   ! To set the length scale based on the deformation radius, use wave_speed to
   ! calculate the first-mode gravity wave speed and then blend the equatorial
   ! and midlatitude deformation radii, using calc_resoln_function as a template.
 
-  do concurrent(j=js:je)
-    do concurrent(I=is-1:ie)
+  !$omp target teams distribute parallel do private(Hdn, Hup, H_geom, wSE, wNW, wNE, wSW, S2, N2)
+  do j = js, je
+    do I = is-1, ie
       CS%SN_u(I,j) = 0. ; H_u(I,j) = 0. ; S2_u(I,j) = 0.
-    enddo
-    do K=2,nz ; do concurrent(I=is-1:ie) &
-        DO_LOCALITY(local(Hdn, Hup, H_geom, wSE, wNW, wNE, wSW, S2, N2))
+    end do
+    do K=2,nz
+    do I = is-1, ie
       Hdn = sqrt( h(i,j,k) * h(i+1,j,k) )
       Hup = sqrt( h(i,j,k-1) * h(i+1,j,k-1) )
       H_geom = sqrt( Hdn * Hup )
@@ -1048,23 +1150,26 @@ subroutine calc_Visbeck_coeffs_old(h, slope_x, slope_y, N2_u, N2_v, G, GV, US, C
       CS%SN_u(I,j) = CS%SN_u(I,j) + sqrt( S2*N2 )*H_geom
       S2_u(I,j) = S2_u(I,j) + S2*H_geom
       H_u(I,j) = H_u(I,j) + H_geom
-    enddo ; enddo
-    do concurrent(I=is-1:ie)
+    end do
+    enddo
+    do I = is-1, ie
       if (H_u(I,j)>0.) then
         CS%SN_u(I,j) = G%OBCmaskCu(I,j) * CS%SN_u(I,j) / H_u(I,j)
         S2_u(I,j) =  G%OBCmaskCu(I,j) * S2_u(I,j) / H_u(I,j)
       else
         CS%SN_u(I,j) = 0.
       endif
-    enddo
-  enddo
+    end do
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent(J=js-1:je)
-    do concurrent(i=is:ie)
+  !$omp target teams distribute parallel do private(Hdn, Hup, H_geom, wSE, wNW, wNE, wSW, S2, N2)
+  do J = js-1, je
+    do i = is, ie
       CS%SN_v(i,J) = 0. ; H_v(i,J) = 0. ; S2_v(i,J) = 0.
-    enddo
-    do K=2,nz ; do concurrent(i=is:ie) &
-      & DO_LOCALITY(local(Hdn, Hup, H_geom, wSE, wNW, wNE, wSW, S2, N2))
+    end do
+    do K=2,nz
+    do i = is, ie
       Hdn = sqrt( h(i,j,k) * h(i,j+1,k) )
       Hup = sqrt( h(i,j,k-1) * h(i,j+1,k-1) )
       H_geom = sqrt( Hdn * Hup )
@@ -1091,16 +1196,18 @@ subroutine calc_Visbeck_coeffs_old(h, slope_x, slope_y, N2_u, N2_v, G, GV, US, C
       CS%SN_v(i,J) = CS%SN_v(i,J) + sqrt( S2*N2 )*H_geom
       S2_v(i,J) = S2_v(i,J) + S2*H_geom
       H_v(i,J) = H_v(i,J) + H_geom
-    enddo ; enddo
-    do concurrent(i=is:ie)
+    end do
+    enddo
+    do i = is, ie
       if (H_v(i,j)>0.) then
         CS%SN_v(i,J) = G%OBCmaskCv(i,J) * CS%SN_v(i,J) / H_v(i,J)
         S2_v(i,J) = G%OBCmaskCv(i,J) * S2_v(i,J) / H_v(i,J)
       else
         CS%SN_v(i,J) = 0.
       endif
-    enddo
-  enddo
+    end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! Offer diagnostic fields for averaging.
   if (query_averaging_enabled(CS%diag)) then
@@ -1168,7 +1275,8 @@ subroutine calc_Eady_growth_rate_2D(CS, G, GV, US, h, e, dzu, dzv, dzSxN, dzSyN,
   do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1
     CS%SN_u(i,j) = 0.0
     CS%SN_v(i,j) = 0.0
-  enddo ; enddo
+  enddo
+  enddo
 
   !$OMP parallel do default(shared) private(dnew,dz,weight,vint_SN,sum_dz,dT,dB)
   do j=G%jsc-1,G%jec+1
@@ -1193,7 +1301,8 @@ subroutine calc_Eady_growth_rate_2D(CS, G, GV, US, h, e, dzu, dzv, dzSxN, dzSyN,
         weight = weight * min( max( 0., (dT-dB)*r_crp_dist ), 1. )
         vint_SN(I) = vint_SN(I) + weight * dzSxN(I,j,K)
         sum_dz(I) = sum_dz(I) + weight * dzu(I,j,K)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do K=2,GV%ke ; do I=G%isc-1,G%iec
         dnew = sum_dz(I) + dzu(I,j,K) ! This is where the bottom of the layer is
@@ -1205,7 +1314,8 @@ subroutine calc_Eady_growth_rate_2D(CS, G, GV, US, h, e, dzu, dzv, dzSxN, dzSyN,
         weight = dz / ( dzu(I,j,K) + dz_neglect ) ! Fraction of this layer to include
         vint_SN(I) = vint_SN(I) + weight * dzSxN(I,j,K)
         sum_dz(I) = sum_dz(I) + weight * dzu(I,j,K)
-      enddo ; enddo
+      enddo
+      enddo
     endif
     do I=G%isc-1,G%iec
       CS%SN_u(I,j) = G%OBCmaskCu(I,j) * ( vint_SN(I) / sum_dz(I) )
@@ -1236,7 +1346,8 @@ subroutine calc_Eady_growth_rate_2D(CS, G, GV, US, h, e, dzu, dzv, dzSxN, dzSyN,
         weight = weight * min( max( 0., (dT-dB)*r_crp_dist ), 1. )
         vint_SN(I) = vint_SN(I) + weight**2 * dzSyN(i,J,K)
         sum_dz(i) = sum_dz(i) + weight * dzv(i,J,K)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do K=2,GV%ke ; do i=G%isc-1,G%iec+1
         dnew = sum_dz(i) + dzv(i,J,K) ! This is where the bottom of the layer is
@@ -1248,7 +1359,8 @@ subroutine calc_Eady_growth_rate_2D(CS, G, GV, US, h, e, dzu, dzv, dzSxN, dzSyN,
         weight = dz / ( dzv(i,J,K) + dz_neglect ) ! Fraction of this layer to include
         vint_SN(I) = vint_SN(I) + weight**2 * dzSyN(i,J,K)
         sum_dz(i) = sum_dz(i) + weight * dzv(i,J,K)
-      enddo ; enddo
+      enddo
+      enddo
     endif
     do i=G%isc-1,G%iec+1
       CS%SN_v(i,J) = G%OBCmaskCv(i,J) * ( vint_SN(i) / sum_dz(i) )
@@ -1336,7 +1448,8 @@ subroutine calc_slope_functions_using_just_e(h, G, GV, US, CS, e)
   if (use_dztot) then
     do j=js-1,je+1 ; do i=is-1,ie+1
       dz_tot(i,j) = e(i,j,1) - e(i,j,nz+1)
-    enddo ; enddo
+    enddo
+    enddo
     ! The following mathematically equivalent expression is more expensive but is less
     ! sensitive to roundoff for large Z_ref:
     ! call thickness_to_dz(h, tv, dz, G, GV, US, halo_size=1)
@@ -1358,21 +1471,36 @@ subroutine calc_slope_functions_using_just_e(h, G, GV, US, CS, e)
     k_end = min(k_start+nkblock-1, nz)
     kmax = k_end - k_start + 1
 
-    do concurrent( kk=1:kmax, j=js-1:je+1, i=is-1:ie ) DO_LOCALITY(local( k ))
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do j = js-1, je+1
+    do i = is-1, ie
       k = k_start + kk - 1
       E_x(I,j,kk) = (e(i+1,j,K)-e(i,j,K))*G%IdxCu(I,j)
       ! Mask slopes where interface intersects topography
       if (min(h(i,j,k),h(i+1,j,k)) < H_cutoff) E_x(I,j,kk) = 0.
-    enddo
-    do concurrent( kk=1:kmax, J=js-1:je, i=is-1:ie+1 ) DO_LOCALITY(local( k ))
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(3) private(k)
+    do kk = 1, kmax
+    do J = js-1, je
+    do i = is-1, ie+1
       k = kk + k_start - 1
       E_y(i,J,kk) = (e(i,j+1,K)-e(i,j,K))*G%IdyCv(i,J)
       ! Mask slopes where interface intersects topography
       if (min(h(i,j,k),h(i,j+1,k)) < H_cutoff) E_y(i,J,kk) = 0.
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     ! Calculate N*S*h from this layer and add to the sum
-    do concurrent( kk=1:kmax, j=js:je, i=is-1:ie ) DO_LOCALITY(local( S2, Hdn, Hup, H_geom, k ))
+    !$omp target teams distribute parallel do collapse(3) private(S2, Hdn, Hup, H_geom, k)
+    do kk = 1, kmax
+    do j = js, je
+    do i = is-1, ie
       k = kk + k_start - 1
       S2 = ( E_x(I,j,kk)**2  + 0.25*( &
             ((E_y(i,J,kk)**2) + (E_y(i+1,J-1,kk)**2)) + ((E_y(i+1,J,kk)**2) + (E_y(i,J-1,kk)**2)) ) )
@@ -1382,8 +1510,14 @@ subroutine calc_slope_functions_using_just_e(h, G, GV, US, CS, e)
       H_geom = sqrt(Hdn*Hup)
       ! N2 = GV%g_prime(k) / (GV%H_to_Z * max(Hdn, Hup, CS%h_min_N2))
       S2N2_u_local(I,j,k) = (H_geom * S2) * (GV%g_prime(k) / max(Hdn, Hup, CS%h_min_N2) )
-    enddo
-    do concurrent( kk=1:kmax, J=js-1:je, i=is:ie ) DO_LOCALITY(local( S2, Hdn, Hup, H_geom, k ))
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(3) private(S2, Hdn, Hup, H_geom, k)
+    do kk = 1, kmax
+    do J = js-1, je
+    do i = is, ie
       k = kk + k_start - 1
       S2 = ( E_y(i,J,kk)**2  + 0.25*( &
             ((E_x(I,j,kk)**2) + (E_x(I-1,j+1,kk)**2)) + ((E_x(I,j+1,kk)**2) + (E_x(I-1,j,kk)**2)) ) )
@@ -1393,7 +1527,10 @@ subroutine calc_slope_functions_using_just_e(h, G, GV, US, CS, e)
       H_geom = sqrt(Hdn*Hup)
       ! N2 = GV%g_prime(k) / (GV%H_to_Z * max(Hdn, Hup, CS%h_min_N2))
       S2N2_v_local(i,J,k) = (H_geom * S2) * (GV%g_prime(k) / (max(Hdn, Hup, CS%h_min_N2)))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   enddo
 
   ! NOTE: Using nested do concurrents in this loop changed answers with nvfortran 26.3
@@ -1577,7 +1714,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
                  ( (dz(i,j,k-1) + dz(i+1,j,k-1)) + (dz(i,j,k) + dz(i+1,j,k)) + GV%dZ_subroundoff)
       dslopex_dz(I,j) = 2. * ( slope_x(I,j,k) - slope_x(I,j,k+1) ) * (Z_to_H * Ih)
       h_at_u(I,j) = 2. * ( h_at_slope_above * h_at_slope_below ) * Ih
-    enddo ; enddo
+    enddo
+    enddo
 
     do J=js-2,je+1 ; do i=is-2,ie+2
       h_at_slope_above = 2. * ( h(i,j,k-1) * h(i,j+1,k-1) ) * ( h(i,j,k) * h(i,j+1,k) ) / &
@@ -1592,7 +1730,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
                  ( (dz(i,j,k-1) + dz(i,j+1,k-1)) + (dz(i,j,k) + dz(i,j+1,k)) + GV%dZ_subroundoff)
       dslopey_dz(i,J) = 2. * ( slope_y(i,J,k) - slope_y(i,J,k+1) ) * (Z_to_H * Ih)
       h_at_v(i,J) = 2. * ( h_at_slope_above * h_at_slope_below ) * Ih
-    enddo ; enddo
+    enddo
+    enddo
 
     do J=js-2,je+1 ; do i=is-1,ie+1
       f = 0.5 * ( G%CoriolisBu(I,J) + G%CoriolisBu(I-1,J) )
@@ -1600,7 +1739,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
             ( ( (h_at_u(I,j) * dslopex_dz(I,j)) + (h_at_u(I-1,j+1) * dslopex_dz(I-1,j+1)) ) &
             + ( (h_at_u(I-1,j) * dslopex_dz(I-1,j)) + (h_at_u(I,j+1) * dslopex_dz(I,j+1)) ) ) / &
               ( ( h_at_u(I,j) + h_at_u(I-1,j+1) ) + ( h_at_u(I-1,j) + h_at_u(I,j+1) ) + GV%H_subroundoff)
-    enddo ; enddo
+    enddo
+    enddo
 
     do j=js-1,je+1 ; do I=is-2,ie+1
       f = 0.5 * ( G%CoriolisBu(I,J) + G%CoriolisBu(I,J-1) )
@@ -1608,7 +1748,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
             ( ( (h_at_v(i,J) * dslopey_dz(i,J)) + (h_at_v(i+1,J-1) * dslopey_dz(i+1,J-1)) ) &
             + ( (h_at_v(i,J-1) * dslopey_dz(i,J-1)) + (h_at_v(i+1,J) * dslopey_dz(i+1,J)) ) ) / &
               ( ( h_at_v(i,J) + h_at_v(i+1,J-1) ) + ( h_at_v(i,J-1) + h_at_v(i+1,J) ) + GV%H_subroundoff)
-    enddo ; enddo
+    enddo
+    enddo
   endif ! k > 1
 
   if (CS%use_QG_Leith_GM) then
@@ -1627,7 +1768,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
         CS%KH_u_QG(I,j,k) = (grad_vort_mag_u(I,j) + grad_div_mag_u(I,j)) * &
                             CS%Laplac3_const_u(I,j) * inv_PI3
       endif
-    enddo ; enddo
+    enddo
+    enddo
 
     do J=js-1,Jeq ; do i=is,ie
       grad_vort_mag_v(i,J) = SQRT(vort_xy_dx(i,J)**2  + (0.25*((vort_xy_dy(I,j) + vort_xy_dy(I-1,j+1)) &
@@ -1643,7 +1785,8 @@ subroutine calc_QG_Leith_viscosity(CS, G, GV, US, h, dz, k, div_xx_dx, div_xx_dy
         CS%KH_v_QG(i,J,k) = (grad_vort_mag_v(i,J) + grad_div_mag_v(i,J)) * &
                             CS%Laplac3_const_v(i,J) * inv_PI3
       endif
-    enddo ; enddo
+    enddo
+    enddo
     ! post diagnostics
 
     if (k==nz) then
@@ -2228,12 +2371,20 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
 
     if (CS%Visbeck_L_scale<0) then
       ! Undo the rescaling of CS%Visbeck_L_scale.
-      do concurrent( j=js:je, I=is-1:Ieq)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, Ieq
         CS%L2u(I,j) = (US%L_to_m*CS%Visbeck_L_scale)**2 * G%areaCu(I,j)
-      enddo
-      do concurrent( J=js-1:Jeq, i=is:ie)
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, Jeq
+      do i = is, ie
         CS%L2v(i,J) = (US%L_to_m*CS%Visbeck_L_scale)**2 * G%areaCv(i,J)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
       CS%L2u(:,:) = CS%Visbeck_L_scale**2
       CS%L2v(:,:) = CS%Visbeck_L_scale**2
@@ -2268,7 +2419,9 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
     CS%id_Res_fn = register_diag_field('ocean_model', 'Res_fn', diag%axesT1, Time, &
        'Resolution function for scaling diffusivities', 'nondim')
 
-    do concurrent( J=js-1:Jeq, I=is-1:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, Jeq
+    do I = is-1, Ieq
       CS%f2_dx2_q(I,J) = ((G%dxBu(I,J)**2) + (G%dyBu(I,J)**2)) * &
                          max(G%Coriolis2Bu(I,J), absurdly_small_freq**2)
       CS%beta_dx2_q(I,J) = oneOrTwo * ((G%dxBu(I,J)**2) + (G%dyBu(I,J)**2)) * (sqrt(0.5 * &
@@ -2276,9 +2429,13 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
              (((G%CoriolisBu(I+1,J)-G%CoriolisBu(I,J)) * G%IdxCv(i+1,J))**2)) + &
             ((((G%CoriolisBu(I,J)-G%CoriolisBu(I,J-1)) * G%IdyCu(I,j))**2) + &
              (((G%CoriolisBu(I,J+1)-G%CoriolisBu(I,J)) * G%IdyCu(I,j+1))**2)) ) ))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent( j=js:je, I=is-1:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, Ieq
       CS%f2_dx2_u(I,j) = ((G%dxCu(I,j)**2) + (G%dyCu(I,j)**2)) * &
           max(0.5* (G%Coriolis2Bu(I,J)+G%Coriolis2Bu(I,J-1)), absurdly_small_freq**2)
       CS%beta_dx2_u(I,j) = oneOrTwo * ((G%dxCu(I,j)**2) + (G%dyCu(I,j)**2)) * (sqrt( &
@@ -2287,9 +2444,13 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
                   (((G%CoriolisBu(I+1,J)-G%CoriolisBu(I,J)) * G%IdxCv(i+1,J))**2)) + &
                  ((((G%CoriolisBu(I+1,J-1)-G%CoriolisBu(I,J-1)) * G%IdxCv(i+1,J-1))**2) + &
                   (((G%CoriolisBu(I,J)-G%CoriolisBu(I-1,J)) * G%IdxCv(i,J))**2)) ) ))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent( J=js-1:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, Jeq
+    do i = is, ie
       CS%f2_dx2_v(i,J) = ((G%dxCv(i,J)**2) + (G%dyCv(i,J)**2)) * &
           max(0.5*(G%Coriolis2Bu(I,J)+G%Coriolis2Bu(I-1,J)), absurdly_small_freq**2)
       CS%beta_dx2_v(i,J) = oneOrTwo * ((G%dxCv(i,J)**2) + (G%dyCv(i,J)**2)) * (sqrt( &
@@ -2298,7 +2459,9 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
                   (((G%CoriolisBu(I-1,J+1)-G%CoriolisBu(I-1,J)) * G%IdyCu(I-1,j+1))**2)) + &
                  ((((G%CoriolisBu(I,J+1)-G%CoriolisBu(I,J)) * G%IdyCu(I,j+1))**2) + &
                   (((G%CoriolisBu(I-1,J)-G%CoriolisBu(I-1,J-1)) * G%IdyCu(I-1,j))**2)) ) ))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     ! The Res_fn_power /= 2 paths in Calc_resoln_function need these on the arrays on the host
     ! TODO: Remove these transfers once those paths are ported.
@@ -2322,7 +2485,9 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
     !$omp target enter data map(alloc: CS%Rd_dx_h)
     !$omp target enter data map(alloc: CS%f2_dx2_h, CS%beta_dx2_h)
 
-    do concurrent( j=js-1:je+1, i=is-1:ie+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js-1, je+1
+    do i = is-1, ie+1
       CS%f2_dx2_h(i,j) = ((G%dxT(i,j)**2) + (G%dyT(i,j)**2)) * &
           max(0.25 * ((G%Coriolis2Bu(I,J) + G%Coriolis2Bu(I-1,J-1)) + &
                       (G%Coriolis2Bu(I-1,J) + G%Coriolis2Bu(I,J-1))), &
@@ -2332,7 +2497,9 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
              (((G%CoriolisBu(I,J-1)-G%CoriolisBu(I-1,J-1)) * G%IdxCv(i,J-1))**2)) + &
             ((((G%CoriolisBu(I,J)-G%CoriolisBu(I,J-1)) * G%IdyCu(I,j))**2) + &
              (((G%CoriolisBu(I-1,J)-G%CoriolisBu(I-1,J-1)) * G%IdyCu(I-1,j))**2)) ) ))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     ! As above, these are static after this point and the host reads them directly.
     ! Although this is only read on the CPU if Res_fn_power_visc /= 2, this transfer is unguarded
@@ -2364,13 +2531,15 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
       grid_sp_u2 = G%dyCu(I,j)*G%dxCu(I,j)
       grid_sp_u3 = grid_sp_u2*sqrt(grid_sp_u2)
       CS%Laplac3_const_u(I,j) = Leith_Lap_const * grid_sp_u3
-    enddo ; enddo
+    enddo
+    enddo
     do j=js-1,Jeq ; do I=Isq,Ieq+1
       ! Static factors in the Leith schemes
       grid_sp_v2 = G%dyCv(i,J)*G%dxCv(i,J)
       grid_sp_v3 = grid_sp_v2*sqrt(grid_sp_v2)
       CS%Laplac3_const_v(i,J) = Leith_Lap_const * grid_sp_v3
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
 end subroutine VarMix_init

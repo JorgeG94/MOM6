@@ -765,7 +765,11 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
     if (associated(forces%p_surf)) p_surf => forces%p_surf
     if (.not.associated(forces%p_surf)) CS%interp_p_surf = .false.
     if (associated(CS%tv%p_surf) .and. associated(forces%p_surf)) then
-      do j=jsd,jed ; do i=isd,ied ; CS%tv%p_surf(i,j) = forces%p_surf(i,j) ; enddo ; enddo
+      do j=jsd,jed
+      do i=isd,ied
+      CS%tv%p_surf(i,j) = forces%p_surf(i,j)
+      enddo
+      enddo
 
       if (allocated(CS%tv%SpV_avg) .and. associated(CS%tv%T)) then
         !$omp target update from(h)
@@ -791,7 +795,11 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
 
     if (associated(fluxes%p_surf)) p_surf => fluxes%p_surf
     if (associated(CS%tv%p_surf) .and. associated(fluxes%p_surf)) then
-      do j=js,je ; do i=is,ie ; CS%tv%p_surf(i,j) = fluxes%p_surf(i,j) ; enddo ; enddo
+      do j=js,je
+      do i=is,ie
+      CS%tv%p_surf(i,j) = fluxes%p_surf(i,j)
+      enddo
+      enddo
       if (allocated(CS%tv%SpV_avg)) then
         !$omp target update from(h)
         call pass_var(CS%tv%p_surf, G%Domain, clock=id_clock_pass)
@@ -816,9 +824,13 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
 
   if (cycle_start) then
     CS%time_in_cycle = 0.0
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       CS%ssh_rint(i,j) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (CS%VarMix%use_variable_mixing) then
       Time_end_diag = Time_start + real_to_time(cycle_time, unscale=US%T_to_s)
@@ -842,7 +854,8 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
       if (.not.CS%p_surf_prev_set) then
         do j=jsd,jed ; do i=isd,ied
           CS%p_surf_prev(i,j) = forces%p_surf(i,j)
-        enddo ; enddo
+        enddo
+        enddo
         CS%p_surf_prev_set = .true.
       endif
     else
@@ -963,10 +976,14 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
         !$omp target update from(u, v)
         do k=1,nz ; do j=jsd,jed ; do I=IsdB,IedB
           CS%u_prev(I,j,k) = u(I,j,k)
-        enddo ; enddo ; enddo
+        enddo
+        enddo
+        enddo
         do k=1,nz ; do J=JsdB,JedB ; do i=isd,ied
           CS%v_prev(I,j,k) = v(i,J,k)
-        enddo ; enddo ; enddo
+        enddo
+        enddo
+        enddo
       endif
 
       if (CS%interface_filter_dt_bug) then
@@ -998,7 +1015,8 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
                           (1.0-wt_end) * CS%p_surf_prev(i,j)
           CS%p_surf_begin(i,j) = wt_beg * forces%p_surf(i,j) + &
                           (1.0-wt_beg) * CS%p_surf_prev(i,j)
-        enddo ; enddo
+        enddo
+        enddo
       endif
 
       call step_MOM_dynamics(forces, CS%p_surf_begin, CS%p_surf_end, dt, &
@@ -1088,9 +1106,13 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
       call find_eta(h, CS%tv, G, GV, US, ssh, eta_bt=CS%eta_av_bc, dZref=G%Z_ref)
       !$omp target exit data map(release: CS%eta_av_bc)
 
-      do concurrent (j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         CS%ssh_rint(i,j) = CS%ssh_rint(i,j) + dt * ssh(i,j)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (CS%IDs%id_ssh_inst > 0) then
         !$omp target update from(ssh)
@@ -1141,10 +1163,14 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
     !$omp target enter data map(alloc: ssh)
 
     I_wt_ssh = 1.0/CS%time_in_cycle
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       ssh(i,j) = CS%ssh_rint(i,j) * I_wt_ssh
       CS%ave_ssh_ibc(i,j) = ssh(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (associated(CS%HA_CSp)) then
       !$omp target update from(ssh)
@@ -1163,7 +1189,9 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
 
   if (do_dyn .and. CS%interp_p_surf) then ; do j=jsd,jed ; do i=isd,ied
     CS%p_surf_prev(i,j) = forces%p_surf(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
 
   if (CS%ensemble_ocean) then
     ! store ensemble vector in odaCS
@@ -1464,10 +1492,12 @@ subroutine step_MOM_dynamics(forces, p_surf_begin, p_surf_end, dt, dt_tr_adv, &
     do k=1,nz
       do j=js-2,je+2 ; do I=Isq-2,Ieq+2
         CS%uhtr_resolved(I,j,k) = CS%uhtr_resolved(I,j,k) + CS%uh(I,j,k)*dt
-      enddo ; enddo
+      enddo
+      enddo
       do J=Jsq-2,Jeq+2 ; do i=is-2,ie+2
         CS%vhtr_resolved(i,J,k) = CS%vhtr_resolved(i,J,k) + CS%vh(i,J,k)*dt
-      enddo ; enddo
+      enddo
+      enddo
     enddo
   endif
 
@@ -1487,10 +1517,12 @@ subroutine step_MOM_dynamics(forces, p_surf_begin, p_surf_end, dt, dt_tr_adv, &
     !$omp target update from(u, v)
     do J=jsq,jeq ; do i=is,ie
       v(i,J,:) = v(i,J,:) + Waves%ddt_us_y(i,J,:)*dt
-    enddo ; enddo
+    enddo
+    enddo
     do j=js,je ; do I=isq,ieq
       u(I,j,:) = u(I,j,:) + Waves%ddt_us_x(I,j,:)*dt
-    enddo ; enddo
+    enddo
+    enddo
     call pass_vector(u, v, G%Domain)
     !$omp target update to(u, v)
   endif
@@ -1500,12 +1532,14 @@ subroutine step_MOM_dynamics(forces, p_surf_begin, p_surf_end, dt, dt_tr_adv, &
   if (Waves%Stokes_DDT .and. (Waves%id_3dstokes_y_from_ddt>0)) then
     do J=jsq,jeq ; do i=is,ie
       Waves%us_y_from_ddt(i,J,:) = Waves%us_y_from_ddt(i,J,:) + Waves%ddt_us_y(i,J,:)*dt
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (Waves%Stokes_DDT .and. (Waves%id_3dstokes_x_from_ddt>0)) then
     do j=js,je ; do I=isq,ieq
       Waves%us_x_from_ddt(I,j,:) = Waves%us_x_from_ddt(I,j,:) + Waves%ddt_us_x(I,j,:)*dt
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if ((CS%thickness_diffuse .or. CS%interface_filter) .and. &
@@ -1741,10 +1775,12 @@ subroutine step_MOM_tracer_dyn(CS, G, GV, US, h, Time_local)
     do k=1,nz
       do j=js-2,je+2 ; do I=Isq-2,Ieq+2
         uhtr_tmp(I,j,k) = CS%uhtr(I,j,k) - CS%uhtr_resolved(I,j,k)
-      enddo ; enddo
+      enddo
+      enddo
       do J=Jsq-2,Jeq+2 ; do i=is-2,ie+2
         vhtr_tmp(i,J,k) = CS%vhtr(i,J,k) - CS%vhtr_resolved(i,J,k)
-      enddo ; enddo
+      enddo
+      enddo
     enddo
     call advect_tracer(h, uhtr_tmp, vhtr_tmp, CS%OBC, CS%t_dyn_rel_adv, G, GV, US, &
                        CS%tracer_adv_CSp, CS%tracer_Reg, x_first_in=x_first, flux_type=2)
@@ -1778,12 +1814,24 @@ subroutine step_MOM_tracer_dyn(CS, G, GV, US, h, Time_local)
   ! and advective times now agree.
   call cpu_clock_begin(id_clock_thermo) ; call cpu_clock_begin(id_clock_tracer)
 
-  do concurrent (k=1:GV%ke, j=G%jsd:G%jed, I=G%IsdB:G%IedB)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, GV%ke
+  do j = G%jsd, G%jed
+  do I = G%IsdB, G%IedB
     CS%uhtr(I,j,k) = 0.
-  enddo
-  do concurrent (k=1:GV%ke, J=G%JsdB:G%JedB, i=G%isd:G%ied)
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, GV%ke
+  do J = G%JsdB, G%JedB
+  do i = G%isd, G%ied
     CS%vhtr(i,J,k) = 0.
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (CS%accumulate_resolved_flux) then
     CS%uhtr_resolved(:,:,:) = 0.0
@@ -2130,7 +2178,9 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   !$OMP parallel do default(shared)
   do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
     h(i,j,k) = h_new(i,j,k)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
 
   if (showCallTree) call callTree_waypoint("finished ALE_regrid (ALE_regridding_and_remapping)")
   call cpu_clock_end(id_clock_ALE)
@@ -2393,7 +2443,9 @@ subroutine step_offline(forces, fluxes, sfc_state, Time_start, time_interval, CS
       ! Update the tracer grid.
       do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
         CS%h(i,j,k) = h_new(i,j,k)
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
 
       deallocate(h_new, dzRegrid)
 
@@ -3720,7 +3772,9 @@ subroutine initialize_MOM(Time, Time_init, param_file, dirs, CS, &
     !$OMP parallel do default(shared)
     do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
       CS%h(i,j,k) = h_new(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
 
     deallocate(h_new, dzRegrid, PCM_cell, h_old_u, h_new_u, h_old_v, h_new_v)
 
@@ -3947,7 +4001,11 @@ subroutine initialize_MOM(Time, Time_init, param_file, dirs, CS, &
                    default=.false., do_not_log=.true.)
     if (MLE_use_PBL_MLD .and. .not.query_initialized(CS%visc%h_ML, "h_ML", restart_CSp) .and. &
         associated(CS%visc%MLD)) then
-      do j=js,je ; do i=is,ie ; CS%visc%h_ML(i,j) = GV%Z_to_H * CS%visc%MLD(i,j) ; enddo ; enddo
+      do j=js,je
+      do i=is,ie
+      CS%visc%h_ML(i,j) = GV%Z_to_H * CS%visc%MLD(i,j)
+      enddo
+      enddo
     endif
   endif
 
@@ -4475,35 +4533,61 @@ subroutine extract_surface_state(CS, sfc_state_in)
   !$ endif
   !$omp target enter data if(use_temperature) map(to: CS%tv%T, CS%tv%S)
 
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     sfc_state%sea_lev(i,j) = CS%ave_ssh_ibc(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (allocated(sfc_state%frazil) .and. associated(CS%tv%frazil)) then
     ! needed to prevent segfault
     !$omp target data map(to: CS%tv%frazil)
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       sfc_state%frazil(i,j) = CS%tv%frazil(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     !$omp end target data
   endif
 
   ! copy Hml into sfc_state, so that caps can access it
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     sfc_state%Hml(i,j) = CS%Hml(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (CS%Hmix < 0.0) then  ! A bulk mixed layer is in use, so layer 1 has the properties
-    if (use_temperature) then ; do concurrent (j=js:je, i=is:ie)
+    if (use_temperature) then
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       sfc_state%SST(i,j) = CS%tv%T(i,j,1)
       sfc_state%SSS(i,j) = CS%tv%S(i,j,1)
-    enddo ; endif
-    do concurrent (j=js:je, I=is-1:ie)
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    endif
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       sfc_state%u(I,j) = CS%u(I,j,1)
-    enddo
-    do concurrent (J=js-1:je, i=is:ie)
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       sfc_state%v(i,J) = CS%v(i,J,1)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
   else  ! (CS%Hmix >= 0.0)
     H_rescale = 1.0
@@ -4516,16 +4600,17 @@ subroutine extract_surface_state(CS, sfc_state_in)
 
     !$omp target teams loop private(depth,dh,I_depth,missing_depth)
     do j=js,je
-      do concurrent (i=is:ie)
+      do i = is, ie
         depth(i) = 0.0
         if (use_temperature) then
           sfc_state%SST(i,j) = 0.0 ; sfc_state%SSS(i,j) = 0.0
         else
           sfc_state%sfc_density(i,j) = 0.0
         endif
-      enddo
+      end do
 
-      do k=1,nz ; do concurrent (i=is:ie)
+      do k=1,nz
+      do i = is, ie
         if (depth(i) + h(i,j,k)*H_rescale < depth_ml) then
           dh = h(i,j,k)*H_rescale
         elseif (depth(i) < depth_ml) then
@@ -4540,9 +4625,10 @@ subroutine extract_surface_state(CS, sfc_state_in)
           sfc_state%sfc_density(i,j) = sfc_state%sfc_density(i,j) + dh * GV%Rlay(k)
         endif
         depth(i) = depth(i) + dh
-      enddo ; enddo
+      end do
+      enddo
   ! Calculate the average properties of the mixed layer depth.
-      do concurrent (i=is:ie)
+      do i = is, ie
         if (CS%answer_date < 20190101) then
           if (depth(i) < GV%H_subroundoff*H_rescale) &
               depth(i) = GV%H_subroundoff*H_rescale
@@ -4573,7 +4659,7 @@ subroutine extract_surface_state(CS, sfc_state_in)
             endif
           endif
         endif
-      enddo
+      end do
     enddo ! end of j loop
 
 !   Determine the mean velocities in the uppermost depth_ml fluid.
@@ -4585,11 +4671,12 @@ subroutine extract_surface_state(CS, sfc_state_in)
       if (CS%answer_date < 20190101) depth_ml = GV%H_to_Z*CS%Hmix_UV
       !$omp target teams loop private(depth,dh,hv)
       do J=js-1,je
-        do concurrent (i=is:ie)
+        do i = is, ie
           depth(i) = 0.0
           sfc_state%v(i,J) = 0.0
-        enddo
-        do k=1,nz ; do concurrent (i=is:ie)
+        end do
+        do k=1,nz
+        do i = is, ie
           hv = 0.5 * (h(i,j,k) + h(i,j+1,k)) * H_rescale
           if (depth(i) + hv < depth_ml) then
             dh = hv
@@ -4600,20 +4687,22 @@ subroutine extract_surface_state(CS, sfc_state_in)
           endif
           sfc_state%v(i,J) = sfc_state%v(i,J) + dh * CS%v(i,J,k)
           depth(i) = depth(i) + dh
-        enddo ; enddo
-        ! Calculate the average properties of the mixed layer depth.
-        do concurrent (i=is:ie)
-          sfc_state%v(i,J) = sfc_state%v(i,J) / max(depth(i), GV%H_subroundoff*H_rescale)
+        end do
         enddo
+        ! Calculate the average properties of the mixed layer depth.
+        do i = is, ie
+          sfc_state%v(i,J) = sfc_state%v(i,J) / max(depth(i), GV%H_subroundoff*H_rescale)
+        end do
       enddo ! end of j loop
 
       !$omp target teams loop private(depth,dh,hu)
       do j=js,je
-        do concurrent (I=is-1:ie)
+        do I = is-1, ie
           depth(I) = 0.0
           sfc_state%u(I,j) = 0.0
-        enddo
-        do k=1,nz ; do concurrent (I=is-1:ie)
+        end do
+        do k=1,nz
+        do I = is-1, ie
           hu = 0.5 * (h(i,j,k) + h(i+1,j,k)) * H_rescale
           if (depth(i) + hu < depth_ml) then
             dh = hu
@@ -4624,19 +4713,28 @@ subroutine extract_surface_state(CS, sfc_state_in)
           endif
           sfc_state%u(I,j) = sfc_state%u(I,j) + dh * CS%u(I,j,k)
           depth(I) = depth(I) + dh
-        enddo ; enddo
-        ! Calculate the average properties of the mixed layer depth.
-        do concurrent (I=is-1:ie)
-          sfc_state%u(I,j) = sfc_state%u(I,j) / max(depth(I), GV%H_subroundoff*H_rescale)
+        end do
         enddo
+        ! Calculate the average properties of the mixed layer depth.
+        do I = is-1, ie
+          sfc_state%u(I,j) = sfc_state%u(I,j) / max(depth(I), GV%H_subroundoff*H_rescale)
+        end do
       enddo ! end of j loop
     else ! Hmix_UV<=0.
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         sfc_state%u(I,j) = CS%u(I,j,1)
-      enddo
-      do concurrent (J=js-1:je, i=is:ie)
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         sfc_state%v(i,J) = CS%v(i,J,1)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif  ! (CS%Hmix >= 0.0)
 
@@ -4696,49 +4794,103 @@ subroutine extract_surface_state(CS, sfc_state_in)
   !$ endif
   if (allocated(sfc_state%taux_shelf) .and. allocated(CS%visc%taux_shelf)) then
     !$omp target enter data map(to: CS%visc%taux_shelf)
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       sfc_state%taux_shelf(I,j) = CS%visc%taux_shelf(I,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (allocated(sfc_state%tauy_shelf) .and. allocated(CS%visc%tauy_shelf)) then
     !$omp target enter data map(to: CS%visc%tauy_shelf)
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       sfc_state%tauy_shelf(i,J) = CS%visc%tauy_shelf(i,J)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (allocated(sfc_state%ocean_mass) .and. allocated(sfc_state%ocean_heat) .and. &
       allocated(sfc_state%ocean_salt)) then
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       sfc_state%ocean_mass(i,j) = 0.0
       sfc_state%ocean_heat(i,j) = 0.0 ; sfc_state%ocean_salt(i,j) = 0.0
-    enddo
-    do concurrent (j=js:je, k=1:nz, i=is:ie)
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+    !$omp target teams distribute parallel do collapse(3)
+    do j = js, je
+    do k = 1, nz
+    do i = is, ie
       mass = GV%H_to_RZ*h(i,j,k)
       sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + mass
       sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
       sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1.0e-3*CS%tv%S(i,j,k))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
     if (allocated(sfc_state%ocean_mass)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_mass(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
+      sfc_state%ocean_mass(i,j) = 0.0
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(3)
+      do j = js, je
+      do k = 1, nz
+      do i = is, ie
         sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + GV%H_to_RZ*h(i,j,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
     if (allocated(sfc_state%ocean_heat)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_heat(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
+      sfc_state%ocean_heat(i,j) = 0.0
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(3)
+      do j = js, je
+      do k = 1, nz
+      do i = is, ie
         mass = GV%H_to_RZ*h(i,j,k)
         sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
     if (allocated(sfc_state%ocean_salt)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_salt(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
+      sfc_state%ocean_salt(i,j) = 0.0
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(3)
+      do j = js, je
+      do k = 1, nz
+      do i = is, ie
         mass = GV%H_to_RZ*h(i,j,k)
         sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1.0e-3*CS%tv%S(i,j,k))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
@@ -4790,7 +4942,8 @@ subroutine extract_surface_state(CS, sfc_state_in)
           endif ! numberOfErrors
         endif ! localError
       endif ! mask2dT
-    enddo ; enddo
+    enddo
+    enddo
     call sum_across_PEs(numberOfErrors)
     if (numberOfErrors>0) then
       write(msg(1:240),'(a,i0,a)') 'There were a total of ',numberOfErrors, &

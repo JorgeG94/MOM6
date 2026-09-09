@@ -186,40 +186,64 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
   present_N2_v = PRESENT(N2_v)
   G_Rho0 = GV%g_Earth / GV%Rho0
   if (present_N2_u) then
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       N2_u(I,j,1) = 0.
       N2_u(I,j,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (present_N2_v) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       N2_v(i,J,1) = 0.
       N2_v(i,J,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (present(dzu)) then
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       dzu(I,j,1) = 0.
       dzu(I,j,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (present(dzv)) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       dzv(i,J,1) = 0.
       dzv(i,J,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (present(dzSxN)) then
-    do concurrent (j=js:je, I=is-1:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = is-1, ie
       dzSxN(I,j,1) = 0.
       dzSxN(I,j,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   if (present(dzSyN)) then
-    do concurrent (J=js-1:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = js-1, je
+    do i = is, ie
       dzSyN(i,J,1) = 0.
       dzSyN(i,J,nz+1) = 0.
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
   ! Set boundary values to zero, since they will be at places
   ! where streamfunction would be zero.
@@ -229,7 +253,8 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
       drdx_u(I,j,nz+1) = 0.
       drdz_u(I,j,1) = 0.
       drdz_u(I,j,nz+1) = 0.
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (present_drdy_v) then
     do J=js-1,je ; do i=is,ie
@@ -237,7 +262,8 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
       drdy_v(i,J,nz+1) = 0.
       drdz_v(i,J,1) = 0.
       drdz_v(i,J,nz+1) = 0.
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (use_EOS) then
@@ -261,26 +287,42 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
 
   ! Find the maximum and minimum permitted streamfunction.
   if (associated(tv%p_surf)) then
-    do concurrent (j=js-1:je+1, i=is-1:ie+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js-1, je+1
+    do i = is-1, ie+1
       pres(i,j,1) = tv%p_surf(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=js-1:je+1, i=is-1:ie+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js-1, je+1
+    do i = is-1, ie+1
       pres(i,j,1) = 0.0
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
-  do concurrent (j=js-1:je+1)
+  !$omp target teams distribute parallel do
+  do j = js-1, je+1
     do k=1,nz
-      do concurrent (i=is-1:ie+1)
+      do i = is-1, ie+1
         pres(i,j,K+1) = pres(i,j,K) + GV%g_Earth * GV%H_to_RZ * h(i,j,k)
-      enddo
+      end do
     enddo
-  enddo
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent(kk=1:nkblock, jj=1:njblock, ii=1:niblock)
+  !$omp target teams distribute parallel do collapse(3)
+  do kk = 1, nkblock
+  do jj = 1, njblock
+  do ii = 1, niblock
     GxSpV_uvh(ii,jj,kk) = G_Rho0 ! This will be changed if both use_EOS and allocated(tv%SpV_avg) are true
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   ! Stanley param needs access to h-point element ii+1, so when using stanley param,
   ! iterate in chunks of size block - 1 but read chunks of size block to ensure blocks
@@ -306,15 +348,20 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
 
     if (use_EOS) then
       ! Fill block T_uvh/S_uvh/pres_uvh at u-points
-      do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, ii=1:iend-istart+1) &
-          DO_LOCALITY(local(i,j,k))
+      !$omp target teams distribute parallel do collapse(3) private(i, j, k)
+      do kk = 1, kend-kstart+1
+      do jj = 1, jend-jstart+1
+      do ii = 1, iend-istart+1
         i = istart + ii - 1
         j = jstart + jj - 1
         k = kstart + kk - 1
         pres_uvh(ii,jj,kk) = 0.5*(pres(i,j,K) + pres(i+1,j,K))
         T_uvh(ii,jj,kk) = 0.25*((T(i,j,k) + T(i+1,j,k)) + (T(i,j,k-1) + T(i+1,j,k-1)))
         S_uvh(ii,jj,kk) = 0.25*((S(i,j,k) + S(i+1,j,k)) + (S(i,j,k-1) + S(i+1,j,k-1)))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (OBC_friendly) then
         !$omp target update from(T_uvh, S_uvh, pres_uvh)
@@ -359,14 +406,19 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
       ! adjacent layers. Individual OBC faces may override this inside the slope loop.
       if (present_N2_u .or. present(dzSxN)) then
         if (allocated(tv%SpV_avg)) then
-          do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, II=1:iend-istart+1) &
-              DO_LOCALITY(local(I,j,k))
+          !$omp target teams distribute parallel do collapse(3) private(I, j, k)
+          do kk = 1, kend-kstart+1
+          do jj = 1, jend-jstart+1
+          do II = 1, iend-istart+1
             I = istart + II - 1
             j = jstart + jj - 1
             k = kstart + kk - 1
             GxSpV_uvh(II,jj,kk) = GV%g_Earth * 0.25 * ((tv%SpV_avg(I,j,k) + tv%SpV_avg(I+1,j,k)) + &
                                                         (tv%SpV_avg(I,j,k-1) + tv%SpV_avg(I+1,j,k-1)))
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       endif
 
@@ -379,15 +431,20 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
         ! This loop fills all niblock elements of the _uvh arrays and can access index ie+1 of T
         ! and S to ensure there always exists an ii+1 element for the compute loop below.
         EOSdom_block_h1(1) = 1 ; EOSdom_block_h1(2) = iend_stanley - istart + 1
-        do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, ii=1:iend_stanley-istart+1) &
-            DO_LOCALITY(local(i,j,k))
+        !$omp target teams distribute parallel do collapse(3) private(i, j, k)
+        do kk = 1, kend-kstart+1
+        do jj = 1, jend-jstart+1
+        do ii = 1, iend_stanley-istart+1
           i = istart + ii - 1
           j = jstart + jj - 1
           k = kstart + kk - 1
           pres_uvh(ii,jj,KK) = pres(i,j,K)
           T_uvh(ii,jj,kk) = 0.5*(T(i,j,k) + T(i,j,k-1))
           S_uvh(ii,jj,kk) = 0.5*(S(i,j,k) + S(i,j,k-1))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
 
         ! TODO: Make 3D version of this
         do kk=1,kend-kstart+1 ; do jj=1,jend-jstart+1
@@ -396,14 +453,17 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
           call calculate_density_second_derivs(T_uvh(:,jj,kk), S_uvh(:,jj,kk), pres_uvh(:,jj,kk), &
                      scrap, scrap, drho_dT_dT_h(:,jj,kk), scrap, scrap, &
                      tv%eqn_of_state, dom=EOSdom_block_h1)
-        enddo ; enddo
+        enddo
+        enddo
       endif ! end use_stanley
 
     endif ! end use_EOS for zonal block
 
     ! Zonal slope compute over the block
-    do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, II=1:iend-istart+1) &
-        DO_LOCALITY(local(drdkL, drdkR, drdiA, drdiB, I, j))
+    !$omp target teams distribute parallel do collapse(3) private(drdkL, drdkR, drdiA, drdiB, I, j)
+    do kk = 1, kend-kstart+1
+    do jj = 1, jend-jstart+1
+    do II = 1, iend-istart+1
       I = istart + II - 1
       j = jstart + jj - 1
       k = kstart + kk - 1
@@ -514,8 +574,13 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
         dzSxN(I,j,K) = sqrt( GxSpV_uvh(ii,jj,kk) * max(0., (wtL * ( dzaL * drdkL )) &
                                                 + (wtR * ( dzaR * drdkR ))) / (wtL + wtR) ) &
                         * abs(slope) * G%mask2dCu(I,j)
-    enddo ! end zonal block do concurrent
-  enddo ; enddo ; enddo ! end zonal outer block loops
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+  enddo
+  enddo
+  enddo  ! end zonal outer block loops
 
   if (use_stanley) then
     delta_j = njblock - 1
@@ -537,15 +602,20 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
 
     if (use_EOS) then
       ! Fill block T_uvh/S_uvh/pres_uvh at v-points
-      do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, ii=1:iend-istart+1) &
-          DO_LOCALITY(local(i,j,k))
+      !$omp target teams distribute parallel do collapse(3) private(i, j, k)
+      do kk = 1, kend-kstart+1
+      do jj = 1, jend-jstart+1
+      do ii = 1, iend-istart+1
         i = istart + ii - 1
         j = jstart + jj - 1
         k = kstart + kk - 1
         pres_uvh(ii,jj,kk) = 0.5*(pres(i,j,K) + pres(i,j+1,K))
         T_uvh(ii,jj,kk) = 0.25*((T(i,j,K) + T(i,j+1,K)) + (T(i,j,K-1) + T(i,j+1,K-1)))
         S_uvh(ii,jj,kk) = 0.25*((S(i,j,K) + S(i,j+1,K)) + (S(i,j,K-1) + S(i,j+1,K-1)))
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       if (OBC_friendly) then
         !$omp target update from(T_uvh, S_uvh, pres_uvh)
@@ -588,14 +658,19 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
 
       if (present_N2_v .or. present(dzSyN)) then
         if (allocated(tv%SpV_avg)) then
-          do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, ii=1:iend-istart+1) &
-             DO_LOCALITY(local(i,j,k))
+          !$omp target teams distribute parallel do collapse(3) private(i, j, k)
+          do kk = 1, kend-kstart+1
+          do jj = 1, jend-jstart+1
+          do ii = 1, iend-istart+1
             i = istart + ii - 1
             j = jstart + jj - 1
             k = kstart + kk - 1
             GxSpV_uvh(ii,jj,kk) = GV%g_Earth * 0.25 * ((tv%SpV_avg(i,j,K) + tv%SpV_avg(i,j+1,K)) + &
                                                         (tv%SpV_avg(i,j,K-1) + tv%SpV_avg(i,j+1,K-1)))
-          enddo
+          end do
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         endif
       endif
 
@@ -606,15 +681,20 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
       if (use_stanley) then
         ! Reset at h-points for Stanley second derivatives.
         EOSdom_block_h1(1) = 1 ; EOSdom_block_h1(2) = iend - istart + 1
-        do concurrent(kk=1:kend-kstart+1, jj=1:jend_stanley-jstart+1, ii=1:iend-istart+1) &
-            DO_LOCALITY(local(i,j,k))
+        !$omp target teams distribute parallel do collapse(3) private(i, j, k)
+        do kk = 1, kend-kstart+1
+        do jj = 1, jend_stanley-jstart+1
+        do ii = 1, iend-istart+1
           i = istart + ii - 1
           j = jstart + jj - 1
           k = kstart + kk - 1
           pres_uvh(ii,jj,kk) = pres(i,j,K)
           T_uvh(ii,jj,kk) = 0.5*(T(i,j,K) + T(i,j,K-1))
           S_uvh(ii,jj,kk) = 0.5*(S(i,j,K) + S(i,j,K-1))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
 
         ! TODO: Make 3D version of this
         do kk=1,kend-kstart+1 ; do jj=1,jend_stanley-jstart+1
@@ -623,14 +703,17 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
           call calculate_density_second_derivs(T_uvh(:,jj,kk), S_uvh(:,jj,kk), pres_uvh(:,jj,kk), &
                      scrap, scrap, drho_dT_dT_h(:,jj,kk), scrap, scrap, &
                      tv%eqn_of_state, dom=EOSdom_block_h1)
-        enddo ; enddo
+        enddo
+        enddo
       endif ! end use_stanley
 
     endif ! end use_EOS for meridional block
 
     ! Meridional slope compute over the block
-    do concurrent(kk=1:kend-kstart+1, jj=1:jend-jstart+1, ii=1:iend-istart+1) &
-        DO_LOCALITY(local(drdkL, drdkR, drdjA, drdjB, i, J))
+    !$omp target teams distribute parallel do collapse(3) private(drdkL, drdkR, drdjA, drdjB, i, J)
+    do kk = 1, kend-kstart+1
+    do jj = 1, jend-jstart+1
+    do ii = 1, iend-istart+1
       i = istart + ii - 1
       J = jstart + jj - 1
       K = kstart + kk - 1
@@ -740,8 +823,13 @@ subroutine calc_isoneutral_slopes(G, GV, US, h, e, tv, dt_kappa_smooth, use_stan
         dzSyN(i,J,K) = sqrt( GxSpV_uvh(ii,jj,kk) * max(0., (wtL * ( dzaL * drdkL )) &
                                                 + (wtR * ( dzaR * drdkR ))) / (wtL + wtR) ) &
                         * abs(slope) * G%mask2dCv(i,J)
-    enddo ! end meridional block do concurrent
-  enddo ; enddo ; enddo ! end meridional outer block loops
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
+  enddo
+  enddo
+  enddo  ! end meridional outer block loops
 
   ! Delete all block and field arrays from device
   !$omp target exit data map(delete: T, S, pres, T_uvh, S_uvh, pres_uvh, GxSpV_uvh, &
@@ -803,21 +891,28 @@ subroutine vert_fill_TS(h, T_in, S_in, kappa_dt, T_f, S_f, G, GV, US, halo_here,
   !$omp target enter data map(alloc: ent, b1, d1, c1)
 
   if (kap_dt_x2 <= 0.0) then
-    do concurrent (k=1:nz , j=js:je , i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = js, je
+    do i = is, ie
       T_f(i,j,k) = T_in(i,j,k) ; S_f(i,j,k) = S_in(i,j,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
     !$omp target teams loop private( ent, b1, d1, c1, h_tr )
     do j=js,je
-      do concurrent( i=is:ie )
+      do i = is, ie
         ent(i,2) = kap_dt_x2 / ((h(i,j,1)+h(i,j,2)) + h0)
         h_tr = h(i,j,1) + h_neglect
         b1(i) = 1.0 / (h_tr + ent(i,2))
         d1(i) = b1(i) * h_tr
         T_f(i,j,1) = (b1(i)*h_tr)*T_in(i,j,1)
         S_f(i,j,1) = (b1(i)*h_tr)*S_in(i,j,1)
-      enddo
-      do k=2,nz-1 ; do concurrent( i=is:ie )
+      end do
+      do k=2,nz-1
+      do i = is, ie
         ent(i,K+1) = kap_dt_x2 / ((h(i,j,k)+h(i,j,k+1)) + h0)
         h_tr = h(i,j,k) + h_neglect
         c1(i,k) = ent(i,K) * b1(i)
@@ -825,18 +920,21 @@ subroutine vert_fill_TS(h, T_in, S_in, kappa_dt, T_f, S_f, G, GV, US, halo_here,
         d1(i) = b1(i) * (h_tr + d1(i)*ent(i,K))
         T_f(i,j,k) = b1(i) * (h_tr*T_in(i,j,k) + ent(i,K)*T_f(i,j,k-1))
         S_f(i,j,k) = b1(i) * (h_tr*S_in(i,j,k) + ent(i,K)*S_f(i,j,k-1))
-      enddo ; enddo
-      do concurrent( i=is:ie )
+      end do
+      enddo
+      do i = is, ie
         c1(i,nz) = ent(i,nz) * b1(i)
         h_tr = h(i,j,nz) + h_neglect
         b1(i) = 1.0 / (h_tr + d1(i)*ent(i,nz))
         T_f(i,j,nz) = b1(i) * (h_tr*T_in(i,j,nz) + ent(i,nz)*T_f(i,j,nz-1))
         S_f(i,j,nz) = b1(i) * (h_tr*S_in(i,j,nz) + ent(i,nz)*S_f(i,j,nz-1))
-      enddo
-      do k=nz-1,1,-1 ; do concurrent( i=is:ie )
+      end do
+      do k=nz-1,1,-1
+      do i = is, ie
         T_f(i,j,k) = T_f(i,j,k) + c1(i,k+1)*T_f(i,j,k+1)
         S_f(i,j,k) = S_f(i,j,k) + c1(i,k+1)*S_f(i,j,k+1)
-      enddo ; enddo
+      end do
+      enddo
     enddo
   endif
 

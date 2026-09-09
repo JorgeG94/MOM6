@@ -599,8 +599,14 @@ subroutine extractFluxes1d(G, GV, US, fluxes, optics, nsw, j, dt, &
       (.not.associated(fluxes%fprec))) call MOM_error(FATAL, &
     "MOM_forcing_type extractFluxes1d: No precipitation defined.")
 
-  do i=is,ie ; htot(i) = h(i,1) ; enddo
-  do k=2,nz ; do i=is,ie ; htot(i) = htot(i) + h(i,k) ; enddo ; enddo
+  do i=is,ie
+  htot(i) = h(i,1)
+  enddo
+  do k=2,nz
+  do i=is,ie
+  htot(i) = htot(i) + h(i,k)
+  enddo
+  enddo
 
   if (nsw >= 1) then
     call extract_optics_slice(optics, j, G, GV, penSW_top=Pen_SW_bnd)
@@ -1114,7 +1120,11 @@ subroutine calculateBuoyancyFlux1d(G, GV, US, fluxes, optics, nsw, h, Temp, Salt
 
   ! Determine the buoyancy flux
   pressure(:) = 0.
-  if (associated(tv%p_surf)) then ; do i=G%isc,G%iec ; pressure(i) = tv%p_surf(i,j) ; enddo ; endif
+  if (associated(tv%p_surf)) then
+  do i=G%isc,G%iec
+  pressure(i) = tv%p_surf(i,j)
+  enddo
+  endif
 
   if ((.not.GV%Boussinesq) .and. (.not.GV%semi_Boussinesq)) then
     g_conv = GV%g_Earth * GV%H_to_RZ
@@ -1130,7 +1140,8 @@ subroutine calculateBuoyancyFlux1d(G, GV, US, fluxes, optics, nsw, h, Temp, Salt
     ! We also have a penetrative buoyancy flux associated with penetrative SW
     do k=2,GV%ke+1 ; do i=G%isc,G%iec
       buoyancyFlux(i,k) = g_conv * ( dSpV_dT(i) * netPen(i,k) ) ! [L2 T-3 ~> m2 s-3]
-    enddo ; enddo
+    enddo
+    enddo
   else
     GoRho = (GV%g_Earth * GV%H_to_Z) / GV%Rho0
 
@@ -1145,7 +1156,8 @@ subroutine calculateBuoyancyFlux1d(G, GV, US, fluxes, optics, nsw, h, Temp, Salt
     ! We also have a penetrative buoyancy flux associated with penetrative SW
     do k=2,GV%ke+1 ; do i=G%isc,G%iec
       buoyancyFlux(i,k) = - GoRho * ( dRhodT(i) * netPen(i,k) ) ! [L2 T-3 ~> m2 s-3]
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
 end subroutine calculateBuoyancyFlux1d
@@ -1218,11 +1230,13 @@ subroutine find_ustar_fluxes(fluxes, tv, U_star, G, GV, US, halo, H_T_units)
     if (Z_T_units) then
       do j=js,je ; do i=is,ie
         U_star(i,j) = fluxes%ustar(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         U_star(i,j) = GV%Z_to_H * fluxes%ustar(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
   elseif (allocated(tv%SpV_avg)) then
     if (tv%valid_SpV_halo < 0) call MOM_error(FATAL, &
@@ -1232,18 +1246,21 @@ subroutine find_ustar_fluxes(fluxes, tv, U_star, G, GV, US, halo, H_T_units)
     if (Z_T_units) then
       do j=js,je ; do i=is,ie
         U_star(i,j) = sqrt(fluxes%tau_mag(i,j) * tv%SpV_avg(i,j,1))
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         U_star(i,j) = GV%RZ_to_H * sqrt(fluxes%tau_mag(i,j) / tv%SpV_avg(i,j,1))
-      enddo ; enddo
+      enddo
+      enddo
     endif
   else
     I_rho = GV%Z_to_H * GV%RZ_to_H
     if (Z_T_units) I_rho = GV%H_to_Z * GV%RZ_to_H ! == 1.0 / GV%Rho0
     do j=js,je ; do i=is,ie
       U_star(i,j) = sqrt(fluxes%tau_mag(i,j) * I_rho)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   !$omp target update to(U_star)
@@ -1283,13 +1300,21 @@ subroutine find_ustar_mech_forcing(forces, tv, U_star, G, GV, US, halo, H_T_unit
 
   if (associated(forces%ustar) .and. (GV%Boussinesq .or. .not.associated(forces%tau_mag))) then
     if (Z_T_units) then
-      do concurrent (j=js:je, i=is:ie) !do j=js,je ; do i=is,ie
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         U_star(i,j) = forces%ustar(i,j)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (j=js:je, i=is:ie) !do j=js,je ; do i=is,ie
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         U_star(i,j) = GV%Z_to_H * forces%ustar(i,j)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   elseif (allocated(tv%SpV_avg)) then
     if (tv%valid_SpV_halo < 0) call MOM_error(FATAL, &
@@ -1297,20 +1322,32 @@ subroutine find_ustar_mech_forcing(forces, tv, U_star, G, GV, US, halo, H_T_unit
     if (tv%valid_SpV_halo < hs) call MOM_error(FATAL, &
         "find_ustar_mech called in non-Boussinesq mode with insufficient valid values of SpV_avg.")
     if (Z_T_units) then
-      do concurrent (j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         U_star(i,j) = sqrt(forces%tau_mag(i,j) * tv%SpV_avg(i,j,1))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         U_star(i,j) = GV%RZ_to_H * sqrt(forces%tau_mag(i,j) / tv%SpV_avg(i,j,1))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   else
     I_rho = GV%Z_to_H * GV%RZ_to_H
     if (Z_T_units) I_rho = GV%H_to_Z * GV%RZ_to_H ! == 1.0 / GV%Rho0
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       U_star(i,j) = sqrt(forces%tau_mag(i,j) * I_rho)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
 end subroutine find_ustar_mech_forcing
@@ -2415,26 +2452,36 @@ subroutine fluxes_accumulate(flux_tmp, fluxes, G, wt2, forces)
     do j=js,je ; do i=is,ie
       fluxes%p_surf(i,j) = forces%p_surf(i,j)
       fluxes%p_surf_full(i,j) = forces%p_surf_full(i,j)
-    enddo ; enddo
+    enddo
+    enddo
 
     if (associated(fluxes%ustar)) then ; do j=js,je ; do i=is,ie
       fluxes%ustar(i,j) = wt1*fluxes%ustar(i,j) + wt2*forces%ustar(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
     if (associated(fluxes%tau_mag)) then ; do j=js,je ; do i=is,ie
       fluxes%tau_mag(i,j) = wt1*fluxes%tau_mag(i,j) + wt2*forces%tau_mag(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
   else
     do j=js,je ; do i=is,ie
       fluxes%p_surf(i,j) = flux_tmp%p_surf(i,j)
       fluxes%p_surf_full(i,j) = flux_tmp%p_surf_full(i,j)
-    enddo ; enddo
+    enddo
+    enddo
 
     if (associated(fluxes%ustar)) then ; do j=js,je ; do i=is,ie
       fluxes%ustar(i,j) = wt1*fluxes%ustar(i,j) + wt2*flux_tmp%ustar(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
     if (associated(fluxes%tau_mag)) then ; do j=js,je ; do i=is,ie
       fluxes%tau_mag(i,j) = wt1*fluxes%tau_mag(i,j) + wt2*flux_tmp%tau_mag(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
   endif
 
   ! Average ustar_gustless.
@@ -2442,18 +2489,21 @@ subroutine fluxes_accumulate(flux_tmp, fluxes, G, wt2, forces)
     if (fluxes%gustless_accum_bug) then
       do j=js,je ; do i=is,ie
         fluxes%ustar_gustless(i,j) = flux_tmp%ustar_gustless(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         fluxes%ustar_gustless(i,j) = wt1*fluxes%ustar_gustless(i,j) + wt2*flux_tmp%ustar_gustless(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
   endif
 
   if (associated(fluxes%tau_mag_gustless)) then
     do j=js,je ; do i=is,ie
       fluxes%tau_mag_gustless(i,j) = wt1*fluxes%tau_mag_gustless(i,j) + wt2*flux_tmp%tau_mag_gustless(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   ! Average the water, heat, and salt fluxes.
@@ -2477,87 +2527,103 @@ subroutine fluxes_accumulate(flux_tmp, fluxes, G, wt2, forces)
     fluxes%sens(i,j) = wt1*fluxes%sens(i,j) + wt2*flux_tmp%sens(i,j)
 
     fluxes%salt_flux(i,j) = wt1*fluxes%salt_flux(i,j) + wt2*flux_tmp%salt_flux(i,j)
-  enddo ; enddo
+  enddo
+  enddo
   if (associated(fluxes%heat_added) .and. associated(flux_tmp%heat_added)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_added(i,j) = wt1*fluxes%heat_added(i,j) + wt2*flux_tmp%heat_added(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   ! These might always be associated, in which case they can be combined?
   if (associated(fluxes%heat_content_cond) .and. associated(flux_tmp%heat_content_cond)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_cond(i,j) = wt1*fluxes%heat_content_cond(i,j) + wt2*flux_tmp%heat_content_cond(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_evap) .and. associated(flux_tmp%heat_content_evap)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_evap(i,j) = wt1*fluxes%heat_content_evap(i,j) + wt2*flux_tmp%heat_content_evap(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_lprec) .and. associated(flux_tmp%heat_content_lprec)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_lprec(i,j) = wt1*fluxes%heat_content_lprec(i,j) + wt2*flux_tmp%heat_content_lprec(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_fprec) .and. associated(flux_tmp%heat_content_fprec)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_fprec(i,j) = wt1*fluxes%heat_content_fprec(i,j) + wt2*flux_tmp%heat_content_fprec(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_vprec) .and. associated(flux_tmp%heat_content_vprec)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_vprec(i,j) = wt1*fluxes%heat_content_vprec(i,j) + wt2*flux_tmp%heat_content_vprec(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_lrunoff) .and. associated(flux_tmp%heat_content_lrunoff)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_lrunoff(i,j) = wt1*fluxes%heat_content_lrunoff(i,j) + wt2*flux_tmp%heat_content_lrunoff(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_frunoff) .and. associated(flux_tmp%heat_content_frunoff)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_frunoff(i,j) = wt1*fluxes%heat_content_frunoff(i,j) + wt2*flux_tmp%heat_content_frunoff(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_lrunoff_glc) .and. associated(flux_tmp%heat_content_lrunoff_glc)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_lrunoff_glc(i,j) = wt1*fluxes%heat_content_lrunoff_glc(i,j) + &
                                              wt2*flux_tmp%heat_content_lrunoff_glc(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%heat_content_frunoff_glc) .and. associated(flux_tmp%heat_content_frunoff_glc)) then
     do j=js,je ; do i=is,ie
       fluxes%heat_content_frunoff_glc(i,j) = wt1*fluxes%heat_content_frunoff_glc(i,j) + &
                                              wt2*flux_tmp%heat_content_frunoff_glc(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%carbon_content_lrunoff) .and. associated(flux_tmp%carbon_content_lrunoff)) then
     do j=js,je ; do i=is,ie
       fluxes%carbon_content_lrunoff(i,j) = wt1*fluxes%carbon_content_lrunoff(i,j) + &
                                            wt2*flux_tmp%carbon_content_lrunoff(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (associated(fluxes%ustar_shelf) .and. associated(flux_tmp%ustar_shelf)) then
     do i=isd,ied ; do j=jsd,jed
       fluxes%ustar_shelf(i,j)  = flux_tmp%ustar_shelf(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%iceshelf_melt) .and. associated(flux_tmp%iceshelf_melt)) then
     do i=isd,ied ; do j=jsd,jed
       fluxes%iceshelf_melt(i,j)  = flux_tmp%iceshelf_melt(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%shelf_sfc_mass_flux) &
                  .and. associated(flux_tmp%shelf_sfc_mass_flux)) then
     do i=isd,ied ; do j=jsd,jed
       fluxes%shelf_sfc_mass_flux(i,j)  = flux_tmp%shelf_sfc_mass_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%frac_shelf_h) .and. associated(flux_tmp%frac_shelf_h)) then
     do i=isd,ied ; do j=jsd,jed
       fluxes%frac_shelf_h(i,j)  = flux_tmp%frac_shelf_h(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   ! Forcings introduced for MARBL
@@ -2565,77 +2631,94 @@ subroutine fluxes_accumulate(flux_tmp, fluxes, G, wt2, forces)
   if (associated(fluxes%nhx_dep) .and. associated(flux_tmp%nhx_dep)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%nhx_dep(i,j)  = wt1*fluxes%nhx_dep(i,j) + wt2*flux_tmp%nhx_dep(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%noy_dep) .and. associated(flux_tmp%noy_dep)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%noy_dep(i,j)  = wt1*fluxes%noy_dep(i,j) + wt2*flux_tmp%noy_dep(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%atm_co2) .and. associated(flux_tmp%atm_co2)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%atm_co2(i,j)  = wt1*fluxes%atm_co2(i,j) + wt2*flux_tmp%atm_co2(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%atm_alt_co2) .and. associated(flux_tmp%atm_alt_co2)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%atm_alt_co2(i,j)  = wt1*fluxes%atm_alt_co2(i,j) + wt2*flux_tmp%atm_alt_co2(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%dust_flux) .and. associated(flux_tmp%dust_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%dust_flux(i,j)  = wt1*fluxes%dust_flux(i,j) + wt2*flux_tmp%dust_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%iron_flux) .and. associated(flux_tmp%iron_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%iron_flux(i,j)  = wt1*fluxes%iron_flux(i,j) + wt2*flux_tmp%iron_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%atm_fine_dust_flux) .and. associated(flux_tmp%atm_fine_dust_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%atm_fine_dust_flux(i,j)  = wt1*fluxes%atm_fine_dust_flux(i,j) + wt2*flux_tmp%atm_fine_dust_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%atm_coarse_dust_flux) .and. associated(flux_tmp%atm_coarse_dust_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%atm_coarse_dust_flux(i,j)  = wt1*fluxes%atm_coarse_dust_flux(i,j) + wt2*flux_tmp%atm_coarse_dust_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%atm_bc_flux) .and. associated(flux_tmp%atm_bc_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%atm_bc_flux(i,j)  = wt1*fluxes%atm_bc_flux(i,j) + wt2*flux_tmp%atm_bc_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%seaice_dust_flux) .and. associated(flux_tmp%seaice_dust_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%seaice_dust_flux(i,j)  = wt1*fluxes%seaice_dust_flux(i,j) + wt2*flux_tmp%seaice_dust_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%seaice_bc_flux) .and. associated(flux_tmp%seaice_bc_flux)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%seaice_bc_flux(i,j)  = wt1*fluxes%seaice_bc_flux(i,j) + wt2*flux_tmp%seaice_bc_flux(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%fracr_cat) .and. associated(flux_tmp%fracr_cat)) then
     do n=1,size(fluxes%fracr_cat,dim=3) ; do j=jsd,jed ; do i=isd,ied
       fluxes%fracr_cat(i,j,n)  = wt1*fluxes%fracr_cat(i,j,n) + wt2*flux_tmp%fracr_cat(i,j,n)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%qsw_cat) .and. associated(flux_tmp%qsw_cat)) then
     do n=1,size(fluxes%qsw_cat,dim=3) ; do j=jsd,jed ; do i=isd,ied
       fluxes%qsw_cat(i,j,n)  = wt1*fluxes%qsw_cat(i,j,n) + wt2*flux_tmp%qsw_cat(i,j,n)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%ice_fraction) .and. associated(flux_tmp%ice_fraction)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%ice_fraction(i,j)  = wt1*fluxes%ice_fraction(i,j) + wt2*flux_tmp%ice_fraction(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(fluxes%u10_sqr) .and. associated(flux_tmp%u10_sqr)) then
     do j=jsd,jed ; do i=isd,ied
       fluxes%u10_sqr(i,j)  = wt1*fluxes%u10_sqr(i,j) + wt2*flux_tmp%u10_sqr(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (coupler_type_initialized(fluxes%tr_fluxes) .and. &
@@ -2662,30 +2745,35 @@ subroutine copy_common_forcing_fields(forces, fluxes, G, skip_pres)
   if (associated(forces%ustar) .and. associated(fluxes%ustar)) then
     do j=js,je ; do i=is,ie
       fluxes%ustar(i,j) = forces%ustar(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(forces%omega_w2x) .and. associated(fluxes%omega_w2x)) then
     do j=js,je ; do i=is,ie
       fluxes%omega_w2x(i,j) = forces%omega_w2x(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(forces%tau_mag) .and. associated(fluxes%tau_mag)) then
     do j=js,je ; do i=is,ie
       fluxes%tau_mag(i,j) = forces%tau_mag(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (do_pres) then
     if (associated(forces%p_surf) .and. associated(fluxes%p_surf)) then
       do j=js,je ; do i=is,ie
         fluxes%p_surf(i,j) = forces%p_surf(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (associated(forces%p_surf_full) .and. associated(fluxes%p_surf_full)) then
       do j=js,je ; do i=is,ie
         fluxes%p_surf_full(i,j) = forces%p_surf_full(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     if (associated(forces%p_surf_SSH, forces%p_surf_full)) then
@@ -2739,7 +2827,8 @@ subroutine set_derived_forcing_fields(forces, fluxes, G, US, Rho0)
       if (associated(fluxes%tau_mag_gustless)) then
         fluxes%tau_mag_gustless(i,j) = US%L_to_Z*sqrt(taux2 + tauy2)
       endif
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
 end subroutine set_derived_forcing_fields
@@ -2773,31 +2862,49 @@ subroutine get_net_mass_forcing(fluxes, G, US, net_mass_src)
   net_mass_src(:,:) = 0.0
   if (associated(fluxes%lprec)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%lprec(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%fprec)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%fprec(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%vprec)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%vprec(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%lrunoff)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%lrunoff(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%frunoff)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%frunoff(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%lrunoff_glc)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%lrunoff_glc(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%frunoff_glc)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%frunoff_glc(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%evap)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%evap(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
   if (associated(fluxes%seaice_melt)) then ; do j=js,je ; do i=is,ie
     net_mass_src(i,j) = net_mass_src(i,j) + fluxes%seaice_melt(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
 
 end subroutine get_net_mass_forcing
 
@@ -2814,17 +2921,20 @@ subroutine copy_back_forcing_fields(fluxes, forces, G)
   if (associated(forces%ustar) .and. associated(fluxes%ustar)) then
     do j=js,je ; do i=is,ie
       forces%ustar(i,j) = fluxes%ustar(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(forces%omega_w2x) .and. associated(fluxes%omega_w2x)) then
     do j=js,je ; do i=is,ie
       forces%omega_w2x(i,j) = fluxes%omega_w2x(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
   if (associated(forces%tau_mag) .and. associated(fluxes%tau_mag)) then
     do j=js,je ; do i=is,ie
       forces%tau_mag(i,j) = fluxes%tau_mag(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
 end subroutine copy_back_forcing_fields
@@ -2956,7 +3066,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         if (associated(fluxes%frunoff_glc)) res(i,j) = res(i,j) + fluxes%frunoff_glc(i,j)
         if (associated(fluxes%vprec))       res(i,j) = res(i,j) + fluxes%vprec(i,j)
         if (associated(fluxes%seaice_melt)) res(i,j) = res(i,j) + fluxes%seaice_melt(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_prcme > 0) call post_data(handles%id_prcme, res, diag)
       if (handles%id_total_prcme > 0) then
         total_mass_flux = global_area_integral(res, G, tmp_scale=US%RZ_T_to_kg_m2s)
@@ -2983,7 +3094,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         if (associated(fluxes%seaice_melt)) then
           if (fluxes%seaice_melt(i,j) < 0.0) res(i,j) = res(i,j) + fluxes%seaice_melt(i,j)
         endif
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_net_massout > 0) call post_data(handles%id_net_massout, res, diag)
       if (handles%id_total_net_massout > 0) then
         total_mass_flux = global_area_integral(res, G, tmp_scale=US%RZ_T_to_kg_m2s)
@@ -3016,7 +3128,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         if (associated(fluxes%seaice_melt)) then
           if (fluxes%seaice_melt(i,j) > 0.0) res(i,j) = res(i,j) + fluxes%seaice_melt(i,j)
         endif
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_net_massin > 0) call post_data(handles%id_net_massin, res, diag)
       if (handles%id_total_net_massin > 0) then
         total_mass_flux = global_area_integral(res, G, tmp_scale=US%RZ_T_to_kg_m2s)
@@ -3041,7 +3154,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
     if (associated(fluxes%lprec) .and. associated(fluxes%fprec)) then
       do j=js,je ; do i=is,ie
         res(i,j) = fluxes%lprec(i,j) + fluxes%fprec(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_precip > 0) call post_data(handles%id_precip, res, diag)
       if (handles%id_total_precip > 0) then
         total_mass_flux = global_area_integral(res, G, tmp_scale=US%RZ_T_to_kg_m2s)
@@ -3220,7 +3334,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
       if (associated(fluxes%sens))             res(i,j) = res(i,j) + fluxes%sens(i,j)
       if (associated(fluxes%SW))               res(i,j) = res(i,j) + fluxes%sw(i,j)
       if (associated(fluxes%seaice_melt_heat)) res(i,j) = res(i,j) + fluxes%seaice_melt_heat(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_net_heat_coupler > 0) call post_data(handles%id_net_heat_coupler, res, diag)
       if (handles%id_total_net_heat_coupler > 0) then
         total_heat_flux = global_area_integral(res, G, tmp_scale=US%QRZ_T_to_W_m2)
@@ -3266,7 +3381,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
             res(i,j) = res(i,j) + fluxes%heat_content_evap(i,j)
         endif
         if (associated(fluxes%heat_added)) res(i,j) = res(i,j) + fluxes%heat_added(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_net_heat_surface > 0) call post_data(handles%id_net_heat_surface, res, diag)
 
       if (handles%id_total_net_heat_surface > 0) then
@@ -3295,7 +3411,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         else
           if (associated(fluxes%heat_content_evap))    res(i,j) = res(i,j) + fluxes%heat_content_evap(i,j)
         endif
-      enddo ; enddo
+      enddo
+      enddo
       if (handles%id_heat_content_surfwater > 0) call post_data(handles%id_heat_content_surfwater, res, diag)
       if (handles%id_total_heat_content_surfwater > 0) then
         total_heat_flux = global_area_integral(res, G, tmp_scale=US%QRZ_T_to_W_m2)
@@ -3311,7 +3428,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         if (associated(fluxes%heat_content_frunoff)) res(i,j) = res(i,j) + fluxes%heat_content_frunoff(i,j)
         if (associated(fluxes%heat_content_lrunoff_glc)) res(i,j) = res(i,j) + fluxes%heat_content_lrunoff_glc(i,j)
         if (associated(fluxes%heat_content_frunoff_glc)) res(i,j) = res(i,j) + fluxes%heat_content_frunoff_glc(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       call post_data(handles%id_hfrunoffds, res, diag)
     endif
 
@@ -3322,7 +3440,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
         if (associated(fluxes%heat_content_lprec)) res(i,j) = res(i,j) + fluxes%heat_content_lprec(i,j)
         if (associated(fluxes%heat_content_fprec)) res(i,j) = res(i,j) + fluxes%heat_content_fprec(i,j)
         if (associated(fluxes%heat_content_cond)) res(i,j) = res(i,j) + fluxes%heat_content_cond(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       call post_data(handles%id_hfrainds, res, diag)
     endif
 
@@ -3330,7 +3449,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
          associated(fluxes%latent) .and. associated(fluxes%sens)) then
       do j=js,je ; do i=is,ie
         res(i,j) = (fluxes%lw(i,j) + fluxes%latent(i,j)) + fluxes%sens(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       call post_data(handles%id_LwLatSens, res, diag)
     endif
 
@@ -3338,7 +3458,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
          associated(fluxes%latent) .and. associated(fluxes%sens)) then
       do j=js,je ; do i=is,ie
         res(i,j) = (fluxes%lw(i,j) + fluxes%latent(i,j)) + fluxes%sens(i,j)
-      enddo ; enddo
+      enddo
+      enddo
       total_heat_flux = global_area_integral(res, G, tmp_scale=US%QRZ_T_to_W_m2)
       call post_data(handles%id_total_LwLatSens, total_heat_flux, diag)
     endif
@@ -3347,7 +3468,8 @@ subroutine forcing_diagnostics(fluxes_in, sfc_state, G_in, US, time_end, diag, h
          associated(fluxes%latent) .and. associated(fluxes%sens)) then
       do j=js,je ; do i=is,ie
         res(i,j) = ((fluxes%lw(i,j) + fluxes%latent(i,j)) + fluxes%sens(i,j))
-      enddo ; enddo
+      enddo
+      enddo
       ave_heat_flux = global_area_mean(res, G, tmp_scale=US%QRZ_T_to_W_m2)
       call post_data(handles%id_LwLatSens_ga, ave_heat_flux, diag)
     endif
@@ -4266,20 +4388,28 @@ subroutine homogenize_mech_forcing(forces, G, US, Rho0, UpdateUstar)
     tx_mean = global_area_mean_u(forces%taux, G, tmp_scale=US%RLZ_T2_to_Pa)
     do j=js,je ; do i=isB,ieB
       if (G%mask2dCu(I,j) > 0.0) forces%taux(I,j) = tx_mean
-    enddo ; enddo
+    enddo
+    enddo
     ty_mean = global_area_mean_v(forces%tauy, G, tmp_scale=US%RLZ_T2_to_Pa)
     do j=jsB,jeB ; do i=is,ie
       if (G%mask2dCv(i,J) > 0.0) forces%tauy(i,J) = ty_mean
-    enddo ; enddo
+    enddo
+    enddo
     tau2ustar = .false. ; if (present(UpdateUstar)) tau2ustar = UpdateUstar
     if (tau2ustar) then
       tau_mag = US%L_to_Z*sqrt((tx_mean**2) + (ty_mean**2))
       if (associated(forces%tau_mag)) then ; do j=js,je ; do i=is,ie ; if (G%mask2dT(i,j) > 0.0) then
         forces%tau_mag(i,j) = tau_mag
-      endif ; enddo ; enddo ; endif
+      endif
+      enddo
+      enddo
+      endif
       if (associated(forces%ustar)) then ; do j=js,je ; do i=is,ie ; if (G%mask2dT(i,j) > 0.0) then
         forces%ustar(i,j) = sqrt(tau_mag * Irho0)
-      endif ; enddo ; enddo ; endif
+      endif
+      enddo
+      enddo
+      endif
     else
       if (associated(forces%ustar)) &
         call homogenize_field_t(forces%ustar, G, tmp_scale=US%Z_to_m*US%s_to_T)
@@ -4452,7 +4582,8 @@ subroutine homogenize_field_t(var, G, tmp_scale)
   avg = global_area_mean(var, G, tmp_scale=tmp_scale)
   do j=js,je ; do i=is,ie
     if (G%mask2dT(i,j) > 0.0) var(i,j) = avg
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine homogenize_field_t
 
@@ -4470,7 +4601,8 @@ subroutine homogenize_field_v(var, G, tmp_scale)
   avg = global_area_mean_v(var, G, tmp_scale=tmp_scale)
   do J=jsB,jeB ; do i=is,ie
     if (G%mask2dCv(i,J) > 0.0) var(i,J) = avg
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine homogenize_field_v
 
@@ -4488,7 +4620,8 @@ subroutine homogenize_field_u(var, G, tmp_scale)
   avg = global_area_mean_u(var, G, tmp_scale=tmp_scale)
   do j=js,je ; do I=isB,ieB
     if (G%mask2dCu(I,j) > 0.0) var(I,j) = avg
-  enddo ; enddo
+  enddo
+  enddo
 
 end subroutine homogenize_field_u
 

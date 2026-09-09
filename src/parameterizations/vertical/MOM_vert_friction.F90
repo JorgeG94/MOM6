@@ -659,19 +659,27 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
   if (DoStokesMixing) then
     do k=1,nz ; do j=G%jsc,G%jec ; do I=Isq,Ieq ; if (G%mask2dCu(I,j) > 0.) then
       u(I,j,k) = u(I,j,k) + Waves%Us_x(I,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (lfpmix) then
     do k=1,nz ; do j=G%jsc,G%jec ; do I=Isq,Ieq ; if (G%mask2dCu(I,j) > 0.) then
       u(I,j,k) = u(I,j,k) - Waves%Us_x(I,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (associated(ADp%du_dt_visc)) then
     do k=1,nz ; do j=G%jsc,G%jec ; do I=Isq,Ieq
       ADp%du_dt_visc(I,j,k) = u(I,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   !$omp target enter data map(to: ADp)
@@ -680,22 +688,37 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
   !$omp target enter data map(alloc: ADp%du_dt_str)
 
   if (associated(ADp%du_dt_visc_gl90)) then
-    do concurrent (k=1:nz, j=G%jsc:G%jec, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
       ADp%du_dt_visc_gl90(I,j,k) = u(I,j,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (associated(ADp%du_dt_str)) then
-    do concurrent (k=1:nz, j=G%jsc:G%jec, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
       ADp%du_dt_str(I,j,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   !   One option is to have the wind stress applied as a body force
   ! over the topmost Hmix fluid.  If DIRECT_STRESS is not defined,
   ! the wind stress is applied as a stress boundary condition.
   if (CS%direct_stress) then
-    do concurrent (j=G%jsc:G%jec, I=Isq:Ieq, G%mask2dCu(i,j) > 0.0)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
+    if ((G%mask2dCu(i,j) > 0.0)) then
       surface_stress(I,j) = 0.0
       zDS = 0.0
       stress = dt_Rho0 * forces%taux(I,j)
@@ -706,11 +729,18 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
         if (associated(ADp%du_dt_str)) ADp%du_dt_str(I,j,k) = (I_Hmix * hfr * stress) * Idt
         zDS = zDS + h_a ; if (zDS >= Hmix) exit
       enddo
-    enddo
+    end if
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=G%jsc:G%jec, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
       surface_stress(I,j) = dt_Rho0 * (G%mask2dCu(I,j)*forces%taux(I,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   ! perform forward elimination on the tridiagonal system
@@ -790,7 +820,9 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
           ADp%du_dt_str(I,j,k) = 0.0
       endif
     enddo
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   ! compute vertical velocity tendency that arises from GL90 viscosity;
   ! follow tridiagonal solve method as above; to avoid corrupting u,
@@ -839,38 +871,53 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
             KE_u(I,j,k) = ADp%du_dt_visc(I,j,k) * CS%h_u(I,j,k) * G%areaCu(I,j) * ADp%du_dt_visc_gl90(I,j,k)
           enddo
         endif
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
     endif
   endif
 
   if (associated(ADp%du_dt_visc)) then
-    do concurrent (j=G%jsc:G%jec, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
       do k=1,nz
         ADp%du_dt_visc(I,j,k) = (u(I,j,k) - ADp%du_dt_visc(I,j,k)) * Idt
 
         if (abs(ADp%du_dt_visc(I,j,k)) < accel_underflow) &
           ADp%du_dt_visc(I,j,k) = 0.0
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (allocated(visc%taux_shelf)) then
     do j=G%jsc,G%jec ; do I=Isq,Ieq
       visc%taux_shelf(I,j) = -GV%H_to_RZ * CS%a1_shelf_u(I,j) * u(I,j,1) ! - u_shelf?
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (present(taux_bot)) then
-    do concurrent (j=G%jsc:G%jec, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = G%jsc, G%jec
+    do I = Isq, Ieq
       taux_bot(I,j) = GV%H_to_RZ * (u(I,j,nz) * CS%a_u(I,j,nz+1))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (allocated(visc%Ray_u)) then
-      do concurrent (j=G%jsc:G%jec, I=Isq:Ieq)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = G%jsc, G%jec
+      do I = Isq, Ieq
         do k=1,nz
           taux_bot(I,j) = taux_bot(I,j) + GV%H_to_RZ * (visc%Ray_u(I,j,k) * u(I,j,k))
         enddo
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
@@ -878,13 +925,19 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
   if (DoStokesMixing) then
     do k=1,nz ; do j=G%jsc,G%jec ; do I=Isq,Ieq ; if (G%mask2dCu(I,j) > 0.) then
       u(I,j,k) = u(I,j,k) - Waves%Us_x(I,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (lfpmix) then
     do k=1,nz ; do j=G%jsc,G%jec ; do I=Isq,Ieq ; if (G%mask2dCu(I,j) > 0.) then
       u(I,j,k) = u(I,j,k) + Waves%Us_x(I,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   ! == Now work on the meridional velocity component.
@@ -893,38 +946,61 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
   if (DoStokesMixing) then
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
       v(i,j,k) = v(i,j,k) + Waves%Us_y(i,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (lfpmix) then
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
       v(i,j,k) = v(i,j,k) - Waves%Us_y(i,j,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (associated(ADp%dv_dt_visc)) then
-    do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do J = Jsq, Jeq
+    do i = is, ie
       ADp%dv_dt_visc(i,J,k) = v(i,J,k)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (associated(ADp%dv_dt_visc_gl90)) then
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
       ADp%dv_dt_visc_gl90(i,J,k) = v(i,J,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   if (associated(ADp%dv_dt_str)) then
-    do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do J = Jsq, Jeq
+    do i = is, ie
       ADp%dv_dt_str(i,J,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   !   One option is to have the wind stress applied as a body force
   ! over the topmost Hmix fluid.  If DIRECT_STRESS is not defined,
   ! the wind stress is applied as a stress boundary condition.
   if (CS%direct_stress) then
-    do concurrent (J=Jsq:Jeq, i=is:ie, G%mask2dCv(i,J) > 0.0)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
+    if ((G%mask2dCv(i,J) > 0.0)) then
       surface_stress(i,J) = 0.0
       zDS = 0.0
       stress = dt_Rho0 * forces%tauy(i,J)
@@ -935,11 +1011,18 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
         if (associated(ADp%dv_dt_str)) ADp%dv_dt_str(i,J,k) = (I_Hmix * hfr * stress) * Idt
         zDS = zDS + h_a ; if (zDS >= Hmix) exit
       enddo
-    enddo
+    end if
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
       surface_stress(i,J) = dt_Rho0 * (G%mask2dCv(i,J) * forces%tauy(i,J))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   !$omp target teams loop collapse(2) &
@@ -991,7 +1074,9 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
           ADp%dv_dt_str(i,J,k) = 0.0
       endif
     enddo
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   ! compute vertical velocity tendency that arises from GL90 viscosity;
   ! follow tridiagonal solve method as above; to avoid corrupting v,
@@ -1017,7 +1102,9 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
         do k=nz-1,1,-1
           ADp%dv_dt_visc_gl90(i,J,k) = ADp%dv_dt_visc_gl90(i,J,k) + c1(k+1) * ADp%dv_dt_visc_gl90(i,J,k+1)
         enddo
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
 
       do k=1,nz
         do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
@@ -1028,7 +1115,9 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
 
           if (abs(ADp%dv_dt_visc_gl90(i,J,k)) < accel_underflow) &
             ADp%dv_dt_visc_gl90(i,J,k) = 0.0
-        endif ; enddo ; enddo
+        endif
+        enddo
+        enddo
       enddo
 
       ! to compute energetics, we need to multiply by v*h, where u is original velocity before
@@ -1038,39 +1127,54 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
           do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
             ! note that on RHS: ADp%dv_dt_visc(I,j,k) holds the original velocity value v(I,j,k)
             KE_v(I,j,k) = ADp%dv_dt_visc(i,J,k) * CS%h_v(i,J,k) * G%areaCv(i,J) * ADp%dv_dt_visc_gl90(i,J,k)
-          endif ; enddo ; enddo
+          endif
+          enddo
+          enddo
         enddo
       endif
     endif
   endif
 
   if (associated(ADp%dv_dt_visc)) then
-    do concurrent (J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
       do k=1,nz
         ADp%dv_dt_visc(i,J,k) = (v(i,J,k) - ADp%dv_dt_visc(i,J,k))*Idt
         if (abs(ADp%dv_dt_visc(i,J,k)) < accel_underflow) ADp%dv_dt_visc(i,J,k) = 0.0
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   if (allocated(visc%tauy_shelf)) then
     do J=Jsq,Jeq ; do i=is,ie
       visc%tauy_shelf(i,J) = -GV%H_to_RZ * CS%a1_shelf_v(i,J) * v(i,J,1) ! - v_shelf?
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   ! JORGE TODO: this has to be malloced
   if (present(tauy_bot)) then
-    do concurrent (J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
       tauy_bot(i,J) = GV%H_to_RZ * (v(i,J,nz) * CS%a_v(i,J,nz+1))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (allocated(visc%Ray_v)) then
-      do concurrent (J=Jsq:Jeq, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do J = Jsq, Jeq
+      do i = is, ie
         do k=1,nz
           tauy_bot(i,J) = tauy_bot(i,J) + GV%H_to_RZ * (visc%Ray_v(i,J,k)*v(i,J,k))
         enddo
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
   endif
 
@@ -1078,13 +1182,19 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
   if (DoStokesMixing) then
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
       v(i,J,k) = v(i,J,k) - Waves%Us_y(i,J,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   if (lfpmix) then
     do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.) then
       v(i,J,k) = v(i,J,k) + Waves%Us_y(i,J,k)
-    endif ; enddo ; enddo ; enddo
+    endif
+    enddo
+    enddo
+    enddo
   endif
 
   ! Calculate the KE source from GL90 vertical viscosity [H L2 T-3 ~> m3 s-3].
@@ -1099,7 +1209,8 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
       do j=js,je ; do i=is,ie
         KE_term(i,j,k) = 0.5 * G%IareaT(i,j) &
             * (KE_u(I,j,k) + KE_u(I-1,j,k) + KE_v(i,J,k) + KE_v(i,J-1,k))
-      enddo ; enddo
+      enddo
+      enddo
     enddo
     call post_data(CS%id_GLwork, KE_term, CS%diag)
   endif
@@ -1120,12 +1231,14 @@ subroutine vertvisc(u, v, h, forces, visc, dt, OBC, ADp, CDp, G, GV, US, CS, &
           J = OBC%segment(n)%HI%JsdB
           do k=1,nz ; do i=OBC%segment(n)%HI%isd,OBC%segment(n)%HI%ied
             v(i,J,k) = OBC%segment(n)%normal_vel(i,J,k)
-          enddo ; enddo
+          enddo
+          enddo
         elseif (OBC%segment(n)%is_E_or_W) then
           I = OBC%segment(n)%HI%IsdB
           do k=1,nz ; do j=OBC%segment(n)%HI%jsd,OBC%segment(n)%HI%jed
             u(I,j,k) = OBC%segment(n)%normal_vel(I,j,k)
-          enddo ; enddo
+          enddo
+          enddo
         endif
       endif
     enddo
@@ -1255,7 +1368,9 @@ subroutine vertvisc_remnant(visc, visc_rem_u, visc_rem_v, dt, G, GV, US, CS)
     do k=nz-1,1,-1
       visc_rem_u(I,j,k) = visc_rem_u(I,j,k) + c1(k+1) * visc_rem_u(I,j,k+1)
     enddo
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   ! Now find the meridional viscous remnant using the robust tridiagonal solver.
 
@@ -1287,7 +1402,9 @@ subroutine vertvisc_remnant(visc, visc_rem_u, visc_rem_v, dt, G, GV, US, CS)
     do k=nz-1,1,-1
       visc_rem_v(i,J,k) = visc_rem_v(i,J,k) + c1(k+1) * visc_rem_v(i,J,k+1)
     enddo
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   if (CS%debug) then
     !$omp target update from(visc_rem_u, visc_rem_v)
@@ -1752,7 +1869,9 @@ subroutine vertvisc_coef(u, v, h, dz, forces, visc, tv, dt, G, GV, US, CS, OBC, 
         Kv_gl90_u(I,j,k) = 0.5 * (CS%a_u_gl90(I,j,K) + CS%a_u_gl90(I,j,K+1)) * CS%h_u(I,j,k)
       enddo
     endif
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   ! Now work on v-points.
 
@@ -2055,7 +2174,9 @@ subroutine vertvisc_coef(u, v, h, dz, forces, visc, tv, dt, G, GV, US, CS, OBC, 
         Kv_gl90_v(i,J,k) = 0.5 * (CS%a_v_gl90(i,J,K) + CS%a_v_gl90(i,J,K+1)) * CS%h_v(i,J,k)
       enddo
     endif
-  endif ; enddo ; enddo
+  endif
+  enddo
+  enddo
 
   !$omp target exit data map(delete: z_i, z_i_gl90, dz_harm, hvel, dz_vel, a_cpl, a_cpl_gl90, &
   !$omp& tv, hvel_shelf, dz_vel_shelf, a_shelf, hml_u, kv_u, kv_gl90_u)
@@ -3166,13 +3287,19 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
     do_any_write = .false.
     trunc_any = .false.
 
-    do concurrent (j=js:je, I=Isq:Ieq)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = Isq, Ieq
       dowrite(I,j) = .false.
       vel_report(I,j) = 3.0e8 * US%m_s_to_L_T
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (k=1:nz, j=js:je, I=Isq:Ieq) &
-        DO_LOCALITY(reduce(.or.: trunc_any, do_any_write))
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = js, je
+    do I = Isq, Ieq
       if (abs(u(I,j,k)) < CS%vel_underflow) u(I,j,k) = 0.0
       if (u(I,j,k) < 0.0) then
         CFL = (-u(I,j,k) * dt) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
@@ -3185,15 +3312,27 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         do_any_write = .true.
         vel_report(I,j) = min(vel_report(I,j), abs(u(I,j,k)))
       endif
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (j=js:je, I=Isq:Ieq, dowrite(I,j))
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do I = Isq, Ieq
+    if ((dowrite(I,j))) then
       u_old(I,j,:) = u(I,j,:)
-    enddo
+    end if
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (trunc_any) then
       ntrunc = 0
-      do concurrent (k=1:nz, j=js:je, I=Isq:Ieq) DO_LOCALITY(reduce(+: ntrunc))
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do j = js, je
+      do I = Isq, Ieq
         if ((u(I,j,k) * (dt * G%dy_Cu(I,j))) * G%IareaT(i+1,j) < -CS%CFL_trunc) then
           u(I,j,k) = (-0.9*CS%CFL_trunc) * (G%areaT(i+1,j) / (dt * G%dy_Cu(I,j)))
           if (((I >= G%isc) .and. (I <= G%iec) .and. (j >= G%jsc) .and. (j <= G%jec)) .and. &
@@ -3203,7 +3342,10 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
           if (((I >= G%isc) .and. (I <= G%iec) .and. (j >= G%jsc) .and. (j <= G%jec)) .and. &
               (CS%h_u(I,j,k) > H_report)) ntrunc = ntrunc + 1
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
       CS%ntrunc = CS%ntrunc + ntrunc
     endif
 
@@ -3213,11 +3355,16 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         ! Call a diagnostic reporting subroutines are called if unphysically large values are found.
         call write_u_accel(I, j, u_old, h, ADp, CDp, dt, G, GV, US, CS%PointAccel_CSp, &
                            vel_report(I,j), forces%taux(I,j), a=CS%a_u, hv=CS%h_u)
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
     endif
   else  ! Do not report accelerations leading to large velocities.
     ntrunc = 0
-    do concurrent (k=1:nz, j=js:je, I=Isq:Ieq) DO_LOCALITY(reduce(+: ntrunc))
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do j = js, je
+    do I = Isq, Ieq
       if (abs(u(I,j,k)) < CS%vel_underflow) then ; u(I,j,k) = 0.0
       elseif ((u(I,j,k) * (dt * G%dy_Cu(I,j))) * G%IareaT(i+1,j) < -CS%CFL_trunc) then
         u(I,j,k) = (-0.9*CS%CFL_trunc) * (G%areaT(i+1,j) / (dt * G%dy_Cu(I,j)))
@@ -3228,7 +3375,10 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         if (((I >= G%isc) .and. (I <= G%iec) .and. (j >= G%jsc) .and. (j <= G%jec)) .and. &
             (CS%h_u(I,j,k) > H_report)) ntrunc = ntrunc + 1
       endif
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     CS%ntrunc = CS%ntrunc + ntrunc
   endif
 
@@ -3236,13 +3386,19 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
     do_any_write =.false.
     trunc_any = .false.
 
-    do concurrent (J=Jsq:Jeq, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
       dowrite(i,J) = .false.
       vel_report(i,J) = 3.0e8 * US%m_s_to_L_T
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie) &
-        DO_LOCALITY(reduce(.or.: trunc_any, do_any_write))
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do J = Jsq, Jeq
+    do i = is, ie
       if (abs(v(i,J,k)) < CS%vel_underflow) v(i,J,k) = 0.0
       if (v(i,J,k) < 0.0) then
         CFL = (-v(i,J,k) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
@@ -3255,15 +3411,27 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         do_any_write = .true.
         vel_report(i,J) = min(vel_report(i,J), abs(v(i,J,k)))
       endif
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (J=Jsq:Jeq, i=is:ie, dowrite(i,J))
+    !$omp target teams distribute parallel do collapse(2)
+    do J = Jsq, Jeq
+    do i = is, ie
+    if ((dowrite(i,J))) then
       v_old(i,J,:) = v(i,J,:)
-    enddo
+    end if
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (trunc_any) then
       ntrunc = 0
-      do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(reduce(+: ntrunc))
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do J = Jsq, Jeq
+      do i = is, ie
         if ((v(i,J,k) * (dt * G%dx_Cv(i,J))) * G%IareaT(i,j+1) < -CS%CFL_trunc) then
           v(i,J,k) = (-0.9*CS%CFL_trunc) * (G%areaT(i,j+1) / (dt * G%dx_Cv(i,J)))
           if (((i >= G%isc) .and. (i <= G%iec) .and. (J >= G%jsc) .and. (J <= G%jec)) .and. &
@@ -3273,7 +3441,10 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
           if (((i >= G%isc) .and. (i <= G%iec) .and. (J >= G%jsc) .and. (J <= G%jec)) .and. &
               (CS%h_v(i,J,k) > H_report)) ntrunc = ntrunc + 1
         endif
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
       CS%ntrunc = CS%ntrunc + ntrunc
     endif
 
@@ -3283,11 +3454,16 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         ! Call a diagnostic reporting subroutines are called if unphysically large values are found.
         call write_v_accel(i, J, v_old, h, ADp, CDp, dt, G, GV, US, CS%PointAccel_CSp, &
                            vel_report(i,J), forces%tauy(i,J), a=CS%a_v, hv=CS%h_v)
-      endif ; enddo ; enddo
+      endif
+      enddo
+      enddo
     endif
   else  ! Do not report accelerations leading to large velocities.
     ntrunc = 0
-    do concurrent (k=1:nz, J=Jsq:Jeq, i=is:ie) DO_LOCALITY(reduce(+: ntrunc))
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz
+    do J = Jsq, Jeq
+    do i = is, ie
       if (abs(v(i,J,k)) < CS%vel_underflow) then ; v(i,J,k) = 0.0
       elseif ((v(i,J,k) * (dt * G%dx_Cv(i,J))) * G%IareaT(i,j+1) < -CS%CFL_trunc) then
         v(i,J,k) = (-0.9*CS%CFL_trunc) * (G%areaT(i,j+1) / (dt * G%dx_Cv(i,J)))
@@ -3298,7 +3474,10 @@ subroutine vertvisc_limit_vel(u, v, h, ADp, CDp, forces, visc, dt, G, GV, US, CS
         if (((i >= G%isc) .and. (i <= G%iec) .and. (J >= G%jsc) .and. (J <= G%jec)) .and. &
             (CS%h_v(i,J,k) > H_report)) ntrunc = ntrunc + 1
       endif
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     CS%ntrunc = CS%ntrunc + ntrunc
   endif
 

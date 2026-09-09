@@ -547,13 +547,21 @@ subroutine int_density_dz_wright(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
   endif
   !$omp target enter data map(alloc: z0pres, al0_2d, p0_2d, lambda_2d, intz)
   if (present(Z_0p)) then
-    do concurrent (j=Jsq:Jeq+1, i=Isq:Ieq+1)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = Jsq, Jeq+1
+    do i = Isq, Ieq+1
       z0pres(i,j) = Z_0p(i,j)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=HI%jsd:HI%jed, i=HI%isd:HI%ied)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = HI%jsd, HI%jed
+    do i = HI%isd, HI%ied
       z0pres(i,j) = 0.0
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 
   a1s = a1 ; a2s = a2
@@ -580,7 +588,9 @@ subroutine int_density_dz_wright(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
     top_massWeight = BTEST(MassWghtInterp, 1) ! True if the 2 bit is set
   endif
 
-  do concurrent (j=Jsq:Jeq+1, i=Isq:Ieq+1)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = Jsq, Jeq+1
+  do i = Isq, Ieq+1
     al0_2d(i,j) = (a0 + a1s*T(i,j)) + a2s*S(i,j)
     p0_2d(i,j) = (b0 + b4s*S(i,j)) + T(i,j) * (b1s + T(i,j)*((b2s + b3s*T(i,j))) + b5s*S(i,j))
     lambda_2d(i,j) = (c0 +c4s*S(i,j)) + T(i,j) * (c1s + T(i,j)*((c2s + c3s*T(i,j))) + c5s*S(i,j))
@@ -602,7 +612,9 @@ subroutine int_density_dz_wright(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
     dpa(i,j) = Pa_to_RL2_T2 * (g_Earth*rho_anom*dz - 2.0*eps*rem)
     if (present(intz_dpa)) &
       intz_dpa(i,j) = Pa_to_RL2_T2 * (0.5*g_Earth*rho_anom*dz**2 - dz*(1.0+eps)*rem)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   if (present(intx_dpa)) then
     !$omp target teams loop collapse(2) &
@@ -650,7 +662,8 @@ subroutine int_density_dz_wright(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
       enddo
       ! Use Boole's rule to integrate the values.
       intx_dpa(i,j) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + 12.0*intz(3))
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
   if (present(inty_dpa)) then
@@ -699,7 +712,8 @@ subroutine int_density_dz_wright(T, S, z_t, z_b, rho_ref, rho_0, G_e, HI, &
       enddo
       ! Use Boole's rule to integrate the values.
       inty_dpa(i,j) = C1_90*(7.0*(intz(1)+intz(5)) + 32.0*(intz(2)+intz(4)) + 12.0*intz(3))
-    enddo ; enddo
+    enddo
+    enddo
   endif
   !$omp target exit data map(release: z0pres, al0_2d, p0_2d, lambda_2d, intz)
 
@@ -861,7 +875,8 @@ subroutine int_spec_vol_dp_wright(T, S, p_t, p_b, spv_ref, HI, dza, &
     dza(i,j) = alpha_anom*dp + 2.0*eps*rem
     if (present(intp_dza)) &
       intp_dza(i,j) = 0.5*alpha_anom*dp**2 - dp*(1.0-eps)*rem
-  enddo ; enddo
+  enddo
+  enddo
 
   if (present(intx_dza)) then ; do j=HI%jsc,HI%jec ; do I=Isq,Ieq
     ! hWght is the distance measure by which the cell is violation of
@@ -907,7 +922,9 @@ subroutine int_spec_vol_dp_wright(T, S, p_t, p_b, spv_ref, HI, dza, &
     ! Use Boole's rule to integrate the values.
     intx_dza(i,j) = C1_90*(7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4)) + &
                            12.0*intp(3))
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
 
   if (present(inty_dza)) then ; do J=Jsq,Jeq ; do i=HI%isc,HI%iec
     ! hWght is the distance measure by which the cell is violation of
@@ -953,7 +970,9 @@ subroutine int_spec_vol_dp_wright(T, S, p_t, p_b, spv_ref, HI, dza, &
     ! Use Boole's rule to integrate the values.
     inty_dza(i,j) = C1_90*(7.0*(intp(1)+intp(5)) + 32.0*(intp(2)+intp(4)) + &
                            12.0*intp(3))
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
 end subroutine int_spec_vol_dp_wright
 
 !> Calculate the in-situ density for 1D arraya inputs and outputs.
@@ -1009,14 +1028,22 @@ subroutine calculate_density_array_2d_buggy_Wright(this, T, S, pressure, rho, &
   !   Possibly because Nvidia cannot associate `this` with `EOS%type`.
 
   if (present(rho_ref)) then
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       rho(i,j) = density_anomaly_elem_buggy_Wright(this, T(i,j), S(i,j), &
           pressure(i,j), rho_ref)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       rho(i,j) = density_elem_buggy_Wright_loc( T(i,j), S(i,j), pressure(i,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 end subroutine calculate_density_array_2d_buggy_Wright
 
@@ -1049,14 +1076,26 @@ subroutine calculate_density_array_3d_buggy_Wright(this, T, S, pressure, rho, &
   !   Possibly because Nvidia cannot associate `this` with `EOS%type`.
 
   if (present(rho_ref)) then
-    do concurrent (k=ks:ke, j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = ks, ke
+    do j = js, je
+    do i = is, ie
       rho(i,j,k) = density_anomaly_elem_buggy_Wright(this, T(i,j,k), S(i,j,k), &
           pressure(i,j,k), rho_ref)
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   else
-    do concurrent (k=ks:ke, j=js:je, i=is:ie)
+    !$omp target teams distribute parallel do collapse(3)
+    do k = ks, ke
+    do j = js, je
+    do i = is, ie
       rho(i,j,k) = density_elem_buggy_Wright_loc( T(i,j,k), S(i,j,k), pressure(i,j,k))
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
   endif
 end subroutine calculate_density_array_3d_buggy_Wright
 
@@ -1113,10 +1152,14 @@ subroutine calculate_density_derivs_2d_buggy_Wright(this, T, S, pressure, &
 
   ! NOTE: There is an implicit copy of `this` which cannot yet be prevented.
 
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     call calculate_density_derivs_elem_buggy_Wright_loc( T(i,j), S(i,j), &
         pressure(i,j), drho_dT(i,j), drho_dS(i,j))
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine calculate_density_derivs_2d_buggy_Wright
 
 !> Calculate the in-situ density derivatives for 3D array inputs and outputs.
@@ -1146,10 +1189,16 @@ subroutine calculate_density_derivs_3d_buggy_Wright(this, T, S, pressure, &
 
   ! NOTE: There is an implicit copy of `this` which cannot yet be prevented.
 
-  do concurrent (k=ks:ke, j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = ks, ke
+  do j = js, je
+  do i = is, ie
     call calculate_density_derivs_elem_buggy_Wright_loc( T(i,j,k), S(i,j,k), &
         pressure(i,j,k), drho_dT(i,j,k), drho_dS(i,j,k))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 end subroutine calculate_density_derivs_3d_buggy_Wright
 
 !> Set coefficients that can correct bugs un the buggy Wright equation of state.

@@ -569,23 +569,41 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
 
   !$omp target enter data map(alloc: areaTm, tmp1, PE_pt, Salt_int, Temp_int, eta, Z_0APE)
 
-  do concurrent (j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js, je
+  do i = is, ie
     areaTm(i,j) = G%mask2dT(i,j)*G%areaT(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
-  do concurrent (k=1:nz, j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do i = is, ie
     tmp1(i,j,k) = h(i,j,k) * (GV%H_to_RZ*areaTm(i,j))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
   mass_tot = reproducing_sum(tmp1, isr, ier, jsr, jer, sums=mass_lay, EFP_sum=mass_EFP, unscale=US%RZL2_to_kg)
 
   if (GV%Boussinesq) then
-    do k=1,nz ; vol_lay(k) = (1.0 / GV%Rho0) * mass_lay(k) ; enddo
+    do k=1,nz
+    vol_lay(k) = (1.0 / GV%Rho0) * mass_lay(k)
+    enddo
   else
     if (CS%do_APE_calc) then
       call find_eta(h, tv, G, GV, US, eta, dZref=G%Z_ref)
-      do concurrent (k=1:nz, j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do j = js, je
+      do i = is, ie
         tmp1(i,j,k) = (eta(i,j,K)-eta(i,j,K+1)) * areaTm(i,j)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
       vol_tot = reproducing_sum(tmp1, isr, ier, jsr, jer, sums=vol_lay, unscale=US%Z_to_m*US%L_to_m**2)
     endif
   endif ! Boussinesq
@@ -720,11 +738,19 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     ! equation of state or with a bulk mixed layer this calculation is only approximate.
     ! With an ALE model this does not make sense and should be revisited.
     !$omp target update to(Z_0APE)
-    do concurrent (k=1:nz+1, j=1:size(PE_pt,2), i=1:size(PE_pt,1))
+    !$omp target teams distribute parallel do collapse(3)
+    do k = 1, nz+1
+    do j = 1, size(PE_pt,2)
+    do i = 1, size(PE_pt,1)
       PE_pt(i,j,k) = 0.0
-    enddo
+    end do
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     if (GV%Boussinesq) then
-      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(hbelow, hint, hbot, k))
+      !$omp target teams distribute parallel do collapse(2) private(hbelow, hint, hbot, k)
+      do j = js, je
+      do i = is, ie
         hbelow = 0.0
         do K=nz,1,-1
           hbelow = hbelow + h(i,j,k) * GV%H_to_Z
@@ -734,18 +760,26 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
           PE_pt(i,j,K) = (0.5 * areaTm(i,j)) * (GV%Rho0*GV%g_prime(K)) * &
                   (hint * hint - hbot * hbot)
         enddo
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (GV%semi_Boussinesq) then
-      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(hint, hbot, k))
+      !$omp target teams distribute parallel do collapse(2) private(hint, hbot, k)
+      do j = js, je
+      do i = is, ie
         do K=nz,1,-1
           hint = Z_0APE(K) + eta(i,j,K)  ! eta and H_0 have opposite signs.
           hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0)
           PE_pt(i,j,K) = (0.5 * areaTm(i,j) * (GV%Rho0*GV%g_prime(K))) * &
                          (hint * hint - hbot * hbot)
         enddo
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(hint, hbot, k))
+      !$omp target teams distribute parallel do collapse(2) private(hint, hbot, k)
+      do j = js, je
+      do i = is, ie
         do K=nz,2,-1
           hint = Z_0APE(K) + eta(i,j,K)  ! eta and H_0 have opposite signs.
           hbot = max(Z_0APE(K) - (G%bathyT(i,j) + G%Z_ref), 0.0)
@@ -757,33 +791,48 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
         hbot = max(Z_0APE(1) - (G%bathyT(i,j) + G%Z_ref), 0.0)
         PE_pt(i,j,1) = (0.5 * areaTm(i,j) * (GV%Rlay(1)*GV%g_prime(1))) * &
                        (hint * hint - hbot * hbot)
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     endif
 
     PE_tot = reproducing_sum(PE_pt, isr, ier, jsr, jer, sums=PE, unscale=RZL4_T2_to_J)
   else
     PE_tot = 0.0
-    do k=1,nz+1 ; PE(K) = 0.0 ; Z_0APE(K) = 0.0 ; enddo
+    do k=1,nz+1
+    PE(K) = 0.0
+    Z_0APE(K) = 0.0
+    enddo
   endif
 
   ! Calculate the Kinetic Energy integrated over each layer.
-  do concurrent (k=1:nz, j=js:je, i=is:ie)
+  !$omp target teams distribute parallel do collapse(3)
+  do k = 1, nz
+  do j = js, je
+  do i = is, ie
     tmp1(i,j,k) = (0.25 * GV%H_to_RZ*(areaTm(i,j) * h(i,j,k))) * &
             (((u(I-1,j,k)**2) + (u(I,j,k)**2)) + ((v(i,J-1,k)**2) + (v(i,J,k)**2)))
-  enddo
+  end do
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   KE_tot = reproducing_sum(tmp1, isr, ier, jsr, jer, sums=KE, unscale=RZL4_T2_to_J)
 
   ! Use reproducing sums to do global integrals relate to the heat, salinity and water budgets.
   if (CS%use_temperature) then
     !$omp target enter data map(to:tv%S, tv%T)
-    do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(k))
+    !$omp target teams distribute parallel do collapse(2) private(k)
+    do j = js, je
+    do i = is, ie
       Salt_int(i,j) = 0.0 ; Temp_int(i,j) = 0.0
       do k=1,nz
         Salt_int(i,j) = Salt_int(i,j) + tv%S(i,j,k) * (h(i,j,k)*(GV%H_to_RZ * areaTm(i,j)))
         Temp_int(i,j) = Temp_int(i,j) + (tv%C_p * tv%T(i,j,k)) * (h(i,j,k)*(GV%H_to_RZ * areaTm(i,j)))
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     salt_EFP = reproducing_sum_EFP(Salt_int, isr, ier, jsr, jer, only_on_PE=.true., &
                                    unscale=US%RZL2_to_kg*US%S_to_ppt)
     heat_EFP = reproducing_sum_EFP(Temp_int, isr, ier, jsr, jer, only_on_PE=.true., &
@@ -814,7 +863,9 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     CFL_lin = abs(u(I,j,k) * CS%dt_in_T) * G%IdxCu(I,j)
     max_CFL(1) = max(max_CFL(1), CFL_trans)
     max_CFL(2) = max(max_CFL(2), CFL_lin)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
   do k=1,nz ; do J=Jsq,Jeq ; do i=is,ie
     CFL_Iarea = G%IareaT(i,j)
     if (v(i,J,k) < 0.0) &
@@ -824,7 +875,9 @@ subroutine write_energy(u, v, h, tv, day, n, G, GV, US, CS, tracer_CSp, dt_forci
     CFL_lin = abs(v(i,J,k) * CS%dt_in_T) * G%IdyCv(i,J)
     max_CFL(1) = max(max_CFL(1), CFL_trans)
     max_CFL(2) = max(max_CFL(2), CFL_lin)
-  enddo ; enddo ; enddo
+  enddo
+  enddo
+  enddo
 
   call sum_across_PEs(CS%ntrunc)
 
@@ -1089,7 +1142,8 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
         FW_in(i,j) = dt*G%areaT(i,j)*(fluxes%evap(i,j) + &
             (((fluxes%lprec(i,j) + fluxes%vprec(i,j)) + (fluxes%lrunoff(i,j) + fluxes%lrunoff_glc(i,j))) + &
               (fluxes%fprec(i,j) + (fluxes%frunoff(i,j) + fluxes%frunoff_glc(i,j)))))
-      enddo ; enddo
+      enddo
+      enddo
     else
       call MOM_error(WARNING, &
         "accumulate_net_input called with associated evap field, but no precip field.")
@@ -1098,7 +1152,9 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
 
   if (associated(fluxes%seaice_melt)) then ; do j=js,je ; do i=is,ie
     FW_in(i,j) = FW_in(i,j) + dt * G%areaT(i,j) * fluxes%seaice_melt(i,j)
-  enddo ; enddo ; endif
+  enddo
+  enddo
+  endif
 
   salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
   if (CS%use_temperature) then
@@ -1106,12 +1162,16 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
     if (associated(fluxes%sw)) then ; do j=js,je ; do i=is,ie
       heat_in(i,j) = heat_in(i,j) + dt * G%areaT(i,j) * (fluxes%sw(i,j) + &
              (fluxes%lw(i,j) + (fluxes%latent(i,j) + fluxes%sens(i,j))))
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
 
     if (associated(fluxes%seaice_melt_heat)) then ; do j=js,je ; do i=is,ie
       heat_in(i,j) = heat_in(i,j) + dt * G%areaT(i,j) * &
                                     fluxes%seaice_melt_heat(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
 
     ! smg: new code
     ! include heat content from water transport across ocean surface
@@ -1131,29 +1191,37 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
                         fluxes%heat_content_cond(i,j) + fluxes%heat_content_fprec(i,j) + &
                         fluxes%heat_content_lrunoff(i,j) + fluxes%heat_content_frunoff(i,j) + &
                         fluxes%heat_content_lrunoff_glc(i,j) + fluxes%heat_content_frunoff_glc(i,j))
-      enddo ; enddo
+      enddo
+      enddo
     elseif (associated(tv%TempxPmE)) then
       do j=js,je ; do i=is,ie
         heat_in(i,j) = heat_in(i,j) + (tv%C_p * G%areaT(i,j)) * tv%TempxPmE(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     elseif (associated(fluxes%evap)) then
       do j=js,je ; do i=is,ie
         heat_in(i,j) = heat_in(i,j) + (tv%C_p * sfc_state%SST(i,j)) * FW_in(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
 
     ! The following heat sources may or may not be used.
     if (associated(tv%internal_heat)) then
       do j=js,je ; do i=is,ie
         heat_in(i,j) = heat_in(i,j) + (tv%C_p * G%areaT(i,j)) * tv%internal_heat(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     endif
     if (associated(tv%frazil)) then ; do j=js,je ; do i=is,ie
       heat_in(i,j) = heat_in(i,j) + G%areaT(i,j) * tv%frazil(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
     if (associated(fluxes%heat_added)) then ; do j=js,je ; do i=is,ie
       heat_in(i,j) = heat_in(i,j) + dt*G%areaT(i,j) * fluxes%heat_added(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
 !    if (associated(sfc_state%sw_lost)) then ; do j=js,je ; do i=is,ie
 !      sfc_state%sw_lost must be in units of [Q R Z ~> J m-2]
 !      heat_in(i,j) = heat_in(i,j) - G%areaT(i,j) * sfc_state%sw_lost(i,j)
@@ -1162,7 +1230,9 @@ subroutine accumulate_net_input(fluxes, sfc_state, tv, dt, G, US, CS)
     if (associated(fluxes%salt_flux)) then ; do j=js,je ; do i=is,ie
       ! integrate salt_flux in [R Z T-1 ~> kgSalt m-2 s-1] to give [ppt kg]
       salt_in(i,j) = dt * G%areaT(i,j)*(1000.0*fluxes%salt_flux(i,j))
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
   endif
 
   if ((CS%use_temperature) .or. associated(fluxes%lprec) .or. &
@@ -1266,13 +1336,16 @@ subroutine create_depth_list(G, DL, min_depth_inc)
     list_pos = (j_global-1)*G%Domain%niglobal + i_global
     Dlist(list_pos) = G%bathyT(i,j) + G%Z_ref
     Arealist(list_pos) = G%mask2dT(i,j) * G%areaT(i,j)
-  enddo ; enddo
+  enddo
+  enddo
 
   ! These sums reproduce across PEs because the arrays are only nonzero on one PE.
   call sum_across_PEs(Dlist, mls+1)
   call sum_across_PEs(Arealist, mls+1)
 
-  do j=1,mls+1 ; indx2(j) = j ; enddo
+  do j=1,mls+1
+  indx2(j) = j
+  enddo
   k = mls / 2  + 1 ; ir = mls
   do
     if (k > 1) then
@@ -1500,13 +1573,15 @@ subroutine get_depth_list_checksums(G, US, depth_chksum, area_chksum)
   ! Depth checksum
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     field(i,j) = G%bathyT(i,j) + G%Z_ref
-  enddo ; enddo
+  enddo
+  enddo
   write(depth_chksum, '(Z16)') field_checksum(field(:,:), unscale=US%Z_to_m)
 
   ! Area checksum
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     field(i,j) = G%mask2dT(i,j) * G%areaT(i,j)
-  enddo ; enddo
+  enddo
+  enddo
   write(area_chksum, '(Z16)') field_checksum(field(:,:), unscale=US%L_to_m**2)
 
   deallocate(field)

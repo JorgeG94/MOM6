@@ -251,7 +251,9 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     if (use_VarMix) then
       MEKE_KhTr_fac = MEKE%KhTr_fac
       !$omp target enter data map(to: MEKE, MEKE%Kh)
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         Kh_loc = CS%KhTr
         if (use_Eady) Kh_loc = Kh_loc + CS%KhTr_Slope_Cff*VarMix%L2u(I,j)*VarMix%SN_u(I,j)
         if (allocated(MEKE%Kh)) &
@@ -266,8 +268,12 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
           if (CS%KhTr_max > 0.) Kh_loc = min(Kh_loc, CS%KhTr_max) ! Re-apply max
           Kh_u(I,j,1) = max(Kh_loc, CS%KhTr_min) ! Re-apply min
         endif
-      enddo
-      do concurrent (J=js-1:je, i=is:ie)
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         Kh_loc = CS%KhTr
         if (use_Eady) Kh_loc = Kh_loc + CS%KhTr_Slope_Cff*VarMix%L2v(i,J)*VarMix%SN_v(i,J)
         if (allocated(MEKE%Kh)) &
@@ -282,15 +288,25 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
           if (CS%KhTr_max > 0.) Kh_loc = min(Kh_loc, CS%KhTr_max) ! Re-apply max
           Kh_v(i,J,1) = max(Kh_loc, CS%KhTr_min) ! Re-apply min
         endif
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
       !$omp target exit data map(release: MEKE, MEKE%Kh)
 
-      do concurrent (j=js:je, I=is-1:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do I = is-1, ie
         khdt_x(I,j) = dt*(Kh_u(I,j,1)*(G%dy_Cu(I,j)*G%IdxCu(I,j)))
-      enddo
-      do concurrent (J=js-1:je, i=is:ie)
+      end do
+      end do
+      !$omp end target teams distribute parallel do
+      !$omp target teams distribute parallel do collapse(2)
+      do J = js-1, je
+      do i = is, ie
         khdt_y(i,J) = dt*(Kh_v(i,J,1)*(G%dx_Cv(i,J)*G%IdyCv(i,J)))
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     elseif (Resoln_scaled) then
       !$omp target update from(VarMix%Res_fn_h)
       !$OMP parallel do default(shared) private(Res_fn)
@@ -298,13 +314,15 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
         Res_fn = 0.5 * (VarMix%Res_fn_h(i,j) + VarMix%Res_fn_h(i+1,j))
         Kh_u(I,j,1) = max(CS%KhTr * Res_fn, CS%KhTr_min)
         khdt_x(I,j) = dt*(CS%KhTr*(G%dy_Cu(I,j)*G%IdxCu(I,j))) * Res_fn
-      enddo ; enddo
+      enddo
+      enddo
       !$OMP parallel do default(shared) private(Res_fn)
       do J=js-1,je ;  do i=is,ie
         Res_fn = 0.5*(VarMix%Res_fn_h(i,j) + VarMix%Res_fn_h(i,j+1))
         Kh_v(i,J,1) = max(CS%KhTr * Res_fn, CS%KhTr_min)
         khdt_y(i,J) = dt*(CS%KhTr*(G%dx_Cv(i,J)*G%IdyCv(i,J))) * Res_fn
-      enddo ; enddo
+      enddo
+      enddo
       !$omp target update to(khdt_x, khdt_y, Kh_u, Kh_v)
     else  ! Use a simple constant diffusivity.
       if (CS%id_KhTr_u > 0) then
@@ -312,24 +330,28 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
         do j=js,je ; do I=is-1,ie
           Kh_u(I,j,1) = CS%KhTr
           khdt_x(I,j) = dt*(CS%KhTr*(G%dy_Cu(I,j)*G%IdxCu(I,j)))
-        enddo ; enddo
+        enddo
+        enddo
       else
         !$OMP parallel do default(shared)
         do j=js,je ; do I=is-1,ie
           khdt_x(I,j) = dt*(CS%KhTr*(G%dy_Cu(I,j)*G%IdxCu(I,j)))
-        enddo ; enddo
+        enddo
+        enddo
       endif
       if (CS%id_KhTr_v > 0) then
         !$OMP parallel do default(shared)
         do J=js-1,je ;  do i=is,ie
           Kh_v(i,J,1) = CS%KhTr
           khdt_y(i,J) = dt*(CS%KhTr*(G%dx_Cv(i,J)*G%IdyCv(i,J)))
-        enddo ; enddo
+        enddo
+        enddo
       else
         !$OMP parallel do default(shared)
         do J=js-1,je ;  do i=is,ie
           khdt_y(i,J) = dt*(CS%KhTr*(G%dx_Cv(i,J)*G%IdyCv(i,J)))
-        enddo ; enddo
+        enddo
+        enddo
       endif
       !$omp target update to(khdt_x, khdt_y, Kh_u, Kh_v)
     endif ! VarMix
@@ -345,13 +367,15 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
             if (dt*(G%dy_Cu(I,j)*G%IdxCu(I,j)) > 0.0) &
               Kh_u(I,j,1) = khdt_x(I,j) / (dt*(G%dy_Cu(I,j)*G%IdxCu(I,j)))
           endif
-        enddo ; enddo
+        enddo
+        enddo
       else
         !$OMP parallel do default(shared) private(khdt_max)
         do j=js,je ; do I=is-1,ie
           khdt_max = 0.125*CS%max_diff_CFL * min(G%areaT(i,j), G%areaT(i+1,j))
           khdt_x(I,j) = min(khdt_x(I,j), khdt_max)
-        enddo ; enddo
+        enddo
+        enddo
       endif
       if ((CS%id_KhTr_v > 0) .or. (CS%id_KhTr_h > 0)) then
         !$OMP parallel do default(shared) private(khdt_max)
@@ -362,13 +386,15 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
             if (dt*(G%dx_Cv(i,J)*G%IdyCv(i,J)) > 0.0) &
               Kh_v(i,J,1) = khdt_y(i,J) / (dt*(G%dx_Cv(i,J)*G%IdyCv(i,J)))
           endif
-        enddo ; enddo
+        enddo
+        enddo
       else
         !$OMP parallel do default(shared) private(khdt_max)
         do J=js-1,je ; do i=is,ie
           khdt_max = 0.125*CS%max_diff_CFL * min(G%areaT(i,j), G%areaT(i,j+1))
           khdt_y(i,J) = min(khdt_y(i,J), khdt_max)
-        enddo ; enddo
+        enddo
+        enddo
       endif
       !$omp target update to(khdt_x, khdt_y, Kh_u, Kh_v)
     endif
@@ -377,11 +403,13 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     !$OMP parallel do default(shared)
     do j=js,je ; do I=is-1,ie
       khdt_x(I,j) = read_khdt_x(I,j)
-    enddo ; enddo
+    enddo
+    enddo
     !$OMP parallel do default(shared)
     do J=js-1,je ;  do i=is,ie
       khdt_y(i,J) = read_khdt_y(i,J)
-    enddo ; enddo
+    enddo
+    enddo
     call pass_vector(khdt_x, khdt_y, G%Domain)
     !$omp target update to(khdt_x, khdt_y, Kh_u, Kh_v)
   endif ! do_online
@@ -390,11 +418,15 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     if (CS%show_call_tree) call callTree_waypoint("Checking diffusive CFL (tracer_hordiff)")
     max_CFL = 0.0
     !$omp target enter data map(alloc: CFL)
-    do concurrent (j=js:je, i=is:ie) DO_LOCALITY(reduce(max:max_CFL))
+    !$omp target teams distribute parallel do collapse(2)
+    do j = js, je
+    do i = is, ie
       CFL(i,j) = 2.0*((khdt_x(I-1,j) + khdt_x(I,j)) + &
                       (khdt_y(i,J-1) + khdt_y(i,J))) * G%IareaT(i,j)
       max_CFL = max(max_CFL, CFL(i,j))
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
     call cpu_clock_begin(id_clock_sync)
     call max_across_PEs(max_CFL)
     call cpu_clock_end(id_clock_sync)
@@ -416,21 +448,33 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     if (associated(Reg%Tr(m)%df_x)) then
       do k=1,nz ; do j=js,je ; do I=is-1,ie
         Reg%Tr(m)%df_x(I,j,k) = 0.0
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
       !$omp target update to(Reg%Tr(m)%df_x)
     endif
     if (associated(Reg%Tr(m)%df_y)) then
       do k=1,nz ; do J=js-1,je ; do i=is,ie
         Reg%Tr(m)%df_y(i,J,k) = 0.0
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
       !$omp target update to(Reg%Tr(m)%df_y)
     endif
     if (associated(Reg%Tr(m)%df2d_x)) then
-      do j=js,je ; do I=is-1,ie ; Reg%Tr(m)%df2d_x(I,j) = 0.0 ; enddo ; enddo
+      do j=js,je
+      do I=is-1,ie
+      Reg%Tr(m)%df2d_x(I,j) = 0.0
+      enddo
+      enddo
       !$omp target update to(Reg%Tr(m)%df2d_x)
     endif
     if (associated(Reg%Tr(m)%df2d_y)) then
-      do J=js-1,je ; do i=is,ie ; Reg%Tr(m)%df2d_y(i,J) = 0.0 ; enddo ; enddo
+      do J=js-1,je
+      do i=is,ie
+      Reg%Tr(m)%df2d_y(i,J) = 0.0
+      enddo
+      enddo
       !$omp target update to(Reg%Tr(m)%df2d_y)
     endif
   enddo
@@ -608,59 +652,90 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
           if ((k>GV%nkml) .and. (k<=GV%nk_rho_varies)) cycle
         endif
 
-        do concurrent (J=js-1:je, i=is:ie)
+        !$omp target teams distribute parallel do collapse(2)
+        do J = js-1, je
+        do i = is, ie
           Coef_y(i,J,1) = ((scale * khdt_y(i,J))*2.0*(h(i,j,k)*h(i,j+1,k))) / &
                                                    (h(i,j,k)+h(i,j+1,k)+h_neglect)
-        enddo
+        end do
+        end do
+        !$omp end target teams distribute parallel do
 
-        do concurrent (j=js:je)
-          do concurrent (I=is-1:ie)
+        !$omp target teams distribute parallel do
+        do j = js, je
+          do I = is-1, ie
             Coef_x(I,j,1) = ((scale * khdt_x(I,j))*2.0*(h(i,j,k)*h(i+1,j,k))) / &
                                                      (h(i,j,k)+h(i+1,j,k)+h_neglect)
-          enddo
+          end do
 
-          do concurrent (i=is:ie)
+          do i = is, ie
             Ihdxdy(i,j) = G%IareaT(i,j) / (h(i,j,k)+h_neglect)
-          enddo
-        enddo
+          end do
+        end do
+        !$omp end target teams distribute parallel do
 
         do m=1,ntr
-          do concurrent (j=js:je, i=is:ie)
+          !$omp target teams distribute parallel do collapse(2)
+          do j = js, je
+          do i = is, ie
             dTr(i,j) = Ihdxdy(i,j) * &
               ( ((Coef_x(I-1,j,1) * (Reg%Tr(m)%t(i-1,j,k) - Reg%Tr(m)%t(i,j,k))) - &
                  (Coef_x(I,j,1) * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i+1,j,k)))) + &
                 ((Coef_y(i,J-1,1) * (Reg%Tr(m)%t(i,j-1,k) - Reg%Tr(m)%t(i,j,k))) - &
                  (Coef_y(i,J,1) * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i,j+1,k)))) )
-          enddo
+          end do
+          end do
+          !$omp end target teams distribute parallel do
           if (associated(Reg%Tr(m)%df_x)) then ; do j=js,je ; do I=G%IscB,G%IecB
             Reg%Tr(m)%df_x(I,j,k) = Reg%Tr(m)%df_x(I,j,k) + Coef_x(I,j,1) &
                 * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i+1,j,k)) * Idt
-          enddo ; enddo ; endif
+          enddo
+          enddo
+          endif
           if (associated(Reg%Tr(m)%df_y)) then ; do J=G%JscB,G%JecB ; do i=is,ie
             Reg%Tr(m)%df_y(i,J,k) = Reg%Tr(m)%df_y(i,J,k) + Coef_y(i,J,1) &
                 * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i,j+1,k)) * Idt
-          enddo ; enddo ; endif
+          enddo
+          enddo
+          endif
           if (associated(Reg%Tr(m)%df2d_x)) then ; do j=js,je ; do I=G%IscB,G%IecB
             Reg%Tr(m)%df2d_x(I,j) = Reg%Tr(m)%df2d_x(I,j) + Coef_x(I,j,1) &
                 * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i+1,j,k)) * Idt
-          enddo ; enddo ; endif
+          enddo
+          enddo
+          endif
           if (associated(Reg%Tr(m)%df2d_y)) then ; do J=G%JscB,G%JecB ; do i=is,ie
             Reg%Tr(m)%df2d_y(i,J) = Reg%Tr(m)%df2d_y(i,J) + Coef_y(i,J,1) &
                 * (Reg%Tr(m)%t(i,j,k) - Reg%Tr(m)%t(i,j+1,k)) * Idt
-          enddo ; enddo ; endif
-          do concurrent (j=js:je, i=is:ie)
-            Reg%Tr(m)%t(i,j,k) = Reg%Tr(m)%t(i,j,k) + dTr(i,j)
           enddo
+          enddo
+          endif
+          !$omp target teams distribute parallel do collapse(2)
+          do j = js, je
+          do i = is, ie
+            Reg%Tr(m)%t(i,j,k) = Reg%Tr(m)%t(i,j,k) + dTr(i,j)
+          end do
+          end do
+          !$omp end target teams distribute parallel do
         enddo
 
       enddo ! End of k loop.
 
       ! Do user controlled underflow of the tracer concentrations.
       do m=1,ntr ; if (Reg%Tr(m)%conc_underflow > 0.0) then
-        do concurrent (k=1:nz, j=js:je, i=is:ie, abs(Reg%Tr(m)%t(i,j,k)) < Reg%Tr(m)%conc_underflow)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, nz
+        do j = js, je
+        do i = is, ie
+        if ((abs(Reg%Tr(m)%t(i,j,k)) < Reg%Tr(m)%conc_underflow)) then
           Reg%Tr(m)%t(i,j,k) = 0.0
-        enddo
-      endif ; enddo
+        end if
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
+      endif
+      enddo
 
     enddo ! End of "while" loop.
     !$omp target exit data map(release: dTr, Ihdxdy, Coef_x, Coef_y)
@@ -692,7 +767,8 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     !$omp target exit data map(from: Kh_u)
     do j=js,je ; do I=is-1,ie
       Kh_u(I,j,:) = G%mask2dCu(I,j)*Kh_u(I,j,1)
-    enddo ; enddo
+    enddo
+    enddo
     if (CS%KhTr_use_vert_struct) then
       if (CS%full_depth_khtr_min) then
         do K=2,nz+1
@@ -719,7 +795,8 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     !$omp target exit data map(from: Kh_v)
     do J=js-1,je ; do i=is,ie
       Kh_v(i,J,:) = G%mask2dCv(i,J)*Kh_v(i,J,1)
-    enddo ; enddo
+    enddo
+    enddo
     if (CS%KhTr_use_vert_struct) then
       if (CS%full_depth_khtr_min) then
         do K=2,nz+1
@@ -747,10 +824,12 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
     Kh_h(:,:,:) = 0.0
     do j=js,je ; do I=is-1,ie
       Kh_u(I,j,1) = G%mask2dCu(I,j)*Kh_u(I,j,1)
-    enddo ; enddo
+    enddo
+    enddo
     do J=js-1,je ; do i=is,ie
       Kh_v(i,J,1) = G%mask2dCv(i,J)*Kh_v(i,J,1)
-    enddo ; enddo
+    enddo
+    enddo
 
     do j=js,je ; do i=is,ie
       normalize = 1.0 / ((G%mask2dCu(I-1,j)+G%mask2dCu(I,j)) + &
@@ -772,7 +851,8 @@ subroutine tracer_hordiff(h, dt, MEKE, VarMix, visc, G, GV, US, CS, Reg, tv, do_
           enddo
         endif
       endif
-    enddo ; enddo
+    enddo
+    enddo
     call post_data(CS%id_KhTr_h, Kh_h, CS%diag)
   endif
 
@@ -932,9 +1012,13 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
   !$omp target enter data map(alloc: rho_coord, Rml_max, max_kRho, rho_srt, k0_srt, num_srt, &
   !$omp   h_srt, p_ref_cv, k_end_srt, max_srt)
 
-  do concurrent (j=jsd:jed, i=isd:ied)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = jsd, jed
+  do i = isd, ied
     p_ref_cv(i,j) = tv%P_Ref
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   call do_group_pass(CS%pass_t, G%Domain, clock=id_clock_pass, omp_offload=.true.)
   ! Determine which layers the mixed- and buffer-layers map into...
@@ -945,18 +1029,33 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
   enddo
   !$omp target exit data map(release: p_ref_cv)
 
-  do concurrent (j=js-2:je+2, i=is-2:ie+2)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-2, je+2
+  do i = is-2, ie+2
     Rml_max(i,j) = rho_coord(i,j,1)
     num_srt(i,j) = 0 ; max_kRho(i,j) = 0
-  enddo
-  do k=2,nkmb ; do concurrent (j=js-2:je+2, i=is-2:ie+2, Rml_max(i,j) < rho_coord(i,j,k))
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  do k=2,nkmb
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-2, je+2
+  do i = is-2, ie+2
+  if ((Rml_max(i,j) < rho_coord(i,j,k))) then
     Rml_max(i,j) = rho_coord(i,j,k)
-  enddo ; enddo
+  end if
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  enddo
 
   !   Use bracketing and bisection to find the k-level that the densest of the
   ! mixed and buffer layer corresponds to, such that:
   !     GV%Rlay(max_kRho-1) < Rml_max <= GV%Rlay(max_kRho)
-  do concurrent (j=js-2:je+2, i=is-2:ie+2, G%mask2dT(i,j) > 0.0)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-2, je+2
+  do i = is-2, ie+2
+  if ((G%mask2dT(i,j) > 0.0)) then
     if ((Rml_max(i,j) > GV%Rlay(nz)) .or. (nkmb+1 > nz)) then ; max_kRho(i,j) = nz+1
     elseif ((Rml_max(i,j) <= GV%Rlay(nkmb+1)) .or. (nkmb+2 > nz)) then ; max_kRho(i,j) = nkmb+1
     else
@@ -970,62 +1069,89 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
         if (k_min == k_max) then ; max_kRho(i,j) = k_max ; exit ; endif
       enddo
     endif
-  enddo
+  end if
+  end do
+  end do
+  !$omp end target teams distribute parallel do
 
   PEmax_kRho = 0
-  do concurrent (j=js-1:je+1, i=is-1:ie+1) DO_LOCALITY(reduce(max:PEmax_kRho))
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-1, je+1
+  do i = is-1, ie+1
     k_end_srt(i,j) = max(max_kRho(i,j), max_kRho(i-1,j), max_kRho(i+1,j), &
                          max_kRho(i,j-1), max_kRho(i,j+1))
     if (PEmax_kRho < k_end_srt(i,j)) PEmax_kRho = k_end_srt(i,j)
-  enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
   if (PEmax_kRho > nz) PEmax_kRho = nz ! PEmax_kRho could have been nz+1.
 
   h_exclude = 10.0*(GV%Angstrom_H + GV%H_subroundoff)
 
-  do concurrent (j=js-1:je+1) DO_LOCALITY(local(k, ns))
-    do k=1,nkmb ; do concurrent (i=is-1:ie+1, G%mask2dT(i,j) > 0.0) DO_LOCALITY(local(ns))
+  !$omp target teams distribute parallel do private(k, ns)
+  do j = js-1, je+1
+    do k=1,nkmb
+    do i = is-1, ie+1
+    if ((G%mask2dT(i,j) > 0.0)) then
       if (h(i,j,k) > h_exclude) then
         num_srt(i,j) = num_srt(i,j) + 1 ; ns = num_srt(i,j)
         k0_srt(i,ns,j) = k
         rho_srt(i,ns,j) = rho_coord(i,j,k)
         h_srt(i,ns,j) = h(i,j,k)
       endif
-    enddo ; enddo
-    do k=nkmb+1,PEmax_kRho ; do concurrent (i=is-1:ie+1, G%mask2dT(i,j) > 0.0) DO_LOCALITY(local(ns))
+    end if
+    end do
+    enddo
+    do k=nkmb+1,PEmax_kRho
+    do i = is-1, ie+1
+    if ((G%mask2dT(i,j) > 0.0)) then
       if ((k<=k_end_srt(i,j)) .and. (h(i,j,k) > h_exclude)) then
         num_srt(i,j) = num_srt(i,j) + 1 ; ns = num_srt(i,j)
         k0_srt(i,ns,j) = k
         rho_srt(i,ns,j) = GV%Rlay(k)
         h_srt(i,ns,j) = h(i,j,k)
       endif
-    enddo ; enddo
-  enddo
+    end if
+    end do
+    enddo
+  end do
+  !$omp end target teams distribute parallel do
   !$omp target exit data map(release: rho_coord, Rml_max, k_end_srt)
   ! Sort each column by increasing density.  This should already be close,
   ! and the size of the arrays are small, so straight insertion is used.
-  do concurrent (j=js-1:je+1, i=is-1:ie+1)
+  !$omp target teams distribute parallel do collapse(2)
+  do j = js-1, je+1
+  do i = is-1, ie+1
     do k=2,num_srt(i,j) ; if (rho_srt(i,k,j) < rho_srt(i,k-1,j)) then
       ! The last segment needs to be shuffled earlier in the list.
       do k2 = k,2,-1 ; if (rho_srt(i,k2,j) < rho_srt(i,k2-1,j)) then
         itmp = k0_srt(i,k2-1,j) ; k0_srt(i,k2-1,j) = k0_srt(i,k2,j) ; k0_srt(i,k2,j) = itmp
         tmp = rho_srt(i,k2-1,j) ; rho_srt(i,k2-1,j) = rho_srt(i,k2,j) ; rho_srt(i,k2,j) = tmp
         tmp = h_srt(i,k2-1,j) ; h_srt(i,k2-1,j) = h_srt(i,k2,j) ; h_srt(i,k2,j) = tmp
-      endif ; enddo
-    endif ; enddo
-  enddo
-  do concurrent (j=js-1:je+1) DO_LOCALITY(local(itmp))
+      endif
+      enddo
+    endif
+    enddo
+  end do
+  end do
+  !$omp end target teams distribute parallel do
+  !$omp target teams distribute parallel do private(itmp)
+  do j = js-1, je+1
     ! max_srt(j) = 0
     itmp = 0
     ! nvfortran do concurrent cannot reduce array elements
-    do concurrent (i=is-1:ie+1) DO_LOCALITY(reduce(max:itmp))
+    do i = is-1, ie+1
       itmp = max(itmp, num_srt(i,j))
-    enddo
+    end do
     max_srt(j) = itmp
-  enddo
+  end do
+  !$omp end target teams distribute parallel do
   k_size = 1
-  do concurrent (j=js-1:je+1) DO_LOCALITY(reduce(max:k_size))
+  !$omp target teams distribute parallel do
+  do j = js-1, je+1
     k_size = max(k_size, 2*max_srt(j))
-  enddo
+  end do
+  !$omp end target teams distribute parallel do
   allocate(k0a_Lu(IsdB:iedB,k_size,jsd:jed))
   allocate(k0a_Ru(IsdB:iedB,k_size,jsd:jed))
   allocate(k0b_Lu(IsdB:iedB,k_size,jsd:jed))
@@ -1045,8 +1171,14 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
   do j=js,je ; do I=is-1,ie ; if (G%mask2dCu(I,j) > 0.0) then
     ! Set up the pairings for fluxes through the zonal faces.
 
-    do k=1,num_srt(i,j)   ; h_demand_L(k) = 0.0 ; h_used_L(k) = 0.0 ; enddo
-    do k=1,num_srt(i+1,j) ; h_demand_R(k) = 0.0 ; h_used_R(k) = 0.0 ; enddo
+    do k=1,num_srt(i,j)
+    h_demand_L(k) = 0.0
+    h_used_L(k) = 0.0
+    enddo
+    do k=1,num_srt(i+1,j)
+    h_demand_R(k) = 0.0
+    h_used_R(k) = 0.0
+    enddo
 
     ! First merge the left and right lists into a single, sorted list.
 
@@ -1055,10 +1187,14 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
     ! pair of points.
     if (rho_srt(i,1,j) < rho_srt(i+1,1,j)) then
       kR = 1
-      do kL=2,num_srt(i,j) ; if (rho_srt(i,kL,j) >= rho_srt(i+1,1,j)) exit ; enddo
+      do kL=2,num_srt(i,j)
+      if (rho_srt(i,kL,j) >= rho_srt(i+1,1,j)) exit
+      enddo
     elseif (rho_srt(i+1,1,j) < rho_srt(i,1,j)) then
       kL = 1
-      do kR=2,num_srt(i+1,j) ; if (rho_srt(i+1,kR,j) >= rho_srt(i,1,j)) exit ; enddo
+      do kR=2,num_srt(i+1,j)
+      if (rho_srt(i+1,kR,j) >= rho_srt(i,1,j)) exit
+      enddo
     else
       kL = 1 ; kR = 1
     endif
@@ -1174,7 +1310,9 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
                             (h_srt(i+1,kbs_Rp(k),j) - h_used_R(kbs_Rp(k)))
     enddo
 
-  endif ; enddo ; enddo ! i- & j- loops over zonal faces.
+  endif
+  enddo
+  enddo  ! i- & j- loops over zonal faces.
 
   allocate(deep_wt_Lv(isd:ied,k_size,JsdB:JedB))
   allocate(deep_wt_Rv(isd:ied,k_size,JsdB:JedB))
@@ -1197,8 +1335,14 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
   do J=js-1,je ; do i=is,ie ; if (G%mask2dCv(i,J) > 0.0) then
     ! Set up the pairings for fluxes through the meridional faces.
 
-    do k=1,num_srt(i,j)   ; h_demand_L(k) = 0.0 ; h_used_L(k) = 0.0 ; enddo
-    do k=1,num_srt(i,j+1) ; h_demand_R(k) = 0.0 ; h_used_R(k) = 0.0 ; enddo
+    do k=1,num_srt(i,j)
+    h_demand_L(k) = 0.0
+    h_used_L(k) = 0.0
+    enddo
+    do k=1,num_srt(i,j+1)
+    h_demand_R(k) = 0.0
+    h_used_R(k) = 0.0
+    enddo
 
     ! First merge the left and right lists into a single, sorted list.
 
@@ -1207,10 +1351,14 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
     ! pair of points.
     if (rho_srt(i,1,j) < rho_srt(i,1,j+1)) then
       kR = 1
-      do kL=2,num_srt(i,j) ; if (rho_srt(i,kL,j) >= rho_srt(i,1,j+1)) exit ; enddo
+      do kL=2,num_srt(i,j)
+      if (rho_srt(i,kL,j) >= rho_srt(i,1,j+1)) exit
+      enddo
     elseif (rho_srt(i,1,j+1) < rho_srt(i,1,j)) then
       kL = 1
-      do kR=2,num_srt(i,j+1) ; if (rho_srt(i,kR,j+1) >= rho_srt(i,1,j)) exit ; enddo
+      do kR=2,num_srt(i,j+1)
+      if (rho_srt(i,kR,j+1) >= rho_srt(i,1,j)) exit
+      enddo
     else
       kL = 1 ; kR = 1
     endif
@@ -1327,7 +1475,9 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
     enddo
 
 
-  endif ; enddo ; enddo ! i- & j- loops over meridional faces.
+  endif
+  enddo
+  enddo  ! i- & j- loops over meridional faces.
   !$omp target exit data map(release: h_srt, k0_srt)
   ! The tracer-specific calculations start here.
 
@@ -1342,19 +1492,37 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
     do m=1,ntr
       ! Zero out tracer tendencies.
       if (CS%answer_date <= 20240330) then
-        do concurrent (k=1:nz, j=jsd:jed, i=isd:ied)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, nz
+        do j = jsd, jed
+        do i = isd, ied
           tr_flux_conv(i,j,k) = 0.0
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       else
-        do concurrent (k=1:nz, j=jsd:jed, i=isd:ied)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, nz
+        do j = jsd, jed
+        do i = isd, ied
           tr_flux_N(i,j,k) = 0.0 ; tr_flux_S(i,j,k) = 0.0
           tr_flux_E(i,j,k) = 0.0 ; tr_flux_W(i,j,k) = 0.0
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
-      do concurrent (k=1:2*nz, J=JsdB:JedB, i=isd:ied)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, 2*nz
+      do J = JsdB, JedB
+      do i = isd, ied
         tr_flux_3d(i,j,k) = 0.0
         tr_adj_vert_R(i,j,k) = 0.0 ; tr_adj_vert_L(i,j,k) = 0.0
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       ! collapse(2) is reproducible for CS%answer_date > 20240330 but not <= 20240330.
       ! Do concurrent around j-loop doesn't seem to do the right thing.
@@ -1516,7 +1684,9 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
           if (associated(Tr(m)%df2d_x)) &
             Tr(m)%df2d_x(I,j) = Tr(m)%df2d_x(I,j) + Tr_flux * Idt
         enddo ! Loop over pairings at faces.
-      endif ; enddo ; enddo ! i- & j- loops over zonal faces.
+      endif
+      enddo
+      enddo  ! i- & j- loops over zonal faces.
 
       ! this gives wrong result when using do concurrent on NVHPC 25.9
       !$omp target teams loop collapse(2) private(Tr_min_face,Tr_max_face,kLa,kLb,kRa,kRb,      &
@@ -1638,7 +1808,9 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
           if (associated(Tr(m)%df2d_y)) &
             Tr(m)%df2d_y(i,J) = Tr(m)%df2d_y(i,J) + Tr_flux * Idt
         enddo ! Loop over pairings at faces.
-      endif ; enddo ; enddo ! i- & j- loops over meridional faces.
+      endif
+      enddo
+      enddo  ! i- & j- loops over meridional faces.
 
       ! The non-stride-1 loop order here is to facilitate openMP threading. However, it might be
       ! suboptimal when openMP threading is not used, at which point it might be better to fuse
@@ -1646,7 +1818,8 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
       if (CS%answer_date <= 20240330) then
         ! KRa/b aren't guaranteed to be unique and update of tr_flux_conv(:, j/j+1, :) means this
         ! loop must be serial in both j and k. i can be paralellised.
-        do concurrent (i=is:ie) DO_LOCALITY(local(j, k, kLb, kRb, kLa, wt_b, wt_a, kRa))
+        !$omp target teams distribute parallel do private(j, k, kLb, kRb, kLa, wt_b, wt_a, kRa)
+        do i = is, ie
           do J=js-1,je ; if (G%mask2dCv(i,J) > 0.0)  then
             do k=1,nPv(i,J)
               kLb = k0b_Lv(i,k,J) ; kRb = k0b_Rv(i,k,J)
@@ -1669,11 +1842,16 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
                                                 (wt_b*Tr_flux_3d(i,J,k) + Tr_adj_vert_R(i,J,k))
               endif
             enddo
-          endif ; enddo
-        enddo
+          endif
+          enddo
+        end do
+        !$omp end target teams distribute parallel do
       else
         ! Update of tr_flux_N/S can be done independently so both i and j can be parallelised.
-        do concurrent (J=js-1:je, i=is:ie, G%mask2dCv(i,J) > 0.0) DO_LOCALITY(local(k, kLb, kRb, kLa, wt_b, wt_a, kRa))
+        !$omp target teams distribute parallel do collapse(2) private(k, kLb, kRb, kLa, wt_b, wt_a, kRa)
+        do J = js-1, je
+        do i = is, ie
+        if ((G%mask2dCv(i,J) > 0.0)) then
           do k=1,nPv(i,J)
             kLb = k0b_Lv(i,k,J) ; kRb = k0b_Rv(i,k,J)
             if (deep_wt_Lv(I,k,J) >= 1.0) then
@@ -1693,19 +1871,36 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
               tr_flux_S(i,j+1,kRb) = tr_flux_S(i,j+1,kRb) + (wt_b*Tr_flux_3d(i,J,k) + Tr_adj_vert_R(i,J,k))
             endif
           enddo
-        enddo
+        end if
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
 
       if (CS%answer_date >= 20240331) then
-        do concurrent (k=1:PEmax_kRho, j=js:je, i=is:ie)
+        !$omp target teams distribute parallel do collapse(3)
+        do k = 1, PEmax_kRho
+        do j = js, je
+        do i = is, ie
           tr_flux_conv(i,j,k) = ((tr_flux_W(i,j,k) - tr_flux_E(i,j,k)) + &
                                  (tr_flux_S(i,j,k) - tr_flux_N(i,j,k)))
-        enddo
+        end do
+        end do
+        end do
+        !$omp end target teams distribute parallel do
       endif
 
-      do concurrent (k=1:PEmax_kRho, j=js:je, i=is:ie, (G%mask2dT(i,j) > 0.0) .and. (h(i,j,k) > 0.0))
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, PEmax_kRho
+      do j = js, je
+      do i = is, ie
+      if (((G%mask2dT(i,j) > 0.0) .and. (h(i,j,k) > 0.0))) then
         Tr(m)%t(i,j,k) = Tr(m)%t(i,j,k) + tr_flux_conv(i,j,k) / (h(i,j,k)*G%areaT(i,j))
-      enddo
+      end if
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
 
       ! Do user controlled underflow of the tracer concentrations.
       if (Tr(m)%conc_underflow > 0.0) then
@@ -1713,7 +1908,9 @@ subroutine tracer_epipycnal_ML_diff(h, dt, Tr, ntr, khdt_epi_x, khdt_epi_y, G, &
         !$OMP parallel do default(shared)
         do k=1,nz ; do j=js,je ; do i=is,ie
           if (abs(Tr(m)%t(i,j,k)) < Tr(m)%conc_underflow) Tr(m)%t(i,j,k) = 0.0
-        enddo ; enddo ; enddo
+        enddo
+        enddo
+        enddo
         !$omp target update to(Tr(m)%t)
       endif
 

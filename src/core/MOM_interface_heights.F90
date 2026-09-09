@@ -76,19 +76,26 @@ subroutine find_dz_for_eta(h, tv, G, GV, US, dz_lay, halo_size)
   if (GV%Boussinesq) then
     do k=1,nz ; do j=jsv,jev ; do i=isv,iev
       dz_lay(i,j,K) = h(i,j,k)*GV%H_to_Z
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (associated(tv%eqn_of_state)) then
     I_gEarth = 1.0 / GV%g_Earth
     !$OMP parallel do default(shared)
     do j=jsv,jev
       if (associated(tv%p_surf)) then
-        do i=isv,iev ; p(i,j,1) = tv%p_surf(i,j) ; enddo
+        do i=isv,iev
+        p(i,j,1) = tv%p_surf(i,j)
+        enddo
       else
-        do i=isv,iev ; p(i,j,1) = 0.0 ; enddo
+        do i=isv,iev
+        p(i,j,1) = 0.0
+        enddo
       endif
       do k=1,nz ; do i=isv,iev
         p(i,j,K+1) = p(i,j,K) + GV%g_Earth*GV%H_to_RZ*h(i,j,k)
-      enddo ; enddo
+      enddo
+      enddo
     enddo
     !$OMP parallel do default(shared) private(dz_geo)
     do k=1,nz
@@ -96,12 +103,15 @@ subroutine find_dz_for_eta(h, tv, G, GV, US, dz_lay, halo_size)
                                0.0, G%HI, tv%eqn_of_state, US, dz_geo, halo_size=halo)
       do j=jsv,jev ; do i=isv,iev
         dz_lay(i,j,K) = I_gEarth * dz_geo(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     enddo
   else ! non-Boussinesq but with no equation of state
     do k=1,nz ; do j=jsv,jev ; do i=isv,iev
       dz_lay(i,j,K) = GV%H_to_RZ*h(i,j,k) / GV%Rlay(k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     ! This would be faster but could change answers.
     ! do k=1,nz ; SpV_lay_conv(k) = GV%H_to_RZ / GV%Rlay(k) ; enddo
     ! do k=1,nz ; do j=jsv,jev ; do i=isv,iev
@@ -158,15 +168,23 @@ subroutine find_eta_3d(h, tv, G, GV, US, eta, eta_bt, halo_size, dZref)
   dZ_ref = 0.0 ; if (present(dZref)) dZ_ref = dZref
 
   if (GV%Boussinesq) then
-    do concurrent (j=jsv:jev, i=isv:iev)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = jsv, jev
+    do i = isv, iev
       eta(i,j,nz+1) = -(G%bathyT(i,j) + dZ_ref)
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
-    do concurrent (j=jsv:jev, i=isv:iev)
+    !$omp target teams distribute parallel do collapse(2)
+    do j = jsv, jev
+    do i = isv, iev
       do k=nz,1,-1
         eta(i,j,K) = eta(i,j,K+1) + h(i,j,k)*GV%H_to_Z
       enddo
-    enddo
+    end do
+    end do
+    !$omp end target teams distribute parallel do
 
     if (present(eta_bt)) then
       ! Dilate the water column to agree with the free surface height
@@ -180,7 +198,8 @@ subroutine find_eta_3d(h, tv, G, GV, US, eta, eta_bt, halo_size, dZref)
         do k=1,nz ; do i=isv,iev
           eta(i,j,K) = dilate(i) * (eta(i,j,K) + (G%bathyT(i,j) + dZ_ref)) - &
                        (G%bathyT(i,j) + dZ_ref)
-        enddo ; enddo
+        enddo
+        enddo
       enddo
       !$omp target update to(eta)
     endif
@@ -189,23 +208,35 @@ subroutine find_eta_3d(h, tv, G, GV, US, eta, eta_bt, halo_size, dZref)
     call find_dz_for_eta(h, tv, G, GV, US, dz_lay, halo_size)
 
     do j=jsv,jev
-      do i=isv,iev ; eta(i,j,nz+1) = -(G%bathyT(i,j) + dZ_ref) ; enddo
+      do i=isv,iev
+      eta(i,j,nz+1) = -(G%bathyT(i,j) + dZ_ref)
+      enddo
       do k=nz,1,-1 ; do i=isv,iev
         eta(i,j,K) = eta(i,j,K+1) + dz_lay(i,j,k)
-      enddo ; enddo
+      enddo
+      enddo
     enddo
 
     if (present(eta_bt)) then
       ! Dilate the water column to agree with the free surface height
       ! from the time-averaged barotropic solution.
       do j=jsv,jev
-        do i=isv,iev ; htot(i) = GV%H_subroundoff ; enddo
-        do k=1,nz ; do i=isv,iev ; htot(i) = htot(i) + h(i,j,k) ; enddo ; enddo
-        do i=isv,iev ; dilate(i) = eta_bt(i,j) / htot(i) ; enddo
+        do i=isv,iev
+        htot(i) = GV%H_subroundoff
+        enddo
+        do k=1,nz
+        do i=isv,iev
+        htot(i) = htot(i) + h(i,j,k)
+        enddo
+        enddo
+        do i=isv,iev
+        dilate(i) = eta_bt(i,j) / htot(i)
+        enddo
         do k=1,nz ; do i=isv,iev
           eta(i,j,K) = dilate(i) * (eta(i,j,K) + (G%bathyT(i,j) + dZ_ref)) - &
                        (G%bathyT(i,j) + dZ_ref)
-        enddo ; enddo
+        enddo
+        enddo
       enddo
     endif
     !$omp target update to(eta)
@@ -249,37 +280,54 @@ subroutine find_eta_2d(h, tv, G, GV, US, eta, eta_bt, halo_size, dZref)
 
   if (GV%Boussinesq) then
     if (present(eta_bt)) then
-      do concurrent (j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(2)
+      do j = js, je
+      do i = is, ie
         eta(i,j) = GV%H_to_Z*eta_bt(i,j) - dZ_ref
-      enddo
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
-      do concurrent (j=js:je)
-        do concurrent (i=is:ie)
+      !$omp target teams distribute parallel do
+      do j = js, je
+        do i = is, ie
           eta(i,j) = -G%bathyT(i,j) + dZ_ref
-        enddo
+        end do
 
-        do k=1,nz ; do concurrent (i=is:ie)
+        do k=1,nz
+        do i = is, ie
           eta(i,j) = eta(i,j) + h(i,j,k)*GV%H_to_Z
-        enddo ; enddo
-      enddo
+        end do
+        enddo
+      end do
+      !$omp end target teams distribute parallel do
     endif
   else
     !$omp target update from(eta)
     call find_dz_for_eta(h, tv, G, GV, US, dz_lay, halo_size)
 
     do j=js,je
-      do i=is,ie ; eta(i,j) = -(G%bathyT(i,j) + dZ_ref) ; enddo
+      do i=is,ie
+      eta(i,j) = -(G%bathyT(i,j) + dZ_ref)
+      enddo
       do k=1,nz ; do i=is,ie
         eta(i,j) = eta(i,j) + dz_lay(i,j,k)
-      enddo ; enddo
+      enddo
+      enddo
     enddo
 
     if (present(eta_bt)) then
       !   Dilate the water column to agree with the time-averaged column
       ! mass from the barotropic solution.
       do j=js,je
-        do i=is,ie ; htot(i) = GV%H_subroundoff ; enddo
-        do k=1,nz ; do i=is,ie ; htot(i) = htot(i) + h(i,j,k) ; enddo ; enddo
+        do i=is,ie
+        htot(i) = GV%H_subroundoff
+        enddo
+        do k=1,nz
+        do i=is,ie
+        htot(i) = htot(i) + h(i,j,k)
+        enddo
+        enddo
         do i=is,ie
           eta(i,j) = (eta_bt(i,j) / htot(i)) * (eta(i,j) + (G%bathyT(i,j) + dZ_ref)) - &
                      (G%bathyT(i,j) + dZ_ref)
@@ -318,18 +366,29 @@ subroutine calc_derived_thermo(tv, h, G, GV, US, halo, debug)
 
   if (allocated(tv%Spv_avg) .and. associated(tv%eqn_of_state)) then
     if (associated(tv%p_surf)) then
-      do j=js,je ; do i=is,ie ; p_t(i,j) = tv%p_surf(i,j) ; enddo ; enddo
+      do j=js,je
+      do i=is,ie
+      p_t(i,j) = tv%p_surf(i,j)
+      enddo
+      enddo
     else
-      do j=js,je ; do i=is,ie ; p_t(i,j) = 0.0 ; enddo ; enddo
+      do j=js,je
+      do i=is,ie
+      p_t(i,j) = 0.0
+      enddo
+      enddo
     endif
     do k=1,nz
       do j=js,je ; do i=is,ie
         dp(i,j) = GV%g_Earth*GV%H_to_RZ*h(i,j,k)
-      enddo ; enddo
+      enddo
+      enddo
       call avg_specific_vol(tv%T(:,:,k), tv%S(:,:,k), p_t, dp, G%HI, tv%eqn_of_state, tv%SpV_avg(:,:,k), halo)
       if (k<nz) then ; do j=js,je ; do i=is,ie
         p_t(i,j) = p_t(i,j) + dp(i,j)
-      enddo ; enddo ; endif
+      enddo
+      enddo
+      endif
     enddo
     tv%valid_SpV_halo = halos
 
@@ -341,10 +400,14 @@ subroutine calc_derived_thermo(tv, h, G, GV, US, halo, debug)
       call hchksum(tv%S, "derived_thermo S", G%HI, haloshift=halos, unscale=US%S_to_ppt)
     endif
   elseif (allocated(tv%Spv_avg)) then
-    do k=1,nz ; SpV_lay(k) = 1.0 / GV%Rlay(k) ; enddo
+    do k=1,nz
+    SpV_lay(k) = 1.0 / GV%Rlay(k)
+    enddo
     do k=1,nz ; do j=js,je ; do i=is,ie
       tv%SpV_avg(i,j,k) = SpV_lay(k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
     tv%valid_SpV_halo = halos
   endif
 
@@ -383,16 +446,25 @@ subroutine find_col_avg_SpV(h, SpV_avg, tv, G, GV, US, halo_size)
     I_rho = 1.0 / GV%Rho0
     do j=js,je ; do i=is,ie
       SpV_avg(i,j) = I_rho
-    enddo ; enddo
+    enddo
+    enddo
   elseif (.not.allocated(tv%SpV_avg)) then
-    do k=1,nz ; Spv_lay(k) = 1.0 / GV%Rlay(k) ; enddo
+    do k=1,nz
+    Spv_lay(k) = 1.0 / GV%Rlay(k)
+    enddo
     do j=js,je
-      do i=is,ie ; SpV_x_h_tot(i) = 0.0 ; h_tot(i) = 0.0 ; enddo
+      do i=is,ie
+      SpV_x_h_tot(i) = 0.0
+      h_tot(i) = 0.0
+      enddo
       do k=1,nz ; do i=is,ie
         h_tot(i) = h_tot(i) + max(h(i,j,k), GV%H_subroundoff)
         SpV_x_h_tot(i) = SpV_x_h_tot(i) + Spv_lay(k)*max(h(i,j,k), GV%H_subroundoff)
-      enddo ; enddo
-      do i=is,ie ; SpV_avg(i,j) = SpV_x_h_tot(i) / h_tot(i) ; enddo
+      enddo
+      enddo
+      do i=is,ie
+      SpV_avg(i,j) = SpV_x_h_tot(i) / h_tot(i)
+      enddo
     enddo
   else
     ! Check that SpV_avg has been set.
@@ -407,12 +479,18 @@ subroutine find_col_avg_SpV(h, SpV_avg, tv, G, GV, US, halo_size)
     endif
 
     do j=js,je
-      do i=is,ie ; SpV_x_h_tot(i) = 0.0 ; h_tot(i) = 0.0 ; enddo
+      do i=is,ie
+      SpV_x_h_tot(i) = 0.0
+      h_tot(i) = 0.0
+      enddo
       do k=1,nz ; do i=is,ie
         h_tot(i) = h_tot(i) + max(h(i,j,k), GV%H_subroundoff)
         SpV_x_h_tot(i) = SpV_x_h_tot(i) + tv%SpV_avg(i,j,k)*max(h(i,j,k), GV%H_subroundoff)
-      enddo ; enddo
-      do i=is,ie ; SpV_avg(i,j) = SpV_x_h_tot(i) / h_tot(i) ; enddo
+      enddo
+      enddo
+      do i=is,ie
+      SpV_avg(i,j) = SpV_x_h_tot(i) / h_tot(i)
+      enddo
     enddo
   endif
 
@@ -445,41 +523,58 @@ subroutine find_col_mass(h, tv, G, GV, US, mass, p_bot, p_surf)
   isq = G%iscB ; ieq = G%iecB ; jsq = G%jscB ; jeq = G%jecB
   nz = GV%ke
 
-  do j=js,je ; do i=is,ie ; mass(i,j) = 0.0 ; enddo ; enddo
+  do j=js,je
+  do i=is,ie
+  mass(i,j) = 0.0
+  enddo
+  enddo
   if (GV%Boussinesq) then
     if (associated(tv%eqn_of_state)) then
       I_gEarth = 1.0 / GV%g_Earth
-      do j=jsq,jeq+1 ; do i=isq,ieq+1 ; z_bot(i,j) = 0.0 ; enddo ; enddo
+      do j=jsq,jeq+1
+      do i=isq,ieq+1
+      z_bot(i,j) = 0.0
+      enddo
+      enddo
       do k=1,nz
         ! NOTE: int_density_z expects z_top and z_bot values from [ij]sq to [ij]eq+1
         do j=jsq,jeq+1 ; do i=isq,ieq+1
           z_top(i,j) = z_bot(i,j)
           z_bot(i,j) = z_top(i,j) - GV%H_to_Z * h(i,j,k)
-        enddo ; enddo
+        enddo
+        enddo
         call int_density_dz(tv%T(:,:,k), tv%S(:,:,k), z_top, z_bot, 0.0, GV%Rho0, GV%g_Earth, &
                             G%HI, tv%eqn_of_state, US, dp)
         do j=js,je ; do i=is,ie
           mass(i,j) = mass(i,j) + dp(i,j) * I_gEarth
-        enddo ; enddo
+        enddo
+        enddo
       enddo
     else
       do k=1,nz ; do j=js,je ; do i=is,ie
         mass(i,j) = mass(i,j) + (GV%H_to_Z * GV%Rlay(k)) * h(i,j,k)
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
     endif
   else
     do k=1,nz ; do j=js,je ; do i=is,ie
       mass(i,j) = mass(i,j) + GV%H_to_RZ * h(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
   if (present(p_bot)) then
     do j=js,je ; do i=is,ie
       p_bot(i,j) = GV%g_Earth * mass(i,j)
-    enddo ; enddo
+    enddo
+    enddo
     if (present(p_surf) .and. associated(p_surf)) then ; do j=js,je ; do i=is,ie
       p_bot(i,j) = p_bot(i,j) + p_surf(i,j)
-    enddo ; enddo ; endif
+    enddo
+    enddo
+    endif
   endif
 
 end subroutine find_col_mass
@@ -567,7 +662,8 @@ subroutine find_rho_bottom(G, GV, US, tv, h, dz, pres_int, dz_avg, j, Rho_bot, h
           dz_bbl_rem(i) = 0.0
           do_i(i) = .false.
         endif
-      endif ; enddo
+      endif
+      enddo
       if (.not.do_any) exit
     enddo
     do i=is,ie ; if (do_i(i)) then
@@ -575,7 +671,8 @@ subroutine find_rho_bottom(G, GV, US, tv, h, dz, pres_int, dz_avg, j, Rho_bot, h
       ! already included in the averages.  These values are set so that the call to find
       ! the layer-average specific volume will behave sensibly.
       h_bbl_frac(i) = 0.0
-    endif ; enddo
+    endif
+    enddo
 
     do i=is,ie
       if (hb(i) + h_bbl_frac(i) < GV%H_subroundoff) h_bbl_frac(i) = GV%H_subroundoff
@@ -633,7 +730,8 @@ subroutine find_rho_bottom(G, GV, US, tv, h, dz, pres_int, dz_avg, j, Rho_bot, h
           dz_bbl_rem(i) = 0.0
           do_i(i) = .false.
         endif
-      endif ; enddo
+      endif
+      enddo
       if (.not.do_any) exit
     enddo
     do i=is,ie ; if (do_i(i)) then
@@ -648,7 +746,8 @@ subroutine find_rho_bottom(G, GV, US, tv, h, dz, pres_int, dz_avg, j, Rho_bot, h
         SpV_bbl(i) = tv%SpV_avg(i,j,1)
       endif
       h_bbl_frac(i) = 0.0
-    endif ; enddo
+    endif
+    enddo
 
     if (use_EOS) then
       ! Find the average specific volume of the fractional layer atop the BBL.
@@ -692,7 +791,9 @@ subroutine dz_to_thickness_tv(dz, tv, h, G, GV, US, halo_size)
   if (GV%Boussinesq) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       h(i,j,k) = GV%Z_to_H * dz(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   else
     if (associated(tv%eqn_of_state)) then
       if (associated(tv%p_surf)) then
@@ -703,7 +804,9 @@ subroutine dz_to_thickness_tv(dz, tv, h, G, GV, US, halo_size)
     else
       do k=1,nz ; do j=js,je ; do i=is,ie
         h(i,j,k) = (GV%RZ_to_H * GV%Rlay(k)) * dz(i,j,k)
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
     endif
   endif
 
@@ -752,18 +855,22 @@ subroutine dz_to_thickness_EOS(dz, Temp, Saln, EoS, h, G, GV, US, halo_size, p_s
   if (GV%Boussinesq) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       h(i,j,k) = GV%Z_to_H * dz(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   else
     I_gEarth = GV%RZ_to_H / GV%g_Earth
 
     if (present(p_surf)) then
       do j=js,je ; do i=is,ie
         p_bot(i,j) = 0.0 ; p_top(i,j) = p_surf(i,j)
-      enddo ; enddo
+      enddo
+      enddo
     else
       do j=js,je ; do i=is,ie
         p_bot(i,j) = 0.0 ; p_top(i,j) = 0.0
-      enddo ; enddo
+      enddo
+      enddo
     endif
     EOSdom(:) = EOS_domain(G%HI)
 
@@ -772,7 +879,9 @@ subroutine dz_to_thickness_EOS(dz, Temp, Saln, EoS, h, G, GV, US, halo_size, p_s
     ! should be revised, although doing so would change answers in non-Boussinesq mode.
     do k=1,nz
       do j=js,je
-        do i=is,ie ; p_top(i,j) = p_bot(i,j) ; enddo
+        do i=is,ie
+        p_top(i,j) = p_bot(i,j)
+        enddo
         call calculate_density(Temp(:,j,k), Saln(:,j,k), p_top(:,j), rho, &
                                EoS, EOSdom)
         ! The following two expressions are mathematically equivalent.
@@ -812,20 +921,24 @@ subroutine dz_to_thickness_EOS(dz, Temp, Saln, EoS, h, G, GV, US, halo_size, p_s
               ! Check for convergence to roundoff.
               do_more(i,j) = (abs(dp_adj) > 1.0e-15*dp(i,j))
               if (do_more(i,j)) do_any = .true.
-            endif ; enddo
+            endif
+            enddo
           endif
-        enddo ; endif
+        enddo
+        endif
         if (.not.do_any) exit
       enddo
 
       if (GV%semi_Boussinesq) then
         do j=js,je ; do i=is,ie
           h(i,j,k) = (p_bot(i,j) - p_top(i,j)) * I_gEarth
-        enddo ; enddo
+        enddo
+        enddo
       else
         do j=js,je ; do i=is,ie
           h(i,j,k) = dp(i,j) * I_gEarth
-        enddo ; enddo
+        enddo
+        enddo
       endif
     enddo
   endif
@@ -863,15 +976,21 @@ subroutine dz_to_thickness_simple(dz, h, G, GV, US, halo_size, layer_mode)
   if (GV%Boussinesq) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       h(i,j,k) = GV%Z_to_H * dz(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   elseif (layered) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       h(i,j,k) = (GV%RZ_to_H * GV%Rlay(k)) * dz(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   else
     do k=1,nz ; do j=js,je ; do i=is,ie
       h(i,j,k) = (US%Z_to_m * GV%m_to_H) * dz(i,j,k)
-    enddo ; enddo ; enddo
+    enddo
+    enddo
+    enddo
   endif
 
 end subroutine dz_to_thickness_simple
@@ -918,23 +1037,39 @@ subroutine thickness_to_dz_3d(h, tv, dz, G, GV, US, halo_size, do_offload)
       call MOM_error(FATAL, "thickness_to_dz called in fully non-Boussinesq mode with "//trim(mesg))
     endif
     if (use_doconcurrent) then
-      do concurrent (k=1:nz, j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do j = js, je
+      do i = is, ie
         dz(i,j,k) = GV%H_to_RZ * h(i,j,k) * tv%SpV_avg(i,j,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
       do k=1,nz ; do j=js,je ; do i=is,ie
         dz(i,j,k) = GV%H_to_RZ * h(i,j,k) * tv%SpV_avg(i,j,k)
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
     endif
   else
     if (use_doconcurrent) then
-      do concurrent (k=1:nz, j=js:je, i=is:ie)
+      !$omp target teams distribute parallel do collapse(3)
+      do k = 1, nz
+      do j = js, je
+      do i = is, ie
         dz(i,j,k) = GV%H_to_Z * h(i,j,k)
-      enddo
+      end do
+      end do
+      end do
+      !$omp end target teams distribute parallel do
     else
       do k=1,nz ; do j=js,je ; do i=is,ie
         dz(i,j,k) = GV%H_to_Z * h(i,j,k)
-      enddo ; enddo ; enddo
+      enddo
+      enddo
+      enddo
     endif
   endif
 
@@ -978,11 +1113,13 @@ subroutine thickness_to_dz_jslice(h, tv, dz, j, G, GV, halo_size)
 
     do k=1,nz ; do i=is,ie
       dz(i,k) = GV%H_to_RZ * h(i,j,k) * tv%SpV_avg(i,j,k)
-    enddo ; enddo
+    enddo
+    enddo
   else
     do k=1,nz ; do i=is,ie
       dz(i,k) = GV%H_to_Z * h(i,j,k)
-    enddo ; enddo
+    enddo
+    enddo
   endif
 
 end subroutine thickness_to_dz_jslice
@@ -1019,7 +1156,8 @@ subroutine convert_MLD_to_ML_thickness(MLD_in, h, h_MLD, tv, G, GV, halo)
   if (GV%Boussinesq .or. (.not.allocated(tv%SpV_avg))) then
     do j=js,je ; do i=is,ie
       h_MLD(i,j) = GV%Z_to_H * MLD_in(i,j)
-    enddo ; enddo
+    enddo
+    enddo
   else  ! The fully non-Boussinesq conversion between height in MLD_in and thickness.
     if ((allocated(tv%SpV_avg)) .and. (tv%valid_SpV_halo < halos)) then
       if (tv%valid_SpV_halo < 0) then
@@ -1032,7 +1170,10 @@ subroutine convert_MLD_to_ML_thickness(MLD_in, h, h_MLD, tv, G, GV, halo)
     endif
 
     do j=js,je
-      do i=is,ie ; MLD_rem(i) = MLD_in(i,j) ; h_MLD(i,j) = 0.0 ; enddo
+      do i=is,ie
+      MLD_rem(i) = MLD_in(i,j)
+      h_MLD(i,j) = 0.0
+      enddo
       do k=1,nz
         keep_going = .false.
         do i=is,ie ; if (MLD_rem(i) > 0.0) then
@@ -1044,7 +1185,8 @@ subroutine convert_MLD_to_ML_thickness(MLD_in, h, h_MLD, tv, G, GV, halo)
             h_MLD(i,j) = h_MLD(i,j) + GV%RZ_to_H * MLD_rem(i) / tv%SpV_avg(i,j,k)
             MLD_rem(i) = 0.0
           endif
-        endif ; enddo
+        endif
+        enddo
         if (.not.keep_going) exit
       enddo
     enddo
