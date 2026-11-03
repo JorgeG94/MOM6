@@ -2131,26 +2131,18 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   endif
 
   ! The new grid is needed on the host if the tracers, the velocities or the auxiliary variables at tracer
-  ! points are remapped there, or by the debugging checksums or the remapping diagnostics.
-  h_new_on_host = (.not.use_dev_vel) .or. CS%debug .or. CS%remap_aux_vars
+  ! points are remapped there, or by the remapping diagnostics.
+  h_new_on_host = (.not.use_dev_vel) .or. CS%remap_aux_vars
   if (.not.h_new_on_host) h_new_on_host = ALE_new_grid_needed_on_host(CS%ALE_CSp, CS%tracer_Reg)
   if (use_dev_regrid .and. h_new_on_host) then
     !$omp target update from(h_new, dzRegrid)
   endif
 
   if (showCallTree) call callTree_waypoint("new grid generated")
-  if (CS%debug) then
-    call hchksum(h_new, "ALE regridded h_new", G%HI, haloshift=1, unscale=GV%H_to_MKS)
-    call hchksum(dzRegrid, "ALE regridded dzRegrid", G%HI, haloshift=1, unscale=GV%H_to_MKS)
-  endif
   ! Remap all variables from the old grid h onto the new grid h_new.  The host copies of the tracers are
   ! current on return, wherever they were remapped.
   call ALE_remap_tracers(CS%ALE_CSp, G, GV, h, h_new, CS%tracer_Reg, showCallTree, dtdia, PCM_cell, &
                          do_offload=use_dev_regrid)
-  if (CS%debug) then
-    if (associated(tv%T)) call hchksum(tv%T, "ALE remapped T", G%HI, haloshift=0, unscale=US%C_to_degC)
-    if (associated(tv%S)) call hchksum(tv%S, "ALE remapped S", G%HI, haloshift=0, unscale=US%S_to_ppt)
-  endif
 
   ! Determine the old and new grid thicknesses at velocity points, and remap the velocity components.
   ! When this is done on the device, the thicknesses at velocity points are only made there.
@@ -2176,8 +2168,6 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
       !$omp target update from(u, v)
     endif
   endif
-  if (CS%debug) &
-    call uvchksum("ALE remapped u, v", u, v, G%HI, haloshift=0, unscale=US%L_T_to_m_s)
 
   if (allocated(tv%SpV_avg)) tv%valid_SpV_halo = -1   ! Record that SpV_avg is no longer valid.
 
