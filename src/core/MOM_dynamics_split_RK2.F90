@@ -276,6 +276,8 @@ type, public :: MOM_dyn_split_RK2_CS ; private
   type(group_pass_type) :: pass_uv  !< Structure for group halo pass
   type(group_pass_type) :: pass_h  !< Structure for group halo pass
   type(group_pass_type) :: pass_av_uvh  !< Structure for group halo pass
+  type(group_pass_type) :: pass_aux  !< Structure for the group halo pass of the auxiliary variables
+                                     !! that are remapped when REMAP_AUXILIARY_VARS is true
 
 end type MOM_dyn_split_RK2_CS
 
@@ -1431,7 +1433,7 @@ end subroutine register_restarts_dyn_split_RK2
 
 !> This subroutine does remapping for the auxiliary restart variables that are used
 !! with the split RK2 time stepping scheme.
-subroutine remap_dyn_split_RK2_aux_vars(G, GV, CS, h_old_u, h_old_v, h_new_u, h_new_v, ALE_CSp)
+subroutine remap_dyn_split_RK2_aux_vars(G, GV, CS, h_old_u, h_old_v, h_new_u, h_new_v, ALE_CSp, do_offload)
   type(ocean_grid_type),            intent(inout) :: G        !< ocean grid structure
   type(verticalGrid_type),          intent(in)    :: GV       !< ocean vertical grid structure
   type(MOM_dyn_split_RK2_CS),       pointer       :: CS       !< module control structure
@@ -1448,10 +1450,34 @@ subroutine remap_dyn_split_RK2_aux_vars(G, GV, CS, h_old_u, h_old_v, h_new_u, h_
                                     intent(in)    :: h_new_v  !< Destination grid thickness at meridional
                                                               !! velocity points [H ~> m or kg m-2]
   type(ALE_CS),                     pointer       :: ALE_CSp  !< ALE control structure to use when remapping
+  logical,                optional, intent(in)    :: do_offload !< If true, the thicknesses are on the device, the
+                                                              !! auxiliary velocities are remapped there with the
+                                                              !! blocked routines and have their halos updated
+                                                              !! there, and the host copies are not changed.  The
+                                                              !! caller must have checked that this is supported
+                                                              !! with ALE_vel_remap_on_device.
 
   if (.not.CS%remap_aux) return
 
+  if (present(do_offload)) then ; if (do_offload) then
+    if (CS%store_CAu) then
+      call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%u_av, CS%v_av, &
+                                do_offload=.true.)
+      call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%CAu_pred, CS%CAv_pred, &
+                                do_offload=.true.)
+    endif
+    call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%diffu, CS%diffv, &
+                              do_offload=.true.)
+    ! This updates the full halos of all of the pairs of components, as the pass_vector calls below do.
+    call do_group_pass(CS%pass_aux, G%Domain, omp_offload=.true.)
+    return
+  endif ; endif
+
+  ! These arrays are on the device, where the dynamics updates them, and are remapped and have their halos
+  ! updated on the host here, so the host copies are made current first and sent back afterwards.
+  !$omp target update from(CS%diffu, CS%diffv)
   if (CS%store_CAu) then
+    !$omp target update from(CS%u_av, CS%v_av, CS%CAu_pred, CS%CAv_pred)
     call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%u_av, CS%v_av)
     call pass_vector(CS%u_av, CS%v_av, G%Domain, complete=.false.)
     call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%CAu_pred, CS%CAv_pred)
@@ -1460,6 +1486,11 @@ subroutine remap_dyn_split_RK2_aux_vars(G, GV, CS, h_old_u, h_old_v, h_new_u, h_
 
   call ALE_remap_velocities(ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, CS%diffu, CS%diffv)
   call pass_vector(CS%diffu, CS%diffv, G%Domain, complete=.true.)
+
+  !$omp target update to(CS%diffu, CS%diffv)
+  if (CS%store_CAu) then
+    !$omp target update to(CS%u_av, CS%v_av, CS%CAu_pred, CS%CAv_pred)
+  endif
 
 end subroutine remap_dyn_split_RK2_aux_vars
 
@@ -1852,6 +1883,14 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
     call create_group_pass(pass_av_h_uvh, uh, vh, G%Domain, halo=2)
   endif
   call do_group_pass(pass_av_h_uvh, G%Domain)
+  if (CS%remap_aux) then
+    ! This group is used to update the halos of the auxiliary variables on the device after they are remapped.
+    if (CS%store_CAu) then
+      call create_group_pass(CS%pass_aux, CS%u_av, CS%v_av, G%Domain)
+      call create_group_pass(CS%pass_aux, CS%CAu_pred, CS%CAv_pred, G%Domain)
+    endif
+    call create_group_pass(CS%pass_aux, CS%diffu, CS%diffv, G%Domain)
+  endif
   call cpu_clock_end(id_clock_pass_init)
 
   flux_units = get_flux_units(GV)

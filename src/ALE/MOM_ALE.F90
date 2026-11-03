@@ -38,11 +38,15 @@ use MOM_regridding,       only : regridding_CS, set_regrid_params, write_regrid_
 use MOM_regridding,       only : getCoordinateInterfaces
 use MOM_regridding,       only : getCoordinateUnits, getCoordinateShortName
 use MOM_regridding,       only : getStaticThickness
+use MOM_regridding,       only : regrid_work_type, regrid_work_init, regrid_work_end
+use MOM_regridding,       only : regridding_device_ok, regridding_main_zstar_dev
 use MOM_remapping,        only : initialize_remapping, end_remapping
 use MOM_remapping,        only : remapping_core_h, remapping_core_w
 use MOM_remapping,        only : remappingSchemesDoc, remappingDefaultScheme
 use MOM_remapping,        only : interpolate_column, reintegrate_column
 use MOM_remapping,        only : remapping_CS, dzFromH1H2, remapping_set_param
+use MOM_remapping,        only : remap_work_type, remap_work_init, remap_work_end, remap_column_blk
+use MOM_remapping,        only : remapping_device_ok, remapping_device_params
 use MOM_string_functions, only : uppercase, extractWord, extract_integer
 use MOM_tracer_registry,  only : tracer_registry_type, tracer_type, MOM_tracer_chkinv
 use MOM_unit_scaling,     only : unit_scale_type
@@ -59,6 +63,7 @@ use Recon1d_PLM_WLS,      only : PLM_WLS
 
 implicit none ; private
 #include <MOM_memory.h>
+#include "do_concurrent_compat.h"
 
 
 !> ALE control structure
@@ -106,6 +111,21 @@ type, public :: ALE_CS ; private
   logical :: debug   !< If true, write verbose checksums for debugging purposes.
   logical :: show_call_tree !< For debugging
 
+  logical :: fallback_reported = .false. !< If true, the run-time reasons that the ALE is done on the
+                            !! host have been reported.
+  logical :: regrid_on_device = .false. !< If true, the regridding in this configuration is done by the
+                            !! blocked routines that can run on the device.  This is set at initialization.
+  logical :: remap_on_device = .false. !< If true, the tracer remapping in this configuration is done by the
+                            !! blocked routines that can run on the device.  This is set at initialization.
+  logical :: vel_remap_on_device = .false. !< If true, the velocity remapping in this configuration is done by
+                            !! the blocked routines that can run on the device.  This is set at initialization.
+  integer :: niblock = 0    !< The i-direction block size used to hold the per-column working arrays in
+                            !! the ALE calculations that can run on the device [nondim]
+  integer :: njblock = 0    !< The j-direction block size used to hold the per-column working arrays in
+                            !! the ALE calculations that can run on the device [nondim]
+  type(regrid_work_type) :: regrid_ws !< Workspace for the blocked regridding that can run on the device
+  type(remap_work_type)  :: remap_ws  !< Workspace for the blocked tracer remapping that can run on the device
+
   ! for diagnostics
   type(diag_ctrl), pointer           :: diag                          !< structure to regulate output
   integer, dimension(:), allocatable :: id_tracer_remap_tendency      !< diagnostic id
@@ -132,6 +152,8 @@ end type
 public ALE_init
 public ALE_end
 public ALE_regrid
+public ALE_regrid_on_device, ALE_vel_remap_on_device, ALE_preale_uv_diags, ALE_report_host_fallback
+public ALE_new_grid_needed_on_host
 public ALE_offline_inputs
 public ALE_regrid_accelerated
 public ALE_remap_scalar
@@ -180,12 +202,14 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
   ! Local variables
   character(len=40) :: mdl = "MOM_ALE" ! This module's name.
   character(len=80) :: string, vel_string ! Temporary strings
+  character(len=160) :: reason ! The reason that a calculation cannot be done on the device
   real              :: filter_shallow_depth, filter_deep_depth ! Depth ranges of filtering [H ~> m or kg m-2]
   integer :: default_answer_date  ! The default setting for the various ANSWER_DATE flags.
   logical           :: check_reconstruction
   logical           :: check_remapping
   logical           :: force_bounds_in_subcell
   logical           :: local_logical
+  integer           :: default_niblock, default_njblock ! Default block sizes [nondim]
   logical           :: remap_boundary_extrap
   logical           :: init_boundary_extrap
   logical           :: om4_remap_via_sub_cells
@@ -350,11 +374,173 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
                  "If true, write out verbose debugging data.", &
                  default=.false., debuggingParam=.true.)
 
+#ifdef __NVCOMPILER_OPENMP_GPU
+  default_niblock = 0 ; default_njblock = 0
+#else
+  default_niblock = 0 ; default_njblock = 1
+#endif
+  call get_param(param_file, mdl, "ALE_NIBLOCK", CS%niblock, &
+                 "The i-direction block size used to hold the per-column working arrays in the "//&
+                 "ALE regridding and remapping calculations that can run on the device.  The "//&
+                 "default 0 setting dynamically uses the full computational domain width.", &
+                 default=default_niblock, layoutParam=.true.)
+  call get_param(param_file, mdl, "ALE_NJBLOCK", CS%njblock, &
+                 "The j-direction block size used to hold the per-column working arrays in the "//&
+                 "ALE regridding and remapping calculations that can run on the device.  The "//&
+                 "default 0 setting dynamically uses the full computational domain width.", &
+                 default=default_njblock, layoutParam=.true.)
+  if (CS%niblock < 0) call MOM_error(FATAL, "ALE_NIBLOCK must be nonnegative; "//&
+                                     "use 0 to select the full computational domain.")
+  if (CS%njblock < 0) call MOM_error(FATAL, "ALE_NJBLOCK must be nonnegative; "//&
+                                     "use 0 to select the full computational domain.")
+
+  ! The blocked routines that can run on the device support only some regridding and remapping
+  ! configurations, and the others use the host code.  The tracers and velocities are only remapped by the
+  ! blocked routines if the new grid is made by them, and both share the remapping workspace.
+  CS%regrid_on_device = regridding_device_ok(CS%regridCS, GV, reason)
+#ifdef __NVCOMPILER_OPENMP_GPU
+  if (.not.CS%regrid_on_device) call MOM_error(WARNING, "ALE_init: The ALE regridding, and so all of the "//&
+                    "ALE remapping, will run on the host, not the device: "//trim(reason)//".")
+#endif
+  if (CS%regrid_on_device) call regrid_work_init(CS%regrid_ws, G, GV, CS%niblock, CS%njblock)
+  CS%remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%remapCS, reason)
+#ifdef __NVCOMPILER_OPENMP_GPU
+  if (CS%regrid_on_device .and. (.not.CS%remap_on_device)) call MOM_error(WARNING, &
+                    "ALE_init: The ALE tracer remapping will run on the host, not the device: "//trim(reason)//".")
+#endif
+  CS%vel_remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%vel_remapCS, reason)
+#ifdef __NVCOMPILER_OPENMP_GPU
+  if (CS%regrid_on_device .and. (.not.CS%vel_remap_on_device)) call MOM_error(WARNING, &
+                    "ALE_init: The ALE velocity remapping will run on the host, not the device: "//trim(reason)//".")
+#endif
+  if (CS%remap_on_device .or. CS%vel_remap_on_device) &
+    call remap_work_init(CS%remap_ws, GV%ke, merge(G%iec-G%isc+3, CS%niblock, CS%niblock==0), &
+                         merge(G%jec-G%jsc+3, CS%njblock, CS%njblock==0), G%isd, G%ied, G%jsd, G%jed)
+
   ! Keep a record of values for subsequent queries
   CS%nk = GV%ke
 
   if (CS%show_call_tree) call callTree_leave("ALE_init()")
 end subroutine ALE_init
+
+!> Returns true if the regridding is to be done on the device by the blocked routines.
+logical function ALE_regrid_on_device(CS)
+  type(ALE_CS), pointer :: CS !< Module control structure
+
+  ALE_regrid_on_device = .false.
+  if (associated(CS)) ALE_regrid_on_device = CS%regrid_on_device
+end function ALE_regrid_on_device
+
+!> Returns true if the tracers can be remapped on the device by the blocked routines in the current
+!! configuration, given that the new grid was made there.  The tracer tendency diagnostics, which are only
+!! available on the host, are considered if check_diags is true.
+logical function tracer_remap_device_ok(CS, Reg, check_diags)
+  type(ALE_CS),               intent(in) :: CS          !< ALE control structure
+  type(tracer_registry_type), pointer    :: Reg         !< Tracer registry structure
+  logical,                    intent(in) :: check_diags !< If true, the tracer tendency diagnostics are checked
+  integer :: m
+
+  tracer_remap_device_ok = CS%remap_on_device
+  if (tracer_remap_device_ok) tracer_remap_device_ok = remapping_device_ok(CS%remapCS)
+  if (tracer_remap_device_ok .and. check_diags .and. associated(Reg)) then
+    do m=1,Reg%ntr
+      if ((Reg%Tr(m)%id_remap_conc > 0) .or. (Reg%Tr(m)%id_remap_cont > 0) .or. &
+          (Reg%Tr(m)%id_remap_cont_2d > 0)) tracer_remap_device_ok = .false.
+    enddo
+  endif
+end function tracer_remap_device_ok
+
+!> Returns true if the host copies of the new grid thicknesses and interface displacements are read by
+!! the tracer remapping or its diagnostics, when the new grid was made on the device and the tracers are
+!! remapped with the time step passed in.  The velocity remapping and the debugging checks, which can also
+!! read them, are considered separately by the caller.
+logical function ALE_new_grid_needed_on_host(CS, Reg)
+  type(ALE_CS),               pointer :: CS  !< Module control structure
+  type(tracer_registry_type), pointer :: Reg !< Tracer registry structure
+
+  ALE_new_grid_needed_on_host = .true.
+  if (associated(CS)) then
+    ALE_new_grid_needed_on_host = (.not.tracer_remap_device_ok(CS, Reg, .true.)) .or. &
+                                  (CS%id_vert_remap_h_tendency > 0)
+  endif
+end function ALE_new_grid_needed_on_host
+
+!> Reports once, with a warning, each run-time reason that the ALE regridding or remapping that would otherwise
+!! be done on the device is being done on the host instead.  This does nothing on the host-only builds.
+subroutine ALE_report_host_fallback(CS, OBC, use_ice_shelf, SpV_present, alt_split_aux, Reg)
+  type(ALE_CS),               pointer    :: CS            !< Module control structure
+  type(ocean_OBC_type),       pointer    :: OBC           !< Open boundary structure
+  logical,                    intent(in) :: use_ice_shelf !< If true, there are ice shelves
+  logical,                    intent(in) :: SpV_present   !< If true, the specific volume is in use
+  logical,                    intent(in) :: alt_split_aux !< If true, the auxiliary variables of the
+                                                          !! alternate split dynamics are remapped
+  type(tracer_registry_type), pointer    :: Reg           !< Tracer registry structure
+
+#ifdef __NVCOMPILER_OPENMP_GPU
+  character(len=*), parameter :: pre = "ALE: Running on the host, not the device: "
+  integer :: m
+  logical :: tr_diags
+
+  if (.not.associated(CS)) return
+  if (CS%fallback_reported) return
+  CS%fallback_reported = .true.
+
+  if (CS%regrid_on_device) then
+    if (use_ice_shelf) call MOM_error(WARNING, pre//"the regridding and all of the remapping, "//&
+                                      "because ice shelves are in use.")
+    if (SpV_present) call MOM_error(WARNING, pre//"the regridding and all of the remapping, "//&
+                                    "because the specific volume is in use (non-Boussinesq).")
+    if (CS%remap_on_device) then
+      tr_diags = .false.
+      if (associated(Reg)) then ; do m=1,Reg%ntr
+        if ((Reg%Tr(m)%id_remap_conc > 0) .or. (Reg%Tr(m)%id_remap_cont > 0) .or. &
+            (Reg%Tr(m)%id_remap_cont_2d > 0)) tr_diags = .true.
+      enddo ; endif
+      if (tr_diags) call MOM_error(WARNING, pre//"the tracer remapping, because the tracer "//&
+                                   "remapping tendency diagnostics are enabled.")
+    endif
+    if (CS%vel_remap_on_device) then
+      if (associated(OBC)) call MOM_error(WARNING, pre//"the velocity remapping, "//&
+                                          "because open boundary conditions are in use.")
+      if (CS%conserve_ke) call MOM_error(WARNING, pre//"the velocity remapping, "//&
+                                         "because REMAP_VEL_CONSERVE_KE is true.")
+      if ((CS%id_remap_delta_integ_u2 > 0) .or. (CS%id_remap_delta_integ_v2 > 0)) &
+        call MOM_error(WARNING, pre//"the velocity remapping, because the remapping KE diagnostics "//&
+                       "are enabled.")
+      if (alt_split_aux) call MOM_error(WARNING, pre//"the velocity remapping, because "//&
+                                        "REMAP_AUXILIARY_VARS is used with the alternate split dynamics.")
+    endif
+  endif
+#endif
+end subroutine ALE_report_host_fallback
+
+!> Returns true if the velocities are to be remapped on the device by the blocked routines in the current
+!! configuration.  The new grid must also have been made on the device.  Open boundary conditions, the
+!! KE-conserving correction and the remapping KE diagnostics are only supported by the host code.
+logical function ALE_vel_remap_on_device(CS, OBC)
+  type(ALE_CS),         pointer :: CS  !< Module control structure
+  type(ocean_OBC_type), pointer :: OBC !< Open boundary structure
+
+  ALE_vel_remap_on_device = .false.
+  if (associated(CS)) then
+    ALE_vel_remap_on_device = CS%vel_remap_on_device
+    if (ALE_vel_remap_on_device) then
+      if (associated(OBC)) ALE_vel_remap_on_device = .false.
+      if (CS%conserve_ke) ALE_vel_remap_on_device = .false.
+      if ((CS%id_remap_delta_integ_u2 > 0) .or. (CS%id_remap_delta_integ_v2 > 0)) &
+        ALE_vel_remap_on_device = .false.
+    endif
+  endif
+end function ALE_vel_remap_on_device
+
+!> Returns true if the velocities are posted as diagnostics before the ALE remapping, in which case the
+!! host copies of the velocities must be current when pre_ALE_diagnostics is called.
+logical function ALE_preale_uv_diags(CS)
+  type(ALE_CS), pointer :: CS !< Module control structure
+
+  ALE_preale_uv_diags = .false.
+  if (associated(CS)) ALE_preale_uv_diags = ((CS%id_u_preale > 0) .or. (CS%id_v_preale > 0))
+end function ALE_preale_uv_diags
 
 !> Sets the boundary extrapolation set for the remapping type.
 subroutine ALE_set_extrap_boundaries( param_file, CS)
@@ -460,6 +646,8 @@ subroutine ALE_end(CS)
 
   ! Deallocate memory used for the regridding
   call end_remapping( CS%remapCS )
+  call regrid_work_end( CS%regrid_ws )
+  call remap_work_end( CS%remap_ws )
 
   if (CS%use_hybgen_unmix) call end_hybgen_unmix( CS%hybgen_unmixCS )
   call end_regridding( CS%regridCS )
@@ -531,7 +719,7 @@ end subroutine pre_ALE_adjustments
 
 !> Takes care of building a new grid. The creation of the new grid can be based on z coordinates,
 !! target interface densities, sigma coordinates or any arbitrary coordinate system.
-subroutine ALE_regrid( G, GV, US, h, h_new, dzRegrid, tv, CS, frac_shelf_h, PCM_cell)
+subroutine ALE_regrid( G, GV, US, h, h_new, dzRegrid, tv, CS, frac_shelf_h, PCM_cell, do_offload)
   type(ocean_grid_type),                      intent(in)    :: G   !< Ocean grid informations
   type(verticalGrid_type),                    intent(in)    :: GV  !< Ocean vertical grid structure
   type(unit_scale_type),                      intent(in)    :: US  !< A dimensional unit scaling type
@@ -547,23 +735,49 @@ subroutine ALE_regrid( G, GV, US, h, h_new, dzRegrid, tv, CS, frac_shelf_h, PCM_
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in)    :: frac_shelf_h !< Fractional ice shelf coverage [nondim]
   logical, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                     optional, intent(out)   :: PCM_cell !< If true, use PCM remapping in a cell.
+  logical,                          optional, intent(in)    :: do_offload !< If true, h, h_new and dzRegrid are
+                                                                   !! on the device, and the new grid is
+                                                                   !! built there.  This is only valid if
+                                                                   !! ALE_regrid_on_device(CS) is true, and
+                                                                   !! for a column without ice shelves.
+                                                                   !! The default is false.
 
   ! Local variables
   logical :: showCallTree
+  logical :: use_device ! If true, build the grid on the device
 
   showCallTree = callTree_showQuery()
 
   if (showCallTree) call callTree_enter("ALE_regrid(), MOM_ALE.F90")
 
+  use_device = .false. ; if (present(do_offload)) use_device = do_offload
+  if (use_device) then
+    if (.not.ALE_regrid_on_device(CS)) call MOM_error(FATAL, "ALE_regrid: "//&
+                 "The regridding was requested on the device but this configuration does not support it.")
+    if (present(frac_shelf_h) .or. allocated(tv%SpV_avg)) call MOM_error(FATAL, "ALE_regrid: "//&
+                 "The regridding was requested on the device but ice shelves and fully non-Boussinesq "//&
+                 "mode are not supported there.")
+  endif
+
   ! Build the new grid and store it in h_new. The old grid is retained as h.
   ! Both are needed for the subsequent remapping of variables.
-  dzRegrid(:,:,:) = 0.0
-  call regridding_main( CS%remapCS, CS%regridCS, G, GV, US, h, tv, h_new, dzRegrid, &
-                        frac_shelf_h=frac_shelf_h, PCM_cell=PCM_cell)
+  if (use_device) then
+    ! This also zeros dzRegrid on the device.
+    call regridding_main_zstar_dev( CS%regridCS, G, GV, US, h, h_new, dzRegrid, CS%regrid_ws )
+    if (present(PCM_cell)) PCM_cell(:,:,:) = .false.
+    if (CS%id_dzRegrid>0) then ; if (query_averaging_enabled(CS%diag)) then
+      !$omp target update from(dzRegrid, h_new)
+      call post_data(CS%id_dzRegrid, dzRegrid, CS%diag, alt_h=h_new)
+    endif ; endif
+  else
+    dzRegrid(:,:,:) = 0.0
+    call regridding_main( CS%remapCS, CS%regridCS, G, GV, US, h, tv, h_new, dzRegrid, &
+                          frac_shelf_h=frac_shelf_h, PCM_cell=PCM_cell)
 
-  if (CS%id_dzRegrid>0) then ; if (query_averaging_enabled(CS%diag)) then
-    call post_data(CS%id_dzRegrid, dzRegrid, CS%diag, alt_h=h_new)
-  endif ; endif
+    if (CS%id_dzRegrid>0) then ; if (query_averaging_enabled(CS%diag)) then
+      call post_data(CS%id_dzRegrid, dzRegrid, CS%diag, alt_h=h_new)
+    endif ; endif
+  endif
 
   if (showCallTree) call callTree_leave("ALE_regrid()")
 
@@ -776,7 +990,7 @@ end subroutine ALE_regrid_accelerated
 !! new grids. This routine is called during initialization of the model at time=0, to
 !! remap initial conditions to the model grid.  It is also called during a
 !! time step to update the state.
-subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell)
+subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell, do_offload)
   type(ALE_CS),                              intent(in)    :: CS           !< ALE control structure
   type(ocean_grid_type),                     intent(in)    :: G            !< Ocean grid structure
   type(verticalGrid_type),                   intent(in)    :: GV           !< Ocean vertical grid structure
@@ -789,6 +1003,15 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell)
   real,                            optional, intent(in)    :: dt     !< time step for diagnostics [T ~> s]
   logical, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                    optional, intent(in)    :: PCM_cell !< Use PCM remapping in cells where true
+  logical,                         optional, intent(in)    :: do_offload !< If true, h_old and h_new are current on
+                                                         !! the device, and the tracers are remapped there with
+                                                         !! the blocked routines if this configuration supports
+                                                         !! it and no tracer tendency diagnostics are requested.
+                                                         !! The host copies of the tracers are current on return.
+                                                         !! Otherwise the tracers are remapped on the host, which
+                                                         !! uses the host copies of h_old and h_new.  This is only
+                                                         !! valid if the new grid was built on the device.  The
+                                                         !! default is false.
 
   ! Local variables
   real :: tr_column(GV%ke)  ! A column of updated tracer concentrations [CU ~> Conc]
@@ -804,12 +1027,17 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell)
   real :: h2(GV%ke)     ! A column of target grid layer thicknesses [H ~> m or kg m-2]
   logical :: show_call_tree
   type(tracer_type), pointer :: Tr => NULL()
+  logical :: use_device ! If true, remap the tracers with the blocked routines on the device
   integer :: i, j, k, m, nz, ntr
 
   show_call_tree = .false.
   if (present(debug)) show_call_tree = debug
 
   if (show_call_tree) call callTree_enter("ALE_remap_tracers(), MOM_ALE.F90")
+
+  use_device = .false.
+  if (present(do_offload)) use_device = do_offload
+  if (use_device) use_device = tracer_remap_device_ok(CS, Reg, present(dt))
 
   nz = GV%ke
 
@@ -822,7 +1050,9 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell)
   endif
 
   ! Remap all registered tracers, including temperature and salinity.
-  if (ntr>0) then
+  if (use_device) then
+    if (ntr>0) call remap_tracers_device(CS, G, GV, h_old, h_new, Reg)
+  elseif (ntr>0) then
     if (show_call_tree) call callTree_waypoint("remapping tracers (ALE_remap_tracers)")
     !$OMP parallel do default(shared) private(h1,h2,tr_column,Tr,PCM,work_conc,work_cont,work_2d)
     do m=1,ntr ! For each tracer
@@ -897,8 +1127,162 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell)
 
 end subroutine ALE_remap_tracers
 
+!> This routine remaps all of the registered tracers, including temperature and salinity, from the old
+!! grid h_old to the new grid h_new on the device, using the blocked PCM or PLM remapping.  It does not
+!! support PCM_cell, so the new grid must come from a regridding that does not set it.  The tracers are
+!! copied to the device, remapped, and copied back, so the host copies of the tracers are current on return.
+!! The arrays h_old and h_new must already be on the device.
+subroutine remap_tracers_device(CS, G, GV, h_old, h_new, Reg)
+  type(ALE_CS),                              intent(in)    :: CS           !< ALE control structure
+  type(ocean_grid_type),                     intent(in)    :: G            !< Ocean grid structure
+  type(verticalGrid_type),                   intent(in)    :: GV           !< Ocean vertical grid structure
+  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)    :: h_old        !< Thickness of source grid
+                                                                           !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in)    :: h_new        !< Thickness of destination grid
+                                                                           !! [H ~> m or kg m-2]
+  type(tracer_registry_type),                pointer       :: Reg          !< Tracer registry structure
+
+  ! Local variables
+  real, pointer, dimension(:,:,:) :: t3 => NULL() ! The concentrations of one tracer [CU ~> Conc]
+  character(len=80) :: mesg ! A string for error messages
+  real    :: h_neglect ! A negligibly small width for the purpose of cell reconstructions [H ~> m or kg m-2]
+  logical :: use_plm   ! If true, use PLM reconstructions, and otherwise use PCM
+  logical :: bdry_extrap ! If true, extrapolate to the edge values of the boundary cells
+  logical :: force_sub ! If true, force the values in sub-cells to be bounded
+  logical :: force_tgt ! If true, force the values in target cells to be bounded
+  integer :: i, j, m
+
+  call remapping_device_params(CS%remapCS, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect)
+
+  call zero_error_codes(G, CS%remap_ws%err)
+
+  do m=1,Reg%ntr
+    t3 => Reg%Tr(m)%t
+    ! The host copy of each tracer is the current one here.  An explicit update is used in both directions
+    ! so that the right values are moved even if some other code has left this tracer mapped, in which case
+    ! map(to:) and map(from:) would only change the reference count and would not copy anything.
+    !$omp target enter data map(alloc: t3)
+    !$omp target update to(t3)
+    call remap_tracer_blocks(G, GV%ke, CS%remap_ws%nib, CS%remap_ws%njb, use_plm, bdry_extrap, force_sub, &
+                             force_tgt, h_neglect, Reg%Tr(m)%conc_underflow, h_old, h_new, t3, &
+                             CS%remap_ws%h0, CS%remap_ws%h1, CS%remap_ws%u0, CS%remap_ws%u1, &
+                             CS%remap_ws%h_sub, CS%remap_ws%uh_sub, CS%remap_ws%u_sub, CS%remap_ws%h0_eff, &
+                             CS%remap_ws%isub_src, CS%remap_ws%isrc_start, CS%remap_ws%isrc_end, &
+                             CS%remap_ws%isrc_max, CS%remap_ws%itgt_start, CS%remap_ws%itgt_end, &
+                             CS%remap_ws%pE1, CS%remap_ws%pE2, CS%remap_ws%pc1, CS%remap_ws%pc2, &
+                             CS%remap_ws%slp, CS%remap_ws%mslp, CS%remap_ws%err)
+    !$omp target update from(t3)
+    !$omp target exit data map(release: t3)
+    t3 => NULL()
+  enddo ! m=1,Reg%ntr
+
+  ! Report any errors found in the columns.
+  !$omp target update from(CS%remap_ws%err)
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    if (CS%remap_ws%err(i,j) /= 0) then
+      write(mesg, '("at i, j = ",2i6)') i, j
+      call MOM_error(FATAL, "remap_tracers_device: intersect_src_tgt_grids found an inconsistency "//trim(mesg))
+    endif
+  enddo ; enddo
+
+end subroutine remap_tracers_device
+
+!> Sets the array of error codes to zero on the device
+subroutine zero_error_codes(G, err)
+  type(ocean_grid_type), intent(in) :: G !< Ocean grid structure
+  integer, dimension(SZI_(G),SZJ_(G)), intent(inout) :: err !< A code for any error found in each column
+  integer :: i, j
+
+  do concurrent (j=G%jsd:G%jed, i=G%isd:G%ied)
+    err(i,j) = 0
+  enddo
+end subroutine zero_error_codes
+
+!> Remaps one tracer for all of the columns of the computational domain, in blocks of columns, using
+!! remap_column_blk.  All of the arrays must be on the device.
+subroutine remap_tracer_blocks(G, nz, nib, njb, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect, &
+                               conc_underflow, h_old, h_new, tr, h0, h1, u0, u1, h_sub, uh_sub, u_sub, &
+                               h0_eff, isub_src, isrc_start, isrc_end, isrc_max, itgt_start, itgt_end, &
+                               pE1, pE2, pc1, pc2, slp, mslp, err)
+  type(ocean_grid_type), intent(in) :: G    !< Ocean grid structure
+  integer,               intent(in) :: nz   !< The number of layers on the source and target grids [nondim]
+  integer,               intent(in) :: nib  !< The i-size of the blocks of columns [nondim]
+  integer,               intent(in) :: njb  !< The j-size of the blocks of columns [nondim]
+  logical,               intent(in) :: use_plm !< If true use PLM, and otherwise use PCM
+  logical,               intent(in) :: bdry_extrap !< If true, extrapolate to the edge values of the boundary cells
+  logical,               intent(in) :: force_sub !< If true, force the sub-cell values to be bounded
+  logical,               intent(in) :: force_tgt !< If true, force the target cell values to be bounded
+  real,                  intent(in) :: h_neglect !< A negligibly small width for the purpose of cell
+                                            !! reconstructions [H ~> m or kg m-2]
+  real,                  intent(in) :: conc_underflow !< A magnitude of tracer concentrations below which
+                                            !! they are set to 0 if it is positive [CU ~> Conc]
+  real, dimension(SZI_(G),SZJ_(G),nz), intent(in)    :: h_old !< Thickness of source grid [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz), intent(in)    :: h_new !< Thickness of destination grid
+                                            !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz), intent(inout) :: tr    !< The tracer concentrations [CU ~> Conc]
+  real, dimension(nib,njb,nz),   intent(inout) :: h0  !< Workspace for the source grid thicknesses [H]
+  real, dimension(nib,njb,nz),   intent(inout) :: h1  !< Workspace for the target grid thicknesses [H]
+  real, dimension(nib,njb,nz),   intent(inout) :: u0  !< Workspace for the source grid concentrations [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: u1  !< Workspace for the target grid concentrations [A]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: h_sub  !< Workspace for the sub-cell widths [H]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: uh_sub !< Workspace for the sub-cell integrals [A H]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: u_sub  !< Workspace for the sub-cell averages [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: h0_eff !< Workspace for the effective source thicknesses [H]
+  integer, dimension(nib,njb,2*nz+1), intent(inout) :: isub_src !< Workspace for the source cell of sub-cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_start !< Workspace for the first sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_end   !< Workspace for the last sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_max   !< Workspace for the thickest sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: itgt_start !< Workspace for the first sub-cell of target cells
+  integer, dimension(nib,njb,nz), intent(inout) :: itgt_end   !< Workspace for the last sub-cell of target cells
+  real, dimension(nib,njb,nz),   intent(inout) :: pE1 !< Workspace for the left edge values [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pE2 !< Workspace for the right edge values [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pc1 !< Workspace for the constant coefficients [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pc2 !< Workspace for the linear coefficients [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: slp !< Workspace for the first guess at the slopes [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: mslp !< Workspace for the monotonized slopes [A]
+  integer, dimension(SZI_(G),SZJ_(G)), intent(inout) :: err !< A code for any error found in each column
+
+  ! Local variables
+  integer :: is, ie, js, je, isb, ieb, jsb, jeb, iie, jje, ii, jj, i, j, k, ierr
+
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+
+  do jsb=js,je,njb ; do isb=is,ie,nib
+    ieb = min(isb + nib - 1, ie) ; jeb = min(jsb + njb - 1, je)
+    iie = ieb - isb + 1 ; jje = jeb - jsb + 1
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      h0(ii,jj,k) = h_old(i,j,k)
+      h1(ii,jj,k) = h_new(i,j,k)
+      u0(ii,jj,k) = tr(i,j,k)
+    enddo
+
+    do concurrent (jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j, k, ierr))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      if (G%mask2dT(i,j) > 0.) then
+        ierr = 0
+        call remap_column_blk(nz, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect, nib, njb, ii, jj, &
+                              h0, u0, h1, u1, h_sub, uh_sub, u_sub, h0_eff, isub_src, isrc_start, isrc_end, &
+                              isrc_max, itgt_start, itgt_end, pE1, pE2, pc1, pc2, slp, mslp, ierr)
+        ! Possibly underflow any very tiny tracer concentrations to 0.  Note that this is not conservative!
+        if (conc_underflow > 0.0) then ; do k=1,nz
+          if (abs(u1(ii,jj,k)) < conc_underflow) u1(ii,jj,k) = 0.0
+        enddo ; endif
+        if (ierr /= 0) err(i,j) = ierr
+      endif
+    enddo ! columns of the block
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      if (G%mask2dT(i,j) > 0.) tr(i,j,k) = u1(ii,jj,k)
+    enddo
+  enddo ; enddo ! blocks
+
+end subroutine remap_tracer_blocks
+
 !> This routine sets the thicknesses at velocity points used for vertical remapping.
-subroutine ALE_remap_set_h_vel(CS, G, GV, h_new, h_u, h_v, OBC, debug)
+subroutine ALE_remap_set_h_vel(CS, G, GV, h_new, h_u, h_v, OBC, debug, do_offload)
   type(ALE_CS),                              intent(in)    :: CS      !< ALE control structure
   type(ocean_grid_type),                     intent(in)    :: G       !< Ocean grid structure
   type(verticalGrid_type),                   intent(in)    :: GV      !< Ocean vertical grid structure
@@ -913,6 +1297,10 @@ subroutine ALE_remap_set_h_vel(CS, G, GV, h_new, h_u, h_v, OBC, debug)
                                                                       !! points [H ~> m or kg m-2]
   type(ocean_OBC_type),                      pointer       :: OBC     !< Open boundary structure
   logical,                         optional, intent(in)    :: debug   !< If true, show the call tree
+  logical,                         optional, intent(in)    :: do_offload !< If true, h_new, h_u and h_v are on the
+                                                                      !! device and h_u and h_v are set there.  The
+                                                                      !! caller must have checked that this is
+                                                                      !! supported with ALE_vel_remap_on_device.
 
   ! Local variables
   logical :: show_call_tree
@@ -921,6 +1309,15 @@ subroutine ALE_remap_set_h_vel(CS, G, GV, h_new, h_u, h_v, OBC, debug)
   show_call_tree = .false.
   if (present(debug)) show_call_tree = debug
   if (show_call_tree) call callTree_enter("ALE_remap_set_h_vel()")
+
+  if (present(do_offload)) then ; if (do_offload) then
+    if (associated(OBC)) call MOM_error(FATAL, "ALE_remap_set_h_vel: Open boundary conditions are not "//&
+                                        "supported on the device.")
+    call set_h_vel_device(G, GV%ke, h_new, h_u, h_v)
+    if (CS%partial_cell_vel_remap) call set_h_vel_partial_device(G, GV%ke, h_new, h_u, h_v)
+    if (show_call_tree) call callTree_leave("ALE_remap_set_h_vel()")
+    return
+  endif ; endif
 
   ! Build the u- and v-velocity grid thicknesses for remapping.
 
@@ -945,7 +1342,7 @@ end subroutine ALE_remap_set_h_vel
 
 !> This routine sets the thicknesses at velocity points used for vertical remapping using a
 !! combination of the old grid and interface movements.
-subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dzInterface, debug)
+subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dzInterface, debug, do_offload)
   type(ALE_CS),                              intent(in)    :: CS           !< ALE control structure
   type(ocean_grid_type),                     intent(in)    :: G            !< Ocean grid structure
   type(verticalGrid_type),                   intent(in)    :: GV           !< Ocean vertical grid structure
@@ -967,6 +1364,11 @@ subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dz
                                              intent(in)    :: dzInterface  !< Change in interface position
                                                                            !! [H ~> m or kg m-2]
   logical,                         optional, intent(in)    :: debug        !< If true, show the call tree
+  logical,                         optional, intent(in)    :: do_offload    !< If true, all of the arrays are on
+                                                                           !! the device and h_u and h_v are set
+                                                                           !! there.  The caller must have checked
+                                                                           !! that this is supported with
+                                                                           !! ALE_vel_remap_on_device.
 
   ! Local variables
   logical :: show_call_tree
@@ -975,6 +1377,15 @@ subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dz
   show_call_tree = .false.
   if (present(debug)) show_call_tree = debug
   if (show_call_tree) call callTree_enter("ALE_remap_set_h_vel()")
+
+  if (present(do_offload)) then ; if (do_offload) then
+    if (associated(OBC)) call MOM_error(FATAL, "ALE_remap_set_h_vel_via_dz: Open boundary conditions are "//&
+                                        "not supported on the device.")
+    call set_h_vel_via_dz_device(G, GV%ke, h_old, dzInterface, h_u, h_v)
+    if (CS%partial_cell_vel_remap) call set_h_vel_partial_device(G, GV%ke, h_old, h_u, h_v)
+    if (show_call_tree) call callTree_leave("ALE_remap_set_h_vel()")
+    return
+  endif ; endif
 
   ! Build the u- and v-velocity grid thicknesses for remapping using the old grid and interface movement.
 
@@ -1001,6 +1412,111 @@ subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dz
   if (show_call_tree) call callTree_leave("ALE_remap_set_h_vel()")
 
 end subroutine ALE_remap_set_h_vel_via_dz
+
+!> Sets the thicknesses at velocity points to the averages of those at the adjacent tracer points, on the
+!! device, with the same arithmetic as ALE_remap_set_h_vel.  All of the arrays must be on the device.
+subroutine set_h_vel_device(G, nz, h_new, h_u, h_v)
+  type(ocean_grid_type), intent(in) :: G  !< Ocean grid structure
+  integer,               intent(in) :: nz !< The number of layers [nondim]
+  real, dimension(SZI_(G),SZJ_(G),nz),  intent(in)    :: h_new !< Thickness at tracer points [H ~> m or kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G),nz), intent(inout) :: h_u   !< Thickness at zonal velocity points
+                                                               !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJB_(G),nz), intent(inout) :: h_v   !< Thickness at meridional velocity points
+                                                               !! [H ~> m or kg m-2]
+  integer :: i, j, k
+
+  do concurrent (k=1:nz, j=G%jsc:G%jec, I=G%IscB:G%IecB, G%mask2dCu(I,j) > 0.)
+    h_u(I,j,k) = 0.5*(h_new(i,j,k) + h_new(i+1,j,k))
+  enddo
+  do concurrent (k=1:nz, J=G%JscB:G%JecB, i=G%isc:G%iec, G%mask2dCv(i,J) > 0.)
+    h_v(i,J,k) = 0.5*(h_new(i,j,k) + h_new(i,j+1,k))
+  enddo
+end subroutine set_h_vel_device
+
+!> Sets the thicknesses at velocity points from the old grid and the interface movements, on the device,
+!! with the same arithmetic as ALE_remap_set_h_vel_via_dz.  All of the arrays must be on the device.
+subroutine set_h_vel_via_dz_device(G, nz, h_old, dzInterface, h_u, h_v)
+  type(ocean_grid_type), intent(in) :: G  !< Ocean grid structure
+  integer,               intent(in) :: nz !< The number of layers [nondim]
+  real, dimension(SZI_(G),SZJ_(G),nz),   intent(in)    :: h_old !< Thickness of the source grid
+                                                                 !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz+1), intent(in)    :: dzInterface !< Change in interface position
+                                                                 !! [H ~> m or kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G),nz),  intent(inout) :: h_u    !< Thickness at zonal velocity points
+                                                                 !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJB_(G),nz),  intent(inout) :: h_v    !< Thickness at meridional velocity points
+                                                                 !! [H ~> m or kg m-2]
+  integer :: i, j, k
+
+  do concurrent (k=1:nz, j=G%jsc:G%jec, I=G%IscB:G%IecB, G%mask2dCu(I,j) > 0.)
+    h_u(I,j,k) = max( 0., 0.5*(h_old(i,j,k) + h_old(i+1,j,k)) + &
+            0.5 * (( dzInterface(i,j,k) + dzInterface(i+1,j,k) ) - &
+                   ( dzInterface(i,j,k+1) + dzInterface(i+1,j,k+1) )) )
+  enddo
+  do concurrent (k=1:nz, J=G%JscB:G%JecB, i=G%isc:G%iec, G%mask2dCv(i,J) > 0.)
+    h_v(i,J,k) = max( 0., 0.5*(h_old(i,j,k) + h_old(i,j+1,k)) + &
+            0.5 * (( dzInterface(i,j,k) + dzInterface(i,j+1,k) ) - &
+                   ( dzInterface(i,j,k+1) + dzInterface(i,j+1,k+1) )) )
+  enddo
+end subroutine set_h_vel_via_dz_device
+
+!> Masks out the thicknesses at velocity points where they extend below the shallower of the adjacent
+!! bathymetry, on the device, with the same arithmetic as ALE_remap_set_h_vel_partial.  All of the arrays
+!! must be on the device.
+subroutine set_h_vel_partial_device(G, nz, h_mask, h_u, h_v)
+  type(ocean_grid_type), intent(in) :: G  !< Ocean grid structure
+  integer,               intent(in) :: nz !< The number of layers [nondim]
+  real, dimension(SZI_(G),SZJ_(G),nz),  intent(in)    :: h_mask !< Thickness at tracer points used to apply
+                                                                !! the partial cell masking [H ~> m or kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G),nz), intent(inout) :: h_u    !< Thickness at zonal velocity points
+                                                                !! [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJB_(G),nz), intent(inout) :: h_v    !< Thickness at meridional velocity points
+                                                                !! [H ~> m or kg m-2]
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! The vertically summed thicknesses [H ~> m or kg m-2]
+  real :: h_mask_vel ! A depth below which the thicknesses at a velocity point are masked out [H ~> m or kg m-2]
+  real :: h1_rsum    ! The running sum of the thicknesses in a column [H ~> m or kg m-2]
+  integer :: i, j, k
+
+  !$omp target enter data map(alloc: h_tot)
+
+  do concurrent (j=G%jsc-1:G%jec+1, i=G%isc-1:G%iec+1) DO_LOCALITY(local(k))
+    h_tot(i,j) = 0.0
+    do k=1,nz
+      h_tot(i,j) = h_tot(i,j) + h_mask(i,j,k)
+    enddo
+  enddo
+
+  do concurrent (j=G%jsc:G%jec, I=G%IscB:G%IecB, G%mask2dCu(I,j) > 0.) &
+      DO_LOCALITY(local(k, h_mask_vel, h1_rsum))
+    h_mask_vel = min(h_tot(i,j), h_tot(i+1,j))
+    h1_rsum = 0.0
+    do k=1,nz
+      if (h_u(I,j,k) > h_mask_vel - h1_rsum) then
+        h_u(I,j,k) = max(h_mask_vel - h1_rsum, 0.0)
+        h1_rsum = h_mask_vel
+      else
+        h1_rsum = h1_rsum + h_u(I,j,k)
+      endif
+    enddo
+  enddo
+
+  do concurrent (J=G%JscB:G%JecB, i=G%isc:G%iec, G%mask2dCv(i,J) > 0.) &
+      DO_LOCALITY(local(k, h_mask_vel, h1_rsum))
+    h_mask_vel = min(h_tot(i,j), h_tot(i,j+1))
+    h1_rsum = 0.0
+    do k=1,nz
+      if (h_v(i,J,k) > h_mask_vel - h1_rsum) then
+        h_v(i,J,k) = max(h_mask_vel - h1_rsum, 0.0)
+        h1_rsum = h_mask_vel
+      else
+        h1_rsum = h1_rsum + h_v(i,J,k)
+      endif
+    enddo
+  enddo
+
+  !$omp target exit data map(delete: h_tot)
+end subroutine set_h_vel_partial_device
 
 !> Mask out the thicknesses at velocity points where they are below the minimum depth
 !! at adjacent tracer points
@@ -1106,7 +1622,7 @@ end subroutine ALE_remap_set_h_vel_OBC
 !! remap initial conditions to the model grid.  It is also called during a
 !! time step to update the state.
 subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u, v, debug, &
-                                dt, allow_preserve_variance)
+                                dt, allow_preserve_variance, do_offload)
   type(ALE_CS),                              intent(in)    :: CS        !< ALE control structure
   type(ocean_grid_type),                     intent(in)    :: G         !< Ocean grid structure
   type(verticalGrid_type),                   intent(in)    :: GV        !< Ocean vertical grid structure
@@ -1130,6 +1646,12 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
   real,                            optional, intent(in)    :: dt        !< time step for diagnostics [T ~> s]
   logical,                         optional, intent(in)    :: allow_preserve_variance !< If true, enables ke-conserving
                                                                                       !! correction
+  logical,                         optional, intent(in)    :: do_offload !< If true, all of the arrays are on the
+                                                                        !! device, the velocities are remapped there
+                                                                        !! with the blocked routines, and the host
+                                                                        !! copies are not changed.  The caller must
+                                                                        !! have checked that this is supported with
+                                                                        !! ALE_vel_remap_on_device.
 
   ! Local variables
   real :: h_mask_vel ! A depth below which the thicknesses at a velocity point are masked out [H ~> m or kg m-2]
@@ -1155,6 +1677,12 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
   show_call_tree = .false.
   if (present(debug)) show_call_tree = debug
   if (show_call_tree) call callTree_enter("ALE_remap_velocities()")
+
+  if (present(do_offload)) then ; if (do_offload) then
+    call remap_velocities_device(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u, v)
+    if (show_call_tree) call callTree_leave("ALE_remap_velocities()")
+    return
+  endif ; endif
 
   ! Setup related to KE conservation
   variance_option = .false.
@@ -1317,6 +1845,182 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
   if (show_call_tree) call callTree_leave("ALE_remap_velocities()")
 
 end subroutine ALE_remap_velocities
+
+!> This routine remaps the velocity components in place on the device, from the source grids h_old_u and
+!! h_old_v to the destination grids h_new_u and h_new_v, using the blocked PCM or PLM remapping.  It does not
+!! support the KE-conserving correction or the KE diagnostics.  All of the arrays must be on the device.
+subroutine remap_velocities_device(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u, v)
+  type(ALE_CS),                              intent(in)    :: CS        !< ALE control structure
+  type(ocean_grid_type),                     intent(in)    :: G         !< Ocean grid structure
+  type(verticalGrid_type),                   intent(in)    :: GV        !< Ocean vertical grid structure
+  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+                                             intent(in)    :: h_old_u   !< Source grid thickness at zonal
+                                                                        !! velocity points [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+                                             intent(in)    :: h_old_v   !< Source grid thickness at meridional
+                                                                        !! velocity points [H ~> m or kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+                                             intent(in)    :: h_new_u   !< Destination grid thickness at zonal
+                                                                        !! velocity points [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+                                             intent(in)    :: h_new_v   !< Destination grid thickness at meridional
+                                                                        !! velocity points [H ~> m or kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G),SZK_(GV)), &
+                                             intent(inout) :: u         !< Zonal velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJB_(G),SZK_(GV)), &
+                                             intent(inout) :: v         !< Meridional velocity [L T-1 ~> m s-1]
+
+  ! Local variables
+  character(len=80) :: mesg ! A string for error messages
+  real    :: h_neglect ! A negligibly small width for the purpose of cell reconstructions [H ~> m or kg m-2]
+  logical :: use_plm   ! If true, use PLM reconstructions, and otherwise use PCM
+  logical :: bdry_extrap ! If true, extrapolate to the edge values of the boundary cells
+  logical :: force_sub ! If true, force the values in sub-cells to be bounded
+  logical :: force_tgt ! If true, force the values in target cells to be bounded
+  logical :: do_bbl_mask ! If true, zero out thin near-bottom layers after remapping
+  integer :: i, j
+
+  if (.not.CS%vel_remap_on_device) call MOM_error(FATAL, &
+      "remap_velocities_device: The velocity remapping on the device is not supported in this configuration.")
+  call remapping_device_params(CS%vel_remapCS, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect)
+  do_bbl_mask = ((CS%BBL_h_vel_mask > 0.0) .and. (CS%h_vel_mask > 0.0))
+
+  call zero_error_codes(G, CS%remap_ws%err)
+
+  call remap_vel_blocks(G, GV%ke, G%IsdB, G%IedB, G%jsd, G%jed, G%IscB, G%IecB, G%jsc, G%jec, &
+                        CS%remap_ws%nib, CS%remap_ws%njb, G%mask2dCu, use_plm, bdry_extrap, force_sub, force_tgt, &
+                        h_neglect, do_bbl_mask, CS%BBL_h_vel_mask, CS%h_vel_mask, h_old_u, h_new_u, u, &
+                        CS%remap_ws%h0, CS%remap_ws%h1, CS%remap_ws%u0, CS%remap_ws%u1, &
+                        CS%remap_ws%h_sub, CS%remap_ws%uh_sub, CS%remap_ws%u_sub, CS%remap_ws%h0_eff, &
+                        CS%remap_ws%isub_src, CS%remap_ws%isrc_start, CS%remap_ws%isrc_end, &
+                        CS%remap_ws%isrc_max, CS%remap_ws%itgt_start, CS%remap_ws%itgt_end, &
+                        CS%remap_ws%pE1, CS%remap_ws%pE2, CS%remap_ws%pc1, CS%remap_ws%pc2, &
+                        CS%remap_ws%slp, CS%remap_ws%mslp, CS%remap_ws%err)
+  call remap_vel_blocks(G, GV%ke, G%isd, G%ied, G%JsdB, G%JedB, G%isc, G%iec, G%JscB, G%JecB, &
+                        CS%remap_ws%nib, CS%remap_ws%njb, G%mask2dCv, use_plm, bdry_extrap, force_sub, force_tgt, &
+                        h_neglect, do_bbl_mask, CS%BBL_h_vel_mask, CS%h_vel_mask, h_old_v, h_new_v, v, &
+                        CS%remap_ws%h0, CS%remap_ws%h1, CS%remap_ws%u0, CS%remap_ws%u1, &
+                        CS%remap_ws%h_sub, CS%remap_ws%uh_sub, CS%remap_ws%u_sub, CS%remap_ws%h0_eff, &
+                        CS%remap_ws%isub_src, CS%remap_ws%isrc_start, CS%remap_ws%isrc_end, &
+                        CS%remap_ws%isrc_max, CS%remap_ws%itgt_start, CS%remap_ws%itgt_end, &
+                        CS%remap_ws%pE1, CS%remap_ws%pE2, CS%remap_ws%pc1, CS%remap_ws%pc2, &
+                        CS%remap_ws%slp, CS%remap_ws%mslp, CS%remap_ws%err)
+
+  ! Report any errors found in the columns.  The errors are recorded at the indices of the velocity points,
+  ! which include the faces at IscB and JscB, so the range of faces is checked.
+  !$omp target update from(CS%remap_ws%err)
+  do J=G%JscB,G%JecB ; do I=G%IscB,G%IecB
+    if (CS%remap_ws%err(I,J) /= 0) then
+      write(mesg, '("at velocity point indices i, j = ",2i6)') I, J
+      call MOM_error(FATAL, "remap_velocities_device: intersect_src_tgt_grids found an inconsistency "//trim(mesg))
+    endif
+  enddo ; enddo
+
+end subroutine remap_velocities_device
+
+!> Remaps one velocity component for all of the columns of the computational domain, in blocks of columns,
+!! using remap_column_blk.  The columns are those with is<=i<=ie and js<=j<=je where the mask is positive,
+!! and the arrays at the velocity points have the bounds i0:i1 and j0:j1.  All of the arrays must be on the
+!! device.  The errors found are recorded by the indices of the columns, which are also used for the
+!! velocity points, so these are in the ranges of the data domain.
+subroutine remap_vel_blocks(G, nz, i0, i1, j0, j1, is, ie, js, je, nib, njb, mask, use_plm, bdry_extrap, &
+                            force_sub, force_tgt, h_neglect, do_bbl_mask, h_BBL, h_thin, h_old, h_new, vel, &
+                            h0, h1, u0, u1, h_sub, uh_sub, u_sub, h0_eff, isub_src, isrc_start, isrc_end, &
+                            isrc_max, itgt_start, itgt_end, pE1, pE2, pc1, pc2, slp, mslp, err)
+  type(ocean_grid_type), intent(in) :: G    !< Ocean grid structure
+  integer,               intent(in) :: nz   !< The number of layers on the source and target grids [nondim]
+  integer,               intent(in) :: i0   !< The starting i-index of the velocity arrays [nondim]
+  integer,               intent(in) :: i1   !< The ending i-index of the velocity arrays [nondim]
+  integer,               intent(in) :: j0   !< The starting j-index of the velocity arrays [nondim]
+  integer,               intent(in) :: j1   !< The ending j-index of the velocity arrays [nondim]
+  integer,               intent(in) :: is   !< The starting i-index of the columns to remap [nondim]
+  integer,               intent(in) :: ie   !< The ending i-index of the columns to remap [nondim]
+  integer,               intent(in) :: js   !< The starting j-index of the columns to remap [nondim]
+  integer,               intent(in) :: je   !< The ending j-index of the columns to remap [nondim]
+  integer,               intent(in) :: nib  !< The i-size of the blocks of columns [nondim]
+  integer,               intent(in) :: njb  !< The j-size of the blocks of columns [nondim]
+  real, dimension(i0:i1,j0:j1), intent(in) :: mask !< The mask at the velocity points [nondim]
+  logical,               intent(in) :: use_plm !< If true use PLM, and otherwise use PCM
+  logical,               intent(in) :: bdry_extrap !< If true, extrapolate to the edge values of the boundary cells
+  logical,               intent(in) :: force_sub !< If true, force the sub-cell values to be bounded
+  logical,               intent(in) :: force_tgt !< If true, force the target cell values to be bounded
+  real,                  intent(in) :: h_neglect !< A negligibly small width for the purpose of cell
+                                            !! reconstructions [H ~> m or kg m-2]
+  logical,               intent(in) :: do_bbl_mask !< If true, zero out the velocities in thin layers near the
+                                            !! seafloor after remapping
+  real,                  intent(in) :: h_BBL  !< The thickness of the near-bottom region over which to apply the
+                                            !! filtering [H ~> m or kg m-2]
+  real,                  intent(in) :: h_thin !< A layer thickness below which the filtering is applied
+                                            !! [H ~> m or kg m-2]
+  real, dimension(i0:i1,j0:j1,nz), intent(in)    :: h_old !< Source grid thickness at velocity points
+                                            !! [H ~> m or kg m-2]
+  real, dimension(i0:i1,j0:j1,nz), intent(in)    :: h_new !< Destination grid thickness at velocity points
+                                            !! [H ~> m or kg m-2]
+  real, dimension(i0:i1,j0:j1,nz), intent(inout) :: vel   !< The velocity component [L T-1 ~> m s-1]
+  real, dimension(nib,njb,nz),   intent(inout) :: h0  !< Workspace for the source grid thicknesses [H]
+  real, dimension(nib,njb,nz),   intent(inout) :: h1  !< Workspace for the target grid thicknesses [H]
+  real, dimension(nib,njb,nz),   intent(inout) :: u0  !< Workspace for the source grid velocities [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: u1  !< Workspace for the target grid velocities [A]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: h_sub  !< Workspace for the sub-cell widths [H]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: uh_sub !< Workspace for the sub-cell integrals [A H]
+  real, dimension(nib,njb,2*nz+1), intent(inout) :: u_sub  !< Workspace for the sub-cell averages [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: h0_eff !< Workspace for the effective source thicknesses [H]
+  integer, dimension(nib,njb,2*nz+1), intent(inout) :: isub_src !< Workspace for the source cell of sub-cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_start !< Workspace for the first sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_end   !< Workspace for the last sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: isrc_max   !< Workspace for the thickest sub-cell of source cells
+  integer, dimension(nib,njb,nz), intent(inout) :: itgt_start !< Workspace for the first sub-cell of target cells
+  integer, dimension(nib,njb,nz), intent(inout) :: itgt_end   !< Workspace for the last sub-cell of target cells
+  real, dimension(nib,njb,nz),   intent(inout) :: pE1 !< Workspace for the left edge values [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pE2 !< Workspace for the right edge values [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pc1 !< Workspace for the constant coefficients [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: pc2 !< Workspace for the linear coefficients [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: slp !< Workspace for the first guess at the slopes [A]
+  real, dimension(nib,njb,nz),   intent(inout) :: mslp !< Workspace for the monotonized slopes [A]
+  integer, dimension(SZI_(G),SZJ_(G)), intent(inout) :: err !< A code for any error found in each column
+
+  ! Local variables
+  real :: h_from_bot ! The distance between the top of a layer and the seafloor [H ~> m or kg m-2]
+  integer :: isb, ieb, jsb, jeb, iie, jje, ii, jj, i, j, k, ierr
+
+  do jsb=js,je,njb ; do isb=is,ie,nib
+    ieb = min(isb + nib - 1, ie) ; jeb = min(jsb + njb - 1, je)
+    iie = ieb - isb + 1 ; jje = jeb - jsb + 1
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      h0(ii,jj,k) = h_old(i,j,k)
+      h1(ii,jj,k) = h_new(i,j,k)
+      u0(ii,jj,k) = vel(i,j,k)
+    enddo
+
+    do concurrent (jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j, k, ierr, h_from_bot))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      if (mask(i,j) > 0.) then
+        ierr = 0
+        call remap_column_blk(nz, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect, nib, njb, ii, jj, &
+                              h0, u0, h1, u1, h_sub, uh_sub, u_sub, h0_eff, isub_src, isrc_start, isrc_end, &
+                              isrc_max, itgt_start, itgt_end, pE1, pE2, pc1, pc2, slp, mslp, ierr)
+        ! Zero out the velocities in thin layers near the seafloor, as mask_near_bottom_vel does.
+        if (do_bbl_mask) then
+          h_from_bot = 0.0
+          do k=nz,1,-1
+            h_from_bot = h_from_bot + h1(ii,jj,k)
+            if (h_from_bot > h_BBL) exit
+            if (h1(ii,jj,k) <= h_thin) u1(ii,jj,k) = 0.0
+          enddo
+        endif
+        if (ierr /= 0) err(i,j) = ierr
+      endif
+    enddo ! columns of the block
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      if (mask(i,j) > 0.) vel(i,j,k) = u1(ii,jj,k)
+    enddo
+  enddo ; enddo ! blocks
+
+end subroutine remap_vel_blocks
 
 !> Interpolate to find an updated array of values at interfaces after remapping.
 subroutine ALE_remap_interface_vals(CS, G, GV, h_old, h_new, int_val)

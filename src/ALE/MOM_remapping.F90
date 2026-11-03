@@ -16,6 +16,7 @@ use regrid_edge_values, only : edge_values_implicit_h4, edge_values_implicit_h6
 use regrid_edge_values, only : edge_slopes_implicit_h3, edge_slopes_implicit_h5
 use PCM_functions, only : PCM_reconstruction
 use PLM_functions, only : PLM_reconstruction, PLM_boundary_extrapolation
+use PLM_functions, only : PLM_slope_wa, PLM_monotonized_slope, PLM_extrapolate_slope
 use PPM_functions, only : PPM_reconstruction, PPM_boundary_extrapolation
 use PPM_functions, only : PPM_monotonicity
 use PQM_functions, only : PQM_reconstruction, PQM_boundary_extrapolation_v1
@@ -41,6 +42,36 @@ use Recon1d_PPM_H4_2018, only : PPM_H4_2018
 use Recon1d_PLM_WLS, only : PLM_WLS
 
 implicit none ; private
+
+!> Workspace for the blocked remapping that can run on the device.  Its arrays are on the device.
+!! The arrays are pointers so that they can be changed through an intent(in) control structure.
+type, public :: remap_work_type
+  integer :: nib = 0 !< The i-size of the blocks of columns [nondim]
+  integer :: njb = 0 !< The j-size of the blocks of columns [nondim]
+  integer :: nz = 0  !< The number of layers on the source and target grids [nondim]
+  real, pointer, dimension(:,:,:) :: h0 => null() !< Source grid thicknesses [H]
+  real, pointer, dimension(:,:,:) :: h1 => null() !< Target grid thicknesses [H]
+  real, pointer, dimension(:,:,:) :: u0 => null() !< Source grid cell averages [A]
+  real, pointer, dimension(:,:,:) :: u1 => null() !< Target grid cell averages [A]
+  real, pointer, dimension(:,:,:) :: h_sub => null() !< Width of each each sub-cell [H]
+  real, pointer, dimension(:,:,:) :: uh_sub => null() !< Integral of u*h over each sub-cell [A H]
+  real, pointer, dimension(:,:,:) :: u_sub => null() !< Average of u over each sub-cell [A]
+  real, pointer, dimension(:,:,:) :: h0_eff => null() !< Effective thickness of source cells [H]
+  real, pointer, dimension(:,:,:) :: pE1 => null() !< Left edge value of the polynomial in each cell [A]
+  real, pointer, dimension(:,:,:) :: pE2 => null() !< Right edge value of the polynomial in each cell [A]
+  real, pointer, dimension(:,:,:) :: pc1 => null() !< Constant polynomial coefficient in each cell [A]
+  real, pointer, dimension(:,:,:) :: pc2 => null() !< Linear polynomial coefficient in each cell [A]
+  real, pointer, dimension(:,:,:) :: slp => null() !< The first guess at the normalized tracer slopes [A]
+  real, pointer, dimension(:,:,:) :: mslp => null() !< The monotonized normalized tracer slopes [A]
+  integer, pointer, dimension(:,:,:) :: isub_src => null() !< Index of source cell for each sub-cell
+  integer, pointer, dimension(:,:,:) :: isrc_start => null() !< Index of first sub-cell within each source cell
+  integer, pointer, dimension(:,:,:) :: isrc_end => null() !< Index of last sub-cell within each source cell
+  integer, pointer, dimension(:,:,:) :: isrc_max => null() !< Index of thickest sub-cell within each source cell
+  integer, pointer, dimension(:,:,:) :: itgt_start => null() !< Index of first sub-cell within each target cell
+  integer, pointer, dimension(:,:,:) :: itgt_end => null() !< Index of last sub-cell within each target cell
+  integer, pointer, dimension(:,:) :: err => null() !< A code for any error found when remapping each
+                                                    !! column, or 0 for none [nondim]
+end type remap_work_type
 
 !> Container for remapping parameters
 type, public :: remapping_CS ; private
@@ -88,6 +119,8 @@ public remapping_core_h, remapping_core_w
 public initialize_remapping, end_remapping, remapping_set_param, extract_member_remapping_CS
 public remapping_unit_tests, build_reconstructions_1d, average_value_ppoly
 public interpolate_column, reintegrate_column, dzFromH1H2
+public remapping_device_ok, remapping_device_params, remap_column_blk
+public remap_work_init, remap_work_end
 
 ! The following are private parameter constants
 integer, parameter  :: REMAPPING_PCM        = 0 !< O(h^1) remapping scheme
@@ -409,6 +442,452 @@ subroutine remapping_core_w( CS, n0, h0, u0, n1, dx, u1)
                                                      n1, h1, u1, iMethod, uh_err, "remapping_core_w")
 
 end subroutine remapping_core_w
+
+!> Returns true if the remapping control structure describes a remapping that can be done by
+!! remap_column_blk, the blocked PCM or PLM remapping that can run on the device.
+logical function remapping_device_ok(CS, reason)
+  type(remapping_CS), intent(in) :: CS !< Remapping control structure
+  character(len=*), optional, intent(out) :: reason !< If the remapping cannot be done on the device,
+                                       !! a description of why
+
+  remapping_device_ok = ((CS%remapping_scheme == REMAPPING_PLM) .or. (CS%remapping_scheme == REMAPPING_PCM)) .and. &
+                        CS%om4_remap_via_sub_cells .and. (.not.CS%check_reconstruction) .and. &
+                        (.not.CS%check_remapping)
+  if (present(reason)) then
+    reason = ""
+    if ((CS%remapping_scheme /= REMAPPING_PLM) .and. (CS%remapping_scheme /= REMAPPING_PCM)) then
+      reason = "only the PCM and PLM remapping schemes are supported"
+    elseif (.not.CS%om4_remap_via_sub_cells) then
+      reason = "only the OM4 sub-cell remapping algorithm is supported"
+    elseif (CS%check_reconstruction .or. CS%check_remapping) then
+      reason = "the FATAL_CHECK_RECONSTRUCTIONS and FATAL_CHECK_REMAPPING checks are only done on the host"
+    endif
+  endif
+end function remapping_device_ok
+
+!> Returns the settings of the remapping control structure that are used by remap_column_blk
+subroutine remapping_device_params(CS, use_plm, boundary_extrapolation, force_bounds_in_subcell, &
+                                   force_bounds_in_target, h_neglect)
+  type(remapping_CS), intent(in)  :: CS !< Remapping control structure
+  logical,            intent(out) :: use_plm !< True for PLM and false for PCM
+  logical,            intent(out) :: boundary_extrapolation !< If true, extrapolate in boundary cells
+  logical,            intent(out) :: force_bounds_in_subcell !< If true, force sub-cell values to be bounded
+  logical,            intent(out) :: force_bounds_in_target !< If true, force target values to be bounded
+  real,               intent(out) :: h_neglect !< A negligibly small width for the purpose of cell
+                                              !! reconstructions [H ~> m or kg m-2]
+
+  use_plm = (CS%remapping_scheme == REMAPPING_PLM)
+  boundary_extrapolation = CS%boundary_extrapolation
+  force_bounds_in_subcell = CS%force_bounds_in_subcell
+  force_bounds_in_target = CS%force_bounds_in_target
+  h_neglect = CS%h_neglect
+end subroutine remapping_device_params
+
+!> Remaps a column of values u0 on grid h0 to grid h1, for PCM or PLM reconstructions with the OM4 sub-cell
+!! algorithm, as remapping_core_h does, but with all of the working arrays held in blocked arrays
+!! so that it can be called from an offloaded kernel.  The arithmetic is the same as that of
+!! intersect_src_tgt_grids, build_reconstructions_1d, remap_src_to_sub_grid_om4 and
+!! remap_sub_to_tgt_grid_om4, but the error estimates that remapping_core_h can return are not calculated.
+pure subroutine remap_column_blk(n, use_plm, bdry_extrap, force_sub, force_tgt, h_neglect, nib, njb, ii, jj, &
+                            h0, u0, h1, u1, h_sub, uh_sub, u_sub, h0_eff, isub_src, isrc_start, isrc_end, &
+                            isrc_max, itgt_start, itgt_end, pE1, pE2, pc1, pc2, slp, mslp, ierr)
+  !$omp declare target
+  integer, intent(in) :: n    !< Number of cells on the source and target grids
+  logical, intent(in) :: use_plm !< If true use PLM, and otherwise use PCM
+  logical, intent(in) :: bdry_extrap !< If true, extrapolate to the edge values of the boundary cells
+  logical, intent(in) :: force_sub !< If true, force the sub-cell values to be bounded
+  logical, intent(in) :: force_tgt !< If true, force the target cell values to be bounded
+  real,    intent(in) :: h_neglect !< A negligibly small width for the purpose of cell reconstructions [H]
+  integer, intent(in) :: nib  !< The i-size of the blocked workspace arrays
+  integer, intent(in) :: njb  !< The j-size of the blocked workspace arrays
+  integer, intent(in) :: ii   !< The i-index of the column within the block
+  integer, intent(in) :: jj   !< The j-index of the column within the block
+  real, dimension(nib,njb,n), intent(in)    :: h0  !< Cell widths on the source grid [H]
+  real, dimension(nib,njb,n), intent(in)    :: u0  !< Cell averages on the source grid [A]
+  real, dimension(nib,njb,n), intent(in)    :: h1  !< Cell widths on the target grid [H]
+  real, dimension(nib,njb,n), intent(inout) :: u1  !< Cell averages on the target grid [A]
+  real, dimension(nib,njb,2*n+1), intent(inout) :: h_sub  !< Width of each each sub-cell [H]
+  real, dimension(nib,njb,2*n+1), intent(inout) :: uh_sub !< Integral of u*h over each sub-cell [A H]
+  real, dimension(nib,njb,2*n+1), intent(inout) :: u_sub  !< Average of u over each sub-cell [A]
+  real, dimension(nib,njb,n), intent(inout) :: h0_eff !< Effective thickness of source cells [H]
+  integer, dimension(nib,njb,2*n+1), intent(inout) :: isub_src !< Index of source cell for each sub-cell
+  integer, dimension(nib,njb,n), intent(inout) :: isrc_start !< Index of first sub-cell within each source cell
+  integer, dimension(nib,njb,n), intent(inout) :: isrc_end !< Index of last sub-cell within each source cell
+  integer, dimension(nib,njb,n), intent(inout) :: isrc_max !< Index of thickest sub-cell within each source cell
+  integer, dimension(nib,njb,n), intent(inout) :: itgt_start !< Index of first sub-cell within each target cell
+  integer, dimension(nib,njb,n), intent(inout) :: itgt_end !< Index of last sub-cell within each target cell
+  real, dimension(nib,njb,n), intent(inout) :: pE1 !< Left edge value of the polynomial in each cell [A]
+  real, dimension(nib,njb,n), intent(inout) :: pE2 !< Right edge value of the polynomial in each cell [A]
+  real, dimension(nib,njb,n), intent(inout) :: pc1 !< Constant polynomial coefficient in each cell [A]
+  real, dimension(nib,njb,n), intent(inout) :: pc2 !< Linear polynomial coefficient in each cell [A]
+  real, dimension(nib,njb,n), intent(inout) :: slp !< The first guess at the normalized tracer slopes [A]
+  real, dimension(nib,njb,n), intent(inout) :: mslp !< The monotonized normalized tracer slopes [A]
+  integer, intent(inout) :: ierr !< Set to 1 if the sub-cell algorithm finds an inconsistency
+
+  ! Local variables
+  integer :: i_sub ! Index of sub-cell
+  integer :: i0 ! Index into h0, source column
+  integer :: i1 ! Index into h1, target column
+  integer :: i_start0 ! Used to record which sub-cells map to source cells
+  integer :: i_start1 ! Used to record which sub-cells map to target cells
+  integer :: i_max ! Used to record which sub-cell is the largest contribution of a source cell
+  integer :: i0_last_thick_cell ! Last h0 cell with finite thickness
+  integer :: k, n_sub
+  real :: dh_max ! Used to record which sub-cell is the largest contribution of a source cell [H]
+  real :: h0_supply, h1_supply ! The amount of width available for constructing sub-cells [H]
+  real :: dh ! The width of the sub-cell [H]
+  real :: dh0_eff ! Running sum of source cell thickness [H]
+  real :: duh ! The total amount of accumulated stuff (u*h) [A H]
+  real :: xa, xb ! Non-dimensional position within a source cell (0..1) [nondim]
+  real :: u1min, u1max ! Minimum and maximum values of reconstructions [A]
+  real :: u_l, u_r    ! left and right cell averages [A]
+  real :: slope       ! retained PLM slope for a normalized cell width [A]
+  real :: e_r         ! The edge value in the neighboring cell [A]
+  real :: edge        ! The projected edge value in the cell [A]
+  real :: almost_one  ! A value that is slightly smaller than 1 [nondim]
+  logical :: src_has_volume ! True if h0 has not been consumed
+  logical :: tgt_has_volume ! True if h1 has not been consumed
+  logical :: pcm        ! True if piecewise constant reconstructions are used
+
+  n_sub = 2*n + 1
+
+  ! Calculate sub-layer thicknesses and indices connecting sub-layers to source and target grids.
+  ! This is intersect_src_tgt_grids.
+  h0_supply = h0(ii,jj,1)
+  h1_supply = h1(ii,jj,1)
+  src_has_volume = .true.
+  tgt_has_volume = .true.
+  i0 = 1 ; i1 = 1
+  i_start0 = 1 ; i_start1 = 1
+  i_max = 1
+  dh_max = 0.
+  dh0_eff = 0.
+
+  ! First sub-cell is always vanished
+  h_sub(ii,jj,1) = 0.
+  isrc_start(ii,jj,1) = 1
+  isrc_end(ii,jj,1) = 1
+  isrc_max(ii,jj,1) = 1
+  isub_src(ii,jj,1) = 1
+
+  ! Loop over each sub-cell to calculate intersections with source and target grids
+  do i_sub = 2, n_sub
+    dh = min(h0_supply, h1_supply)
+    dh0_eff = dh0_eff + min(dh, h0_supply)
+    isub_src(ii,jj,i_sub) = i0
+    h_sub(ii,jj,i_sub) = dh
+
+    ! For recording the largest sub-cell within a source cell.
+    if (dh >= dh_max) then
+      i_max = i_sub
+      dh_max = dh
+    endif
+
+    if (h0_supply <= h1_supply .and. src_has_volume) then
+      h1_supply = h1_supply - dh
+      isrc_start(ii,jj,i0) = i_start0
+      isrc_end(ii,jj,i0) = i_sub
+      i_start0 = i_sub + 1
+      isrc_max(ii,jj,i0) = i_max
+      i_max = i_sub + 1
+      dh_max = 0.
+      h0_eff(ii,jj,i0) = dh0_eff
+      if (i0 < n) then
+        i0 = i0 + 1
+        h0_supply = h0(ii,jj,i0)
+        dh0_eff = 0.
+      else
+        h0_supply = 0.
+        src_has_volume = .false.
+      endif
+    elseif (h0_supply >= h1_supply .and. tgt_has_volume) then
+      h0_supply = h0_supply - dh
+      itgt_start(ii,jj,i1) = i_start1
+      itgt_end(ii,jj,i1) = i_sub
+      i_start1 = i_sub + 1
+      if (i1 < n) then
+        i1 = i1 + 1
+        h1_supply = h1(ii,jj,i1)
+      else
+        h1_supply = 0.
+        tgt_has_volume = .false.
+      endif
+    elseif (src_has_volume) then
+      ! We ran out of target volume but still have source cells to consume
+      h_sub(ii,jj,i_sub) = h0_supply
+      isrc_start(ii,jj,i0) = i_start0
+      isrc_end(ii,jj,i0) = i_sub
+      i_start0 = i_sub + 1
+      isrc_max(ii,jj,i0) = i_max
+      i_max = i_sub + 1
+      dh_max = 0.
+      h0_eff(ii,jj,i0) = dh0_eff
+      if (i0 < n) then
+        i0 = i0 + 1
+        h0_supply = h0(ii,jj,i0)
+        dh0_eff = 0.
+      else
+        h0_supply = 0.
+        src_has_volume = .false.
+      endif
+    elseif (tgt_has_volume) then
+      ! We ran out of source volume but still have target cells to consume
+      h_sub(ii,jj,i_sub) = h1_supply
+      itgt_start(ii,jj,i1) = i_start1
+      itgt_end(ii,jj,i1) = i_sub
+      i_start1 = i_sub + 1
+      if (i1 < n) then
+        i1 = i1 + 1
+        h1_supply = h1(ii,jj,i1)
+      else
+        h1_supply = 0.
+        tgt_has_volume = .false.
+      endif
+    else
+      ! This should never happen.  The host code stops here.
+      ierr = 1 ; return
+    endif
+  enddo
+
+  ! Build the reconstructions.  This is build_reconstructions_1d with the PCM or PLM methods.
+  pcm = (.not.use_plm) .or. (n <= 1)
+  if (pcm) then
+    do k=1,n
+      pE1(ii,jj,k) = u0(ii,jj,k) ; pE2(ii,jj,k) = u0(ii,jj,k)
+      pc1(ii,jj,k) = u0(ii,jj,k) ; pc2(ii,jj,k) = 0.
+    enddo
+  else
+    almost_one = 1. - epsilon(slope)
+    ! Loop on interior cells
+    do k = 2,n-1
+      slp(ii,jj,k) = PLM_slope_wa(h0(ii,jj,k-1), h0(ii,jj,k), h0(ii,jj,k+1), h_neglect, &
+                                  u0(ii,jj,k-1), u0(ii,jj,k), u0(ii,jj,k+1))
+    enddo
+    ! Boundary cells use PCM. Extrapolation is handled after monotonization.
+    slp(ii,jj,1) = 0.
+    slp(ii,jj,n) = 0.
+    ! This loop adjusts the slope so that edge values are monotonic.
+    do k = 2,n-1
+      mslp(ii,jj,k) = PLM_monotonized_slope( u0(ii,jj,k-1), u0(ii,jj,k), u0(ii,jj,k+1), &
+                                             slp(ii,jj,k-1), slp(ii,jj,k), slp(ii,jj,k+1) )
+    enddo
+    mslp(ii,jj,1) = 0.
+    mslp(ii,jj,n) = 0.
+
+    ! Store and return edge values and polynomial coefficients.
+    pE1(ii,jj,1) = u0(ii,jj,1)
+    pE2(ii,jj,1) = u0(ii,jj,1)
+    pc1(ii,jj,1) = u0(ii,jj,1)
+    pc2(ii,jj,1) = 0.
+    do k = 2,n-1
+      slope = mslp(ii,jj,k)
+      u_l = u0(ii,jj,k) - 0.5 * slope ! Left edge value of cell k
+      u_r = u0(ii,jj,k) + 0.5 * slope ! Right edge value of cell k
+
+      pE1(ii,jj,k) = u_l
+      pE2(ii,jj,k) = u_r
+      pc1(ii,jj,k) = u_l
+      pc2(ii,jj,k) = ( u_r - u_l )
+      ! Check to see if this evaluation of the polynomial at x=1 would be
+      ! monotonic w.r.t. the next cell's edge value. If not, scale back!
+      edge = pc2(ii,jj,k) + pc1(ii,jj,k)
+      e_r = u0(ii,jj,k+1) - 0.5 * sign( mslp(ii,jj,k+1), slp(ii,jj,k+1) )
+      if ( (edge-u0(ii,jj,k))*(e_r-edge)<0.) then
+        pc2(ii,jj,k) = pc2(ii,jj,k) * almost_one
+      endif
+    enddo
+    pE1(ii,jj,n) = u0(ii,jj,n)
+    pE2(ii,jj,n) = u0(ii,jj,n)
+    pc1(ii,jj,n) = u0(ii,jj,n)
+    pc2(ii,jj,n) = 0.
+
+    if ( bdry_extrap ) then
+      ! This is PLM_boundary_extrapolation.  Extrapolate from 2 to 1 to estimate slope
+      slope = - PLM_extrapolate_slope( h0(ii,jj,2), h0(ii,jj,1), h_neglect, u0(ii,jj,2), u0(ii,jj,1) )
+
+      pE1(ii,jj,1) = u0(ii,jj,1) - 0.5 * slope
+      pE2(ii,jj,1) = u0(ii,jj,1) + 0.5 * slope
+
+      pc1(ii,jj,1) = pE1(ii,jj,1)
+      pc2(ii,jj,1) = pE2(ii,jj,1) - pE1(ii,jj,1)
+
+      ! Extrapolate from N-1 to N to estimate slope
+      slope = PLM_extrapolate_slope( h0(ii,jj,n-1), h0(ii,jj,n), h_neglect, u0(ii,jj,n-1), u0(ii,jj,n) )
+
+      pE1(ii,jj,n) = u0(ii,jj,n) - 0.5 * slope
+      pE2(ii,jj,n) = u0(ii,jj,n) + 0.5 * slope
+
+      pc1(ii,jj,n) = pE1(ii,jj,n)
+      pc2(ii,jj,n) = pE2(ii,jj,n) - pE1(ii,jj,n)
+    endif
+  endif
+
+  ! Calculate the average and integral values within each sub-cell.  This is remap_src_to_sub_grid_om4.
+  i0_last_thick_cell = 0
+  do i0 = 1, n
+    if (h0(ii,jj,i0)>0.) i0_last_thick_cell = i0
+  enddo
+
+  xa = 0.
+  dh0_eff = 0.
+  uh_sub(ii,jj,1) = 0.
+  u_sub(ii,jj,1) = pE1(ii,jj,1)
+  do i_sub = 2, n_sub-1
+    dh = h_sub(ii,jj,i_sub)
+    i0 = isub_src(ii,jj,i_sub)
+
+    dh0_eff = dh0_eff + dh ! Cumulative thickness within the source cell
+    if (h0_eff(ii,jj,i0)>0.) then
+      xb = dh0_eff / h0_eff(ii,jj,i0) ! This expression yields xa <= xb <= 1.0
+      xb = min(1., xb) ! This is only needed when the total target column is wider than the source column
+      u_sub(ii,jj,i_sub) = average_value_plm_blk( pcm, u0(ii,jj,i0), pE1(ii,jj,i0), pE2(ii,jj,i0), &
+                                                  pc1(ii,jj,i0), pc2(ii,jj,i0), xa, xb )
+    else ! Vanished cell
+      xb = 1.
+      u_sub(ii,jj,i_sub) = u0(ii,jj,i0)
+    endif
+    if (force_sub) then
+      u_sub(ii,jj,i_sub) = max( u_sub(ii,jj,i_sub), min(pE1(ii,jj,i0), pE2(ii,jj,i0)) )
+      u_sub(ii,jj,i_sub) = min( u_sub(ii,jj,i_sub), max(pE1(ii,jj,i0), pE2(ii,jj,i0)) )
+    endif
+    uh_sub(ii,jj,i_sub) = dh * u_sub(ii,jj,i_sub)
+
+    if (isub_src(ii,jj,i_sub+1) /= i0) then
+      ! If the next sub-cell is in a different source cell, reset the position counters
+      dh0_eff = 0.
+      xa = 0.
+    else
+      xa = xb ! Next integral will start at end of last
+    endif
+  enddo
+  u_sub(ii,jj,n_sub) = pE2(ii,jj,n)         ! This value is only needed when total target column
+  uh_sub(ii,jj,n_sub) = pE2(ii,jj,n) * h_sub(ii,jj,n_sub) ! is wider than the source column
+
+  ! Loop over each source cell substituting the integral/average for the thickest sub-cell (within
+  ! the source cell) with the residual of the source cell integral minus the other sub-cell integrals
+  do i0 = 1, i0_last_thick_cell
+    i_max = isrc_max(ii,jj,i0)
+    dh_max = h_sub(ii,jj,i_max)
+    if (dh_max > 0.) then
+      ! duh will be the sum of sub-cell integrals within the source cell except for the thickest sub-cell.
+      duh = 0.
+      do i_sub = isrc_start(ii,jj,i0), isrc_end(ii,jj,i0)
+        if (i_sub /= i_max) duh = duh + uh_sub(ii,jj,i_sub)
+      enddo
+      uh_sub(ii,jj,i_max) = u0(ii,jj,i0)*h0(ii,jj,i0) - duh
+    endif
+  enddo
+
+  ! Loop over each target cell summing the integrals from sub-cells within the target cell.  This is
+  ! remap_sub_to_tgt_grid_om4.
+  u1min = 0. ; u1max = 0.
+  do i1 = 1, n
+    if (h1(ii,jj,i1) > 0.) then
+      duh = 0. ; dh = 0.
+      i_sub = itgt_start(ii,jj,i1)
+      if (force_tgt) then
+        u1min = u_sub(ii,jj,i_sub)
+        u1max = u_sub(ii,jj,i_sub)
+      endif
+      do i_sub = itgt_start(ii,jj,i1), itgt_end(ii,jj,i1)
+        if (force_tgt) then
+          u1min = min(u1min, u_sub(ii,jj,i_sub))
+          u1max = max(u1max, u_sub(ii,jj,i_sub))
+        endif
+        dh = dh + h_sub(ii,jj,i_sub)
+        duh = duh + uh_sub(ii,jj,i_sub)
+      enddo
+      u1(ii,jj,i1) = duh / dh
+      if (force_tgt) then
+        u1(ii,jj,i1) = max(u1min, min(u1max, u1(ii,jj,i1)))
+      endif
+    else
+      u1(ii,jj,i1) = u_sub(ii,jj,itgt_start(ii,jj,i1))
+    endif
+  enddo
+
+end subroutine remap_column_blk
+
+!> Returns the average value of a PCM or PLM reconstruction within a single source cell between the
+!! non-dimensional positions xa and xb (xa<=xb), with the same arithmetic as average_value_ppoly.
+pure real function average_value_plm_blk(pcm, u0, E1, E2, c1, c2, xa, xb)
+  !$omp declare target
+  logical, intent(in) :: pcm !< If true, the reconstruction is piecewise constant
+  real,    intent(in) :: u0  !< The cell mean [A]
+  real,    intent(in) :: E1  !< The left edge value of the polynomial [A]
+  real,    intent(in) :: E2  !< The right edge value of the polynomial [A]
+  real,    intent(in) :: c1  !< The constant coefficient of the polynomial [A]
+  real,    intent(in) :: c2  !< The linear coefficient of the polynomial [A]
+  real,    intent(in) :: xa  !< Non-dimensional start position within the source cell [nondim]
+  real,    intent(in) :: xb  !< Non-dimensional end position within the source cell [nondim]
+  ! Local variables
+  real :: u_ave  ! The average value of the polynomial over the specified range [A]
+  real :: a_L, a_R, Ya ! Values of the polynomial at the edges and the fractional position from the edge [A]
+
+  if (xb > xa) then
+    if (pcm) then
+      u_ave = u0
+    else
+      u_ave = (                                           &
+          c1                                              &
+        + c2 * 0.5 * ( xb + xa ) )
+    endif
+  else ! dh == 0.
+    if (pcm) then
+      u_ave = c1
+    else
+      a_L = E1
+      a_R = E2
+      Ya = 1. - xa
+      if (xa < 0.5) then
+        u_ave = a_L + xa * ( a_R - a_L )
+      else
+        u_ave = a_R + Ya * ( a_L - a_R )
+      endif
+    endif
+  endif
+  average_value_plm_blk = u_ave
+
+end function average_value_plm_blk
+
+!> Allocate the workspace arrays that are used by the blocked remapping, and put them on the device
+subroutine remap_work_init(ws, nz, nib, njb, isd, ied, jsd, jed)
+  type(remap_work_type), intent(inout) :: ws  !< Workspace for the blocked remapping
+  integer, intent(in) :: nz  !< The number of layers on the source and target grids [nondim]
+  integer, intent(in) :: nib !< The i-size of the blocks of columns [nondim]
+  integer, intent(in) :: njb !< The j-size of the blocks of columns [nondim]
+  integer, intent(in) :: isd !< The starting i-index of the data domain [nondim]
+  integer, intent(in) :: ied !< The ending i-index of the data domain [nondim]
+  integer, intent(in) :: jsd !< The starting j-index of the data domain [nondim]
+  integer, intent(in) :: jed !< The ending j-index of the data domain [nondim]
+
+  ws%nib = nib ; ws%njb = njb ; ws%nz = nz
+  allocate(ws%h0(nib,njb,nz), ws%h1(nib,njb,nz), ws%u0(nib,njb,nz), ws%u1(nib,njb,nz), source=0.0)
+  allocate(ws%h_sub(nib,njb,2*nz+1), ws%uh_sub(nib,njb,2*nz+1), ws%u_sub(nib,njb,2*nz+1), source=0.0)
+  allocate(ws%h0_eff(nib,njb,nz), ws%pE1(nib,njb,nz), ws%pE2(nib,njb,nz), source=0.0)
+  allocate(ws%pc1(nib,njb,nz), ws%pc2(nib,njb,nz), ws%slp(nib,njb,nz), ws%mslp(nib,njb,nz), source=0.0)
+  allocate(ws%isub_src(nib,njb,2*nz+1), source=0)
+  allocate(ws%isrc_start(nib,njb,nz), ws%isrc_end(nib,njb,nz), ws%isrc_max(nib,njb,nz), source=0)
+  allocate(ws%itgt_start(nib,njb,nz), ws%itgt_end(nib,njb,nz), source=0)
+  allocate(ws%err(isd:ied,jsd:jed), source=0)
+  !$omp target enter data map(to: ws%h0, ws%h1, ws%u0, ws%u1, ws%h_sub, ws%uh_sub, ws%u_sub, ws%h0_eff)
+  !$omp target enter data map(to: ws%pE1, ws%pE2, ws%pc1, ws%pc2, ws%slp, ws%mslp, ws%isub_src)
+  !$omp target enter data map(to: ws%isrc_start, ws%isrc_end, ws%isrc_max, ws%itgt_start, ws%itgt_end, ws%err)
+
+end subroutine remap_work_init
+
+!> Deallocate the workspace arrays that are used by the blocked remapping
+subroutine remap_work_end(ws)
+  type(remap_work_type), intent(inout) :: ws  !< Workspace for the blocked remapping
+
+  if (.not.associated(ws%h0)) return
+  !$omp target exit data map(delete: ws%h0, ws%h1, ws%u0, ws%u1, ws%h_sub, ws%uh_sub, ws%u_sub, ws%h0_eff)
+  !$omp target exit data map(delete: ws%pE1, ws%pE2, ws%pc1, ws%pc2, ws%slp, ws%mslp, ws%isub_src)
+  !$omp target exit data map(delete: ws%isrc_start, ws%isrc_end, ws%isrc_max, ws%itgt_start, ws%itgt_end, ws%err)
+  deallocate(ws%h0, ws%h1, ws%u0, ws%u1, ws%h_sub, ws%uh_sub, ws%u_sub, ws%h0_eff)
+  deallocate(ws%pE1, ws%pE2, ws%pc1, ws%pc2, ws%slp, ws%mslp, ws%isub_src)
+  deallocate(ws%isrc_start, ws%isrc_end, ws%isrc_max, ws%itgt_start, ws%itgt_end, ws%err)
+end subroutine remap_work_end
 
 !> Creates polynomial reconstructions of u0 on the source grid h0.
 subroutine build_reconstructions_1d( CS, n0, h0, u0, ppoly_r_coefs, &

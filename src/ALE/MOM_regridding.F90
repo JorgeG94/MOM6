@@ -32,6 +32,7 @@ use regrid_interp, only : set_interp_scheme, set_interp_extrap, set_interp_answe
 
 use coord_zlike,  only : zlike_CS
 use coord_zlike,  only : init_coord_zlike, set_zlike_params, build_zstar_column, end_coord_zlike
+use coord_zlike,  only : get_zlike_params, build_zstar_column_blk
 use coord_sigma,  only : sigma_CS
 use coord_sigma,  only : init_coord_sigma, set_sigma_params, build_sigma_column, end_coord_sigma
 use coord_rho,    only : init_coord_rho, rho_CS, set_rho_params, build_rho_column, end_coord_rho
@@ -47,11 +48,31 @@ use MOM_hybgen_regrid, only : write_Hybgen_coord_file
 implicit none ; private
 
 #include <MOM_memory.h>
+#include "do_concurrent_compat.h"
 
 ! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
 ! consistency testing. These are noted in comments with units like Z, H, L, and T, along with
 ! their mks counterparts with notation like "a velocity [Z T-1 ~> m s-1]".  If the units
 ! vary with the Boussinesq approximation, the Boussinesq variant is given first.
+
+!> Workspace for the blocked z* regridding that can run on the device.  Its arrays are on the device.
+type, public :: regrid_work_type ; private
+  integer :: nib = 0 !< The i-size of the blocks of columns [nondim]
+  integer :: njb = 0 !< The j-size of the blocks of columns [nondim]
+  integer :: nz = 0  !< The number of layers [nondim]
+  real, allocatable, dimension(:,:,:) :: z_old !< Old interface positions of the columns of a block
+                       !! [H ~> m or kg m-2]
+  real, allocatable, dimension(:,:,:) :: z_new !< New interface positions of the columns of a block
+                       !! before time filtering [H ~> m or kg m-2]
+  real, allocatable, dimension(:,:,:) :: dz_col !< Interface motion of the columns of a block
+                       !! [H ~> m or kg m-2]
+  real, allocatable, dimension(:,:,:) :: h_col !< Old layer thicknesses of the columns of a block
+                       !! [H ~> m or kg m-2]
+  real, allocatable, dimension(:) :: coord_res !< Target coordinate resolution of the z-like
+                       !! coordinate [Z ~> m]
+  integer, allocatable, dimension(:,:) :: err !< A code for any error found when regridding each
+                       !! column, or 0 for none [nondim]
+end type regrid_work_type
 
 !> Regridding control structure
 type, public :: regridding_CS ; private
@@ -154,6 +175,7 @@ end type
 
 ! The following routines are visible to the outside world
 public initialize_regridding, end_regridding, regridding_main
+public regrid_work_init, regrid_work_end, regridding_device_ok, regridding_main_zstar_dev
 public regridding_preadjust_reqs, convective_adjustment
 public inflate_vanished_layers_old, check_grid_column
 public set_regrid_params, get_regrid_size, write_regrid_file
@@ -1606,6 +1628,414 @@ subroutine filtered_grid_motion( CS, nk, z_old, z_new, dz_g )
   endif
 
 end subroutine filtered_grid_motion
+
+!> Initialize the workspace arrays that are used by the blocked z* regridding, and put them on the device
+subroutine regrid_work_init(ws, G, GV, niblock, njblock)
+  type(regrid_work_type),  intent(inout) :: ws  !< Workspace for the blocked z* regridding
+  type(ocean_grid_type),   intent(in)    :: G   !< Ocean grid structure
+  type(verticalGrid_type), intent(in)    :: GV  !< Ocean vertical grid structure
+  integer,                 intent(in)    :: niblock !< The i-size of the blocks of columns, or 0 for the
+                                                !! full width of the domain, including the halo that is
+                                                !! regridded [nondim]
+  integer,                 intent(in)    :: njblock !< The j-size of the blocks of columns, or 0 for the
+                                                !! full width of the domain, including the halo that is
+                                                !! regridded [nondim]
+
+  ws%nib = merge(G%iec-G%isc+3, niblock, niblock==0)
+  ws%njb = merge(G%jec-G%jsc+3, njblock, njblock==0)
+  ws%nz = GV%ke
+  allocate(ws%z_old(ws%nib, ws%njb, ws%nz+1), source=0.0)
+  allocate(ws%z_new(ws%nib, ws%njb, ws%nz+1), source=0.0)
+  allocate(ws%dz_col(ws%nib, ws%njb, ws%nz+1), source=0.0)
+  allocate(ws%h_col(ws%nib, ws%njb, ws%nz), source=0.0)
+  allocate(ws%coord_res(ws%nz), source=0.0)
+  allocate(ws%err(G%isd:G%ied, G%jsd:G%jed), source=0)
+  !$omp target enter data map(to: ws%z_old, ws%z_new, ws%dz_col, ws%h_col, ws%coord_res, ws%err)
+
+end subroutine regrid_work_init
+
+!> Deallocate the workspace arrays that are used by the blocked z* regridding
+subroutine regrid_work_end(ws)
+  type(regrid_work_type), intent(inout) :: ws  !< Workspace for the blocked z* regridding
+
+  if (.not.allocated(ws%z_old)) return
+  !$omp target exit data map(delete: ws%z_old, ws%z_new, ws%dz_col, ws%h_col, ws%coord_res, ws%err)
+  deallocate(ws%z_old, ws%z_new, ws%dz_col, ws%h_col, ws%coord_res, ws%err)
+end subroutine regrid_work_end
+
+!> Returns true if the regridding control structure describes a regridding that can be done by
+!! regridding_main_zstar_dev, which is the blocked z* regridding that can run on the device.
+logical function regridding_device_ok(CS, GV, reason)
+  type(regridding_CS),     intent(in) :: CS !< Regridding control structure
+  type(verticalGrid_type), intent(in) :: GV !< Ocean vertical grid structure
+  character(len=*), optional, intent(out) :: reason !< If the regridding cannot be done on the device,
+                                            !! a description of why
+
+  regridding_device_ok = (CS%regridding_scheme == REGRIDDING_ZSTAR) .and. (CS%nk == GV%ke) .and. &
+                         GV%Boussinesq
+  if (regridding_device_ok) regridding_device_ok = associated(CS%zlike_CS)
+  if (present(reason)) then
+    reason = ""
+    if (CS%regridding_scheme /= REGRIDDING_ZSTAR) then
+      reason = "only the ZSTAR regridding coordinate is supported"
+    elseif (CS%nk /= GV%ke) then
+      reason = "the regridded grid must have the same number of layers as the model"
+    elseif (.not.GV%Boussinesq) then
+      reason = "only Boussinesq configurations are supported"
+    elseif (.not.regridding_device_ok) then
+      reason = "the z* coordinate is not set up"
+    endif
+  endif
+end function regridding_device_ok
+
+!> Builds a z* grid and the new layer thicknesses that go with it, in the same way as
+!! the build_zstar_grid and calc_h_new_by_dz calls of regridding_main, but for blocks of columns that
+!! are processed by do concurrent loops, so that the regridding can run on the device.  The arrays
+!! h, h_new and dzInterface must be on the device.  This does not support ice shelves or a layer
+!! count of the regridded grid that differs from that of the model; see regridding_device_ok.
+subroutine regridding_main_zstar_dev(CS, G, GV, US, h, h_new, dzInterface, ws)
+  type(regridding_CS),                        intent(in)    :: CS     !< Regridding control structure
+  type(ocean_grid_type),                      intent(in)    :: G      !< Ocean grid structure
+  type(verticalGrid_type),                    intent(in)    :: GV     !< Ocean vertical grid structure
+  type(unit_scale_type),                      intent(in)    :: US     !< A dimensional unit scaling type
+  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(in)    :: h      !< Current 3D grid obtained after
+                                                                      !! the last time step [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)),  intent(inout) :: h_new  !< New 3D grid consistent with target
+                                                                      !! coordinate [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZK_(GV)+1), intent(inout) :: dzInterface !< The change in position of each
+                                                                      !! interface [H ~> m or kg m-2]
+  type(regrid_work_type),                     intent(inout) :: ws     !< Workspace for the blocked regridding
+
+  ! Local variables
+  real :: nom_depth_H(SZI_(G),SZJ_(G))  ! The nominal ocean depth at each point in thickness units [H ~> m or kg m-2]
+  real :: Z_to_H     ! A conversion factor used by some routines to convert coordinate
+                     ! parameters to depth units [H Z-1 ~> nondim or kg m-3]
+  real :: cs_min_thickness ! The configured minimum thickness of layers [H ~> m or kg m-2]
+  integer :: nk_z    ! The number of layers of the z-like coordinate [nondim]
+  logical :: use_filter ! If true, apply the depth-based time filtering of the grid motion
+  character(len=128) :: mesg    ! A string for error messages
+  integer :: i, j, ierr_code
+
+  Z_to_H = US%Z_to_m * GV%m_to_H  ! Often this is equivalent to GV%Z_to_H.
+
+  call get_zlike_params(CS%zlike_CS, nk_z, cs_min_thickness, ws%coord_res)
+  !$omp target update to(ws%coord_res)
+
+  do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1
+    nom_depth_H(i,j) = max(G%meanSL(i,j) + G%bathyT(i,j), 0.0) * Z_to_H
+  enddo ; enddo
+  !$omp target enter data map(to: nom_depth_H)
+
+  use_filter = CS%use_depth_based_time_filter .or. (CS%old_grid_weight > 0.)
+
+  call zstar_grid_blocks(G, GV%ke, ws%nib, ws%njb, nk_z, cs_min_thickness, ws%coord_res, Z_to_H, &
+                         nom_depth_H, h, h_new, dzInterface, use_filter, CS%use_adjust_interface_motion, &
+                         CS%depth_of_time_filter_shallow, CS%depth_of_time_filter_deep, CS%old_grid_weight, &
+                         CS%min_thickness, ws%z_old, ws%z_new, ws%dz_col, ws%h_col, ws%err)
+
+  !$omp target exit data map(delete: nom_depth_H)
+
+  ! Report any errors found in the columns, in the order in which the host code would have found them.
+  !$omp target update from(ws%err)
+  do ierr_code=1,4
+    do j=G%jsc-1,G%jec+1 ; do i=G%isc-1,G%iec+1
+      if (ws%err(i,j) == ierr_code) then
+        write(mesg, '("at i, j = ",2i6)') i, j
+        select case (ierr_code)
+          case (1) ; call MOM_error(FATAL, "filtered_grid_motion: z_old and z_new use different "//&
+                                    "sign conventions "//trim(mesg))
+          case (2) ; call MOM_error(FATAL, 'MOM_regridding: adjust_interface_motion() - '//&
+                                    'implied h<0 is larger than roundoff! '//trim(mesg))
+          case (3) ; call MOM_error(FATAL, 'MOM_regridding: adjust_interface_motion() - '//&
+                                    'Repeated adjustment for roundoff h<0 failed! '//trim(mesg))
+          case (4) ; call MOM_error(FATAL, "regridding_main: negative thickness encountered "//trim(mesg))
+        end select
+      endif
+    enddo ; enddo
+  enddo ! ierr_code
+
+end subroutine regridding_main_zstar_dev
+
+!> Does the work of regridding_main_zstar_dev, with all of the arrays passed explicitly, for blocks of columns
+subroutine zstar_grid_blocks(G, nz, nib, njb, nk_z, cs_min_thickness, coord_res, Z_to_H, nom_depth_H, &
+                             h, h_new, dzInterface, use_filter, use_adjust, zs, zd, old_grid_weight, &
+                             min_thickness, z_old, z_new, dz_col, h_col, err)
+  type(ocean_grid_type),     intent(in)    :: G   !< Ocean grid structure
+  integer,                   intent(in)    :: nz  !< The number of model layers [nondim]
+  integer,                   intent(in)    :: nib !< The i-size of the blocks of columns [nondim]
+  integer,                   intent(in)    :: njb !< The j-size of the blocks of columns [nondim]
+  integer,                   intent(in)    :: nk_z !< The number of layers of the z-like coordinate [nondim]
+  real,                      intent(in)    :: cs_min_thickness !< The configured minimum thickness of layers
+                                                  !! in the coordinate generator [H ~> m or kg m-2]
+  real, dimension(nk_z),     intent(in)    :: coord_res !< Target coordinate resolution [Z ~> m]
+  real,                      intent(in)    :: Z_to_H !< Conversion from the coordinate resolution to
+                                                  !! thickness units [H Z-1 ~> nondim or kg m-3]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: nom_depth_H !< The nominal ocean depth at each point
+                                                  !! in thickness units [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz),   intent(in)    :: h !< Old layer thicknesses [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz),   intent(inout) :: h_new !< New layer thicknesses [H ~> m or kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),nz+1), intent(inout) :: dzInterface !< The change in interface
+                                                  !! positions [H ~> m or kg m-2]
+  logical,                   intent(in)    :: use_filter !< If true, filter the grid motion in time
+  logical,                   intent(in)    :: use_adjust !< If true, adjust the interface motion to keep
+                                                  !! the layers thicker than the minimum thickness
+  real,                      intent(in)    :: zs  !< Depth above which no time filtering is applied
+                                                  !! [H ~> m or kg m-2]
+  real,                      intent(in)    :: zd  !< Depth below which full time filtering is applied
+                                                  !! [H ~> m or kg m-2]
+  real,                      intent(in)    :: old_grid_weight !< Weight given to the old grid in
+                                                  !! time filtering [nondim]
+  real,                      intent(in)    :: min_thickness !< Minimum thickness allowed when
+                                                  !! regridding [H ~> m or kg m-2]
+  real, dimension(nib,njb,nz+1), intent(inout) :: z_old !< Workspace for the old interface positions
+                                                  !! [H ~> m or kg m-2]
+  real, dimension(nib,njb,nz+1), intent(inout) :: z_new !< Workspace for the new interface positions
+                                                  !! [H ~> m or kg m-2]
+  real, dimension(nib,njb,nz+1), intent(inout) :: dz_col !< Workspace for the interface motion
+                                                  !! [H ~> m or kg m-2]
+  real, dimension(nib,njb,nz),   intent(inout) :: h_col !< Workspace for the old layer thicknesses
+                                                  !! [H ~> m or kg m-2]
+  integer, dimension(SZI_(G),SZJ_(G)), intent(inout) :: err !< A code for any error found in each column
+                                                  !! (0 for none) [nondim]
+
+  ! Local variables
+  real    :: total_thickness ! The total thickness of the water column [H ~> m or kg m-2]
+  integer :: is, ie, js, je, isb, ieb, jsb, jeb, iie, jje, ii, jj, i, j, k, ierr
+
+  is = G%isc-1 ; ie = G%iec+1 ; js = G%jsc-1 ; je = G%jec+1
+
+  do concurrent (k=1:nz+1, j=G%jsd:G%jed, i=G%isd:G%ied)
+    dzInterface(i,j,k) = 0.0
+  enddo
+  do concurrent (j=G%jsd:G%jed, i=G%isd:G%ied)
+    err(i,j) = 0
+  enddo
+
+  do jsb=js,je,njb ; do isb=is,ie,nib
+    ieb = min(isb + nib - 1, ie) ; jeb = min(jsb + njb - 1, je)
+    iie = ieb - isb + 1 ; jje = jeb - jsb + 1
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      h_col(ii,jj,k) = h(i,j,k)
+    enddo
+    do concurrent (k=1:nz+1, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      dz_col(ii,jj,k) = dzInterface(i,j,k)
+    enddo
+
+    do concurrent (jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j, k, ierr, total_thickness))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      ierr = 0
+      if (G%mask2dT(i,j) == 0.) then
+        do k=1,nz+1 ; dz_col(ii,jj,k) = 0. ; enddo
+      else
+        ! Determine water column thickness
+        total_thickness = 0.0
+        do k = 1,nz
+          total_thickness = total_thickness + h_col(ii,jj,k)
+        enddo
+
+        z_old(ii,jj,nz+1) = - nom_depth_H(i,j)
+        do k = nz,1,-1
+          z_old(ii,jj,k) = z_old(ii,jj,k+1) + h_col(ii,jj,k)
+        enddo
+
+        call build_zstar_column_blk(nk_z, cs_min_thickness, coord_res, nom_depth_H(i,j), total_thickness, &
+                                    Z_to_H, nib, njb, ii, jj, z_new)
+
+        ! Calculate the final change in grid position after blending new and old grids
+        if (use_filter) &
+          call filtered_grid_motion_blk(nz, zs, zd, old_grid_weight, nib, njb, ii, jj, &
+                                        z_old, z_new, dz_col, ierr)
+
+        if (use_adjust .and. (ierr == 0)) &
+          call adjust_interface_motion_blk(nz, min_thickness, nib, njb, ii, jj, h_col, dz_col, ierr)
+
+        ! Check for negative thicknesses in the old grid, as the host code does in the computational domain.
+        if ((ierr == 0) .and. (i >= G%isc) .and. (i <= G%iec) .and. (j >= G%jsc) .and. (j <= G%jec)) then
+          do k=1,nz ; if (h_col(ii,jj,k) < 0.0) ierr = 4 ; enddo
+        endif
+      endif
+      err(i,j) = ierr
+    enddo ! columns of the block
+
+    do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      if (G%mask2dT(i,j) > 0.) then
+        h_new(i,j,k) = max( 0., h(i,j,k) + ( dz_col(ii,jj,k) - dz_col(ii,jj,k+1) ) )
+      else
+        h_new(i,j,k) = h(i,j,k)
+      endif
+    enddo
+    do concurrent (k=1:nz+1, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
+      i = isb + ii - 1 ; j = jsb + jj - 1
+      dzInterface(i,j,k) = dz_col(ii,jj,k)
+    enddo
+  enddo ; enddo ! blocks
+
+end subroutine zstar_grid_blocks
+
+!> Returns the change in interface position motion after filtering for a column held in blocked workspace
+!! arrays, with the same arithmetic as filtered_grid_motion, but without any calls to MOM_error.  It
+!! can be called from an offloaded kernel.  The top and bottom interfaces do not move.
+pure subroutine filtered_grid_motion_blk(nk, zs, zd, old_grid_weight, nib, njb, ii, jj, z_old, z_new, dz_g, ierr)
+  !$omp declare target
+  integer, intent(in) :: nk   !< Number of cells in the source and target grids
+  real,    intent(in) :: zs   !< The depth at which the shallow filtering timescale applies [H ~> m or kg m-2]
+  real,    intent(in) :: zd   !< The depth at which the deep filtering timescale applies [H ~> m or kg m-2]
+  real,    intent(in) :: old_grid_weight !< Weight given to the old grid [nondim]
+  integer, intent(in) :: nib  !< The i-size of the blocked workspace arrays
+  integer, intent(in) :: njb  !< The j-size of the blocked workspace arrays
+  integer, intent(in) :: ii   !< The i-index of the column within the block
+  integer, intent(in) :: jj   !< The j-index of the column within the block
+  real, dimension(nib,njb,nk+1), intent(in)    :: z_old !< Old grid position [H ~> m or kg m-2]
+  real, dimension(nib,njb,nk+1), intent(in)    :: z_new !< New grid position before filtering [H ~> m or kg m-2]
+  real, dimension(nib,njb,nk+1), intent(inout) :: dz_g  !< Change in interface positions including
+                                                        !! the effects of filtering [H ~> m or kg m-2]
+  integer, intent(inout) :: ierr !< Set to 1 if z_old and z_new use different sign conventions
+  ! Local variables
+  real :: sgn     ! The sign convention for downward [nondim].
+  real :: dz_tgt  ! The target grid movement of the unfiltered grid [H ~> m or kg m-2]
+  real :: zr1     ! The old grid position of an interface relative to the surface [H ~> m or kg m-2]
+  real :: z_old_k ! The corrected position of the old grid [H ~> m or kg m-2]
+  real :: Aq      ! A temporary variable related to the grid weights [nondim]
+  real :: Bq      ! A temporary variable used in the linear term in the quadratic expression for the
+                  ! filtered grid movement [H ~> m or kg m-2]
+  real :: z0, dz0 ! Together these give the position of an interface relative to a reference hieght
+                  ! that may be adjusted for numerical accuracy in a solver [H ~> m or kg m-2]
+  real :: F0      ! An estimated grid movement  [H ~> m or kg m-2]
+  real :: dzwt    ! The depth range over which the transition in the filtering timescale occurs [H ~> m or kg m-2]
+  real :: Idzwt   ! The Adcroft reciprocal of dzwt [H-1 ~> m-1 or m2 kg-1]
+  real :: wtd     ! The weight given to the new grid when time filtering [nondim]
+  real :: Iwtd    ! The inverse of wtd [nondim]
+  real :: Int_zs  ! A depth integral of the weights in [H ~> m or kg m-2]
+  real :: Int_zd  ! A depth integral of the weights in [H ~> m or kg m-2]
+  real :: dInt_zs_zd ! The depth integral of the weights between the deep and shallow depths in [H ~> m or kg m-2]
+  integer :: k
+
+  if ((z_old(ii,jj,nk+1) - z_old(ii,jj,1)) * (z_new(ii,jj,nk+1) - z_new(ii,jj,1)) < 0.0) then
+    ierr = 1 ; return
+  elseif ((z_old(ii,jj,nk+1) - z_old(ii,jj,1)) * (z_new(ii,jj,nk+1) - z_new(ii,jj,1)) == 0.0) then
+    ! This is a massless column, so do nothing and return.
+    do k=1,nk+1 ; dz_g(ii,jj,k) = 0.0 ; enddo ; return
+  elseif ((z_old(ii,jj,nk+1) - z_old(ii,jj,1)) + (z_new(ii,jj,nk+1) - z_new(ii,jj,1)) > 0.0) then
+    sgn = 1.0
+  else
+    sgn = -1.0
+  endif
+
+  wtd = 1.0 - old_grid_weight
+  Iwtd = 1.0 / wtd
+
+  dzwt = (zd - zs)
+  Idzwt = 0.0 ; if (abs(zd - zs) > 0.0) Idzwt = 1.0 / (zd - zs)
+  dInt_zs_zd = 0.5*(1.0 + Iwtd) * (zd - zs)
+  Aq = 0.5*(Iwtd - 1.0)
+
+  dz_g(ii,jj,1) = 0.0
+  z_old_k = z_old(ii,jj,1)
+  do k = 2,nk+1
+    z_old_k = z_old(ii,jj,k)
+    ! zr1 is positive and increases with depth, and dz_tgt is positive downward.
+    dz_tgt = sgn*(z_new(ii,jj,k) - z_old_k)
+    zr1 = sgn*(z_old_k - z_old(ii,jj,1))
+
+    !   First, handle the two simple and common cases that do not pass through
+    ! the adjustment rate transition zone.
+    if ((zr1 > zd) .and. (zr1 + wtd * dz_tgt > zd)) then
+      dz_g(ii,jj,k) = sgn * wtd * dz_tgt
+    elseif ((zr1 < zs) .and. (zr1 + dz_tgt < zs)) then
+      dz_g(ii,jj,k) = sgn * dz_tgt
+    else
+      ! Find the new value by inverting the equation
+      !   integral(0 to dz_new) Iwt(z) dz = dz_tgt
+      ! This is trivial where Iwt is a constant, and agrees with the two limits above.
+
+      ! Take test values at the transition points to figure out which segment
+      ! the new value will be found in.
+      if (zr1 >= zd) then
+        Int_zd = Iwtd*(zd - zr1)
+        Int_zs = Int_zd - dInt_zs_zd
+      elseif (zr1 <= zs) then
+        Int_zs = (zs - zr1)
+        Int_zd = dInt_zs_zd + (zs - zr1)
+      else
+        Int_zd = (zd - zr1) * (Iwtd*(0.5*(zd+zr1) - zs) + 0.5*(zd - zr1)) * Idzwt
+        Int_zs = (zs - zr1) * (0.5*Iwtd * ((zr1 - zs)) + (zd - 0.5*(zr1+zs))) * Idzwt
+      endif
+
+      if (dz_tgt >= Int_zd) then ! The new location is in the deep, slow region.
+        dz_g(ii,jj,k) = sgn * ((zd-zr1) + wtd*(dz_tgt - Int_zd))
+      elseif (dz_tgt <= Int_zs) then ! The new location is in the shallow region.
+        dz_g(ii,jj,k) = sgn * ((zs-zr1) + (dz_tgt - Int_zs))
+      else  ! We need to solve a quadratic equation for z_new.
+        ! For accuracy, do the integral from the starting depth or the nearest
+        ! edge of the transition region.  The results with each choice are
+        ! mathematically equivalent, but differ in roundoff, and this choice
+        ! should minimize the likelihood of inadvertently overlapping interfaces.
+        if (zr1 <= zs) then ; dz0 = zs-zr1 ; z0 = zs ; F0 = dz_tgt - Int_zs
+        elseif (zr1 >= zd) then ; dz0 = zd-zr1 ; z0 = zd ; F0 = dz_tgt - Int_zd
+        else ; dz0 = 0.0 ; z0 = zr1 ; F0 = dz_tgt ; endif
+
+        Bq = (dzwt + 2.0*Aq*(z0-zs))
+        ! Solve the quadratic: Aq*(zn-z0)**2 + Bq*(zn-z0) - F0*dzwt = 0
+        ! Note that b>=0, and the two terms in the standard form cancel for the right root.
+        dz_g(ii,jj,k) = sgn * (dz0 + 2.0*F0*dzwt / (Bq + sqrt(Bq**2 + 4.0*Aq*F0*dzwt) ))
+      endif
+
+    endif
+  enddo
+
+end subroutine filtered_grid_motion_blk
+
+!> Adjusts the interface motion of a column held in blocked workspace arrays to keep the layers thicker
+!! than their minimum thickness, with the same arithmetic as adjust_interface_motion, but without any
+!! calls to MOM_error or stop.  It can be called from an offloaded kernel.
+pure subroutine adjust_interface_motion_blk(nk, min_thickness, nib, njb, ii, jj, h_old, dz_int, ierr)
+  !$omp declare target
+  integer, intent(in) :: nk   !< Number of layers in the old and new grids
+  real,    intent(in) :: min_thickness !< Minimum thickness allowed when regridding [H ~> m or kg m-2]
+  integer, intent(in) :: nib  !< The i-size of the blocked workspace arrays
+  integer, intent(in) :: njb  !< The j-size of the blocked workspace arrays
+  integer, intent(in) :: ii   !< The i-index of the column within the block
+  integer, intent(in) :: jj   !< The j-index of the column within the block
+  real, dimension(nib,njb,nk),   intent(in)    :: h_old  !< Layer thicknesses on the old grid [H ~> m or kg m-2]
+  real, dimension(nib,njb,nk+1), intent(inout) :: dz_int !< Interface movements, adjusted to keep the thicknesses
+                                                    !! thicker than their minimum value [H ~> m or kg m-2]
+  integer, intent(inout) :: ierr !< Set to 2 if an implied h<0 is larger than roundoff and to 3 if
+                                 !! the adjustment fails
+  ! Local variables
+  real :: h_new   ! A layer thickness on the new grid [H ~> m or kg m-2]
+  real :: eps     ! A tiny relative thickness [nondim]
+  real :: h_err   ! An error tolerance that use used to flag unacceptably large negative layer thicknesses
+                  ! that can not be explained by roundoff errors [H ~> m or kg m-2]
+  integer :: k
+
+  eps = 1. ; eps = epsilon(eps)
+
+  h_err = 0.
+  do k = 1, nk
+    h_err = h_err + max( h_old(ii,jj,k), abs(dz_int(ii,jj,k)), abs(dz_int(ii,jj,k+1)) )*eps
+    h_new = h_old(ii,jj,k) + ( dz_int(ii,jj,k) - dz_int(ii,jj,k+1) )
+    if (h_new < -3.0*h_err) then
+      ierr = 2 ; return
+    endif
+  enddo
+  do k = nk,2,-1
+    h_new = h_old(ii,jj,k) + ( dz_int(ii,jj,k) - dz_int(ii,jj,k+1) )
+    if (h_new<min_thickness) &
+        dz_int(ii,jj,k) = ( dz_int(ii,jj,k+1) - h_old(ii,jj,k) ) + min_thickness ! Implies next h_new = min_thickness
+    h_new = h_old(ii,jj,k) + ( dz_int(ii,jj,k) - dz_int(ii,jj,k+1) )
+    if (h_new<0.) &
+        dz_int(ii,jj,k) = ( 1. - eps ) * ( dz_int(ii,jj,k+1) - h_old(ii,jj,k) ) ! Backup in case min_thickness==0
+    h_new = h_old(ii,jj,k) + ( dz_int(ii,jj,k) - dz_int(ii,jj,k+1) )
+    if (h_new<0.) then
+      ierr = 3 ; return
+    endif
+  enddo
+
+end subroutine adjust_interface_motion_blk
 
 !> Builds a z*-coordinate grid with partial steps (Adcroft and Campin, 2004).
 !! z* is defined as

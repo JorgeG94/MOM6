@@ -61,7 +61,9 @@ use MOM_ALE,                   only : ALE_updateVerticalGridType, ALE_remap_init
 use MOM_ALE,                   only : ALE_remap_tracers, ALE_remap_velocities
 use MOM_ALE,                   only : ALE_remap_set_h_vel, ALE_remap_set_h_vel_via_dz
 use MOM_ALE,                   only : ALE_update_regrid_weights, pre_ALE_diagnostics, ALE_register_diags
-use MOM_ALE,                   only : ALE_set_extrap_boundaries
+use MOM_ALE,                   only : ALE_set_extrap_boundaries, ALE_regrid_on_device, ALE_vel_remap_on_device
+use MOM_ALE,                   only : ALE_report_host_fallback
+use MOM_ALE,                   only : ALE_preale_uv_diags, ALE_new_grid_needed_on_host
 use MOM_ALE_sponge,            only : rotate_ALE_sponge, update_ALE_sponge_field
 use MOM_barotropic,            only : Barotropic_CS
 use MOM_boundary_update,       only : call_OBC_register, OBC_register_end, update_OBC_CS
@@ -935,9 +937,7 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
                            end_time_thermo, .true., Waves=Waves)
 
       if ( CS%use_ALE_algorithm ) then
-        !$omp target update from(u, v, h)
         call ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, CS%tv, dtdia, Time_local)
-        !$omp target update to(u, v, h)
       endif
 
       call post_diabatic_halo_updates(CS, G, GV, US, u, v, h, CS%tv)
@@ -1056,9 +1056,7 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
                            Time_local, .false., Waves=Waves)
 
       if ( CS%use_ALE_algorithm ) then
-        !$omp target update from(u, v, h)
         call ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, CS%tv, dtdia, Time_local)
-        !$omp target update to(u, v, h)
       endif
 
       ! UMW NOTE: These transfers are needed to prevent excessive transfers in the group
@@ -2038,6 +2036,9 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
                                                ! velocity points [H ~> m or kg m-2]
   logical :: PCM_cell(SZI_(G),SZJ_(G),SZK_(GV)) ! If true, PCM remapping should be used in a cell.
   logical :: use_ice_shelf ! Needed for selecting the right ALE interface.
+  logical :: use_dev_regrid ! If true, the new grid is made on the device.
+  logical :: use_dev_vel   ! If true, the velocities are remapped on the device.
+  logical :: h_new_on_host ! If true, the host copies of h_new and dzRegrid are needed.
   logical :: debug_redundant ! If true, check redundant values on PE boundaries when debugging.
   logical :: showCallTree
   type(group_pass_type) :: pass_T_S_h
@@ -2049,6 +2050,35 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   showCallTree = callTree_showQuery()
   if (showCallTree) call callTree_enter("ALE_regridding_and_remapping(), MOM.F90")
   if (CS%debug) call query_debugging_checks(do_redundant=debug_redundant)
+
+  ! Data ownership in this routine:
+  !   - u, v and h are device-resident between the phases of the time step.  h is brought to the host here
+  !     and the other copy is updated once h has been replaced by the new grid.  Where the configuration
+  !     allows it (use_dev_vel), u and v are remapped on the device, and their host copies are only made
+  !     current for the debugging checksums and the pre-ALE diagnostics.  Otherwise u and v are brought to
+  !     the host, remapped there, and sent back.
+  !   - tv%T, tv%S and the other registered tracers are host-owned between the phases of the time step:
+  !     each user maps them only for the duration of its own call.  When the tracers are remapped on the
+  !     device they are moved there and back with explicit updates, and they are not left mapped, as a
+  !     later map(to:) of a mapped array would not copy the current host values.
+  !   - Where the configuration allows it (use_dev_regrid), the new grid h_new and dzRegrid are made on
+  !     the device, and their host copies are only made if something on the host reads them.
+  !   - The thicknesses at velocity points are device arrays when the velocities are remapped there.
+  !   - With REMAP_AUXILIARY_VARS, the auxiliary velocities of the split RK2 dynamics are remapped wherever
+  !     u and v are, those of the alternate split dynamics are remapped on the host, and the shear
+  !     diffusivities and viscosities are remapped on the host, where they are current.
+  call ALE_report_host_fallback(CS%ALE_CSp, CS%OBC, use_ice_shelf, allocated(tv%SpV_avg), &
+                                CS%remap_aux_vars .and. CS%split .and. CS%use_alt_split, CS%tracer_Reg)
+  use_dev_regrid = ALE_regrid_on_device(CS%ALE_CSp) .and. (.not.use_ice_shelf) .and. (.not.allocated(tv%SpV_avg))
+  use_dev_vel = use_dev_regrid .and. ALE_vel_remap_on_device(CS%ALE_CSp, CS%OBC)
+  ! The auxiliary variables of the alternate split dynamics are not on the device.
+  if (CS%remap_aux_vars .and. CS%split .and. CS%use_alt_split) use_dev_vel = .false.
+  !$omp target update from(h)
+  ! The velocities are needed on the host unless they are remapped on the device, and then only by the
+  ! diagnostics and checks that precede the remapping.
+  if ((.not.use_dev_vel) .or. CS%debug .or. ALE_preale_uv_diags(CS%ALE_CSp)) then
+    !$omp target update from(u, v)
+  endif
 
   call cpu_clock_begin(id_clock_remap)
 
@@ -2088,47 +2118,73 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   ! Adjust the target grids for diagnostics, in case there have been thickness adjustments.
   call diag_update_remap_grids(CS%diag)
 
+  ! The halos of h were updated on the host above, so h is sent to the device for the regridding.
+  if (use_dev_regrid) then
+    !$omp target enter data map(alloc: h_new, dzRegrid)
+    !$omp target update to(h)
+  endif
+
   if (use_ice_shelf) then
     call ALE_regrid(G, GV, US, h, h_new, dzRegrid, tv, CS%ALE_CSp, CS%frac_shelf_h, PCM_cell)
   else
-    call ALE_regrid(G, GV, US, h, h_new, dzRegrid, tv, CS%ALE_CSp, PCM_cell=PCM_cell)
+    call ALE_regrid(G, GV, US, h, h_new, dzRegrid, tv, CS%ALE_CSp, PCM_cell=PCM_cell, do_offload=use_dev_regrid)
+  endif
+
+  ! The new grid is needed on the host if the tracers, the velocities or the auxiliary variables at tracer
+  ! points are remapped there, or by the debugging checksums or the remapping diagnostics.
+  h_new_on_host = (.not.use_dev_vel) .or. CS%debug .or. CS%remap_aux_vars
+  if (.not.h_new_on_host) h_new_on_host = ALE_new_grid_needed_on_host(CS%ALE_CSp, CS%tracer_Reg)
+  if (use_dev_regrid .and. h_new_on_host) then
+    !$omp target update from(h_new, dzRegrid)
   endif
 
   if (showCallTree) call callTree_waypoint("new grid generated")
-  if (CS%debug) then  ! Stage checksum: the regridded grid, on the host.
-    call hchksum(h_new, "ALE stage 1 (regrid) h_new", G%HI, haloshift=1, unscale=GV%H_to_MKS)
-    call hchksum(dzRegrid, "ALE stage 1 (regrid) dzRegrid", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+  if (CS%debug) then
+    call hchksum(h_new, "ALE regridded h_new", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+    call hchksum(dzRegrid, "ALE regridded dzRegrid", G%HI, haloshift=1, unscale=GV%H_to_MKS)
   endif
-  ! Remap all variables from the old grid h onto the new grid h_new
-  call ALE_remap_tracers(CS%ALE_CSp, G, GV, h, h_new, CS%tracer_Reg, showCallTree, dtdia, PCM_cell)
-  if (CS%debug) then  ! Stage checksum: the remapped tracers, on the host.
-    if (associated(tv%T)) call hchksum(tv%T, "ALE stage 2 (tracer remap) T", G%HI, haloshift=0, unscale=US%C_to_degC)
-    if (associated(tv%S)) call hchksum(tv%S, "ALE stage 2 (tracer remap) S", G%HI, haloshift=0, unscale=US%S_to_ppt)
+  ! Remap all variables from the old grid h onto the new grid h_new.  The host copies of the tracers are
+  ! current on return, wherever they were remapped.
+  call ALE_remap_tracers(CS%ALE_CSp, G, GV, h, h_new, CS%tracer_Reg, showCallTree, dtdia, PCM_cell, &
+                         do_offload=use_dev_regrid)
+  if (CS%debug) then
+    if (associated(tv%T)) call hchksum(tv%T, "ALE remapped T", G%HI, haloshift=0, unscale=US%C_to_degC)
+    if (associated(tv%S)) call hchksum(tv%S, "ALE remapped S", G%HI, haloshift=0, unscale=US%S_to_ppt)
   endif
 
-  ! Determine the old and new grid thicknesses at velocity points.
-  call ALE_remap_set_h_vel(CS%ALE_CSp, G, GV, h, h_old_u, h_old_v, CS%OBC, debug=showCallTree)
+  ! Determine the old and new grid thicknesses at velocity points, and remap the velocity components.
+  ! When this is done on the device, the thicknesses at velocity points are only made there.
+  if (use_dev_vel) then
+    !$omp target enter data map(alloc: h_old_u, h_old_v, h_new_u, h_new_v)
+  endif
+  call ALE_remap_set_h_vel(CS%ALE_CSp, G, GV, h, h_old_u, h_old_v, CS%OBC, debug=showCallTree, do_offload=use_dev_vel)
   if (CS%remap_uv_using_old_alg) then
-    call ALE_remap_set_h_vel_via_dz(CS%ALE_CSp, G, GV, h_new, h_new_u, h_new_v, CS%OBC, h, dzRegrid, showCallTree)
+    call ALE_remap_set_h_vel_via_dz(CS%ALE_CSp, G, GV, h_new, h_new_u, h_new_v, CS%OBC, h, dzRegrid, &
+                                    showCallTree, do_offload=use_dev_vel)
   else
-    call ALE_remap_set_h_vel(CS%ALE_CSp, G, GV, h_new, h_new_u, h_new_v, CS%OBC, debug=showCallTree)
+    call ALE_remap_set_h_vel(CS%ALE_CSp, G, GV, h_new, h_new_u, h_new_v, CS%OBC, debug=showCallTree, &
+                             do_offload=use_dev_vel)
   endif
-
-  ! Remap the velocity components.
   call ALE_remap_velocities(CS%ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u, v, showCallTree, &
-                            dtdia, allow_preserve_variance=.true.)
-  if (CS%debug) &  ! Stage checksum: the remapped velocities, on the host.
-    call uvchksum("ALE stage 3 (velocity remap) u, v", u, v, G%HI, haloshift=0, unscale=US%L_T_to_m_s)
+                            dtdia, allow_preserve_variance=.true., do_offload=use_dev_vel)
+  if (CS%remap_aux_vars .and. CS%split .and. (.not.CS%use_alt_split)) &
+    call remap_dyn_split_RK2_aux_vars(G, GV, CS%dyn_split_RK2_CSp, h_old_u, h_old_v, h_new_u, h_new_v, &
+                                      CS%ALE_CSp, do_offload=use_dev_vel)
+  if (use_dev_vel) then
+    !$omp target exit data map(delete: h_old_u, h_old_v, h_new_u, h_new_v)
+    if (CS%debug) then
+      !$omp target update from(u, v)
+    endif
+  endif
+  if (CS%debug) &
+    call uvchksum("ALE remapped u, v", u, v, G%HI, haloshift=0, unscale=US%L_T_to_m_s)
 
   if (allocated(tv%SpV_avg)) tv%valid_SpV_halo = -1   ! Record that SpV_avg is no longer valid.
 
   if (CS%remap_aux_vars) then
-    if (CS%split .and. CS%use_alt_split) then
+    if (CS%split .and. CS%use_alt_split) &
       call remap_dyn_split_RK2b_aux_vars(G, GV, CS%dyn_split_RK2b_CSp, h_old_u, h_old_v, &
                                          h_new_u, h_new_v, CS%ALE_CSp)
-    elseif (CS%split) then
-      call remap_dyn_split_RK2_aux_vars(G, GV, CS%dyn_split_RK2_CSp, h_old_u, h_old_v, h_new_u, h_new_v, CS%ALE_CSp)
-    endif
 
     if (associated(CS%OBC) .or. associated(CS%visc%Kv_shear_Bu)) then
       call pass_var(h, G%Domain, complete=.false.)
@@ -2138,16 +2194,35 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
     if (associated(CS%OBC)) &
       call remap_OBC_fields(G, GV, h, h_new, CS%OBC, PCM_cell=PCM_cell)
 
+    ! The shear diffusivities and viscosities are remapped on the host.  Their host copies are the current
+    ! ones here (set_diffusivity brings them back from the device and the energetic PBL modifies them on the
+    ! host), so no transfer is needed.  The vertical viscosity sends Kv_shear and Kv_shear_Bu to the device
+    ! before using them, and the device copy of Kd_shear is not read before set_diffusivity overwrites it.
     call remap_vertvisc_aux_vars(G, GV, CS%visc, h, h_new, CS%ALE_CSp, CS%OBC)
     if (associated(CS%visc%Kv_shear)) &
       call pass_var(CS%visc%Kv_shear, G%Domain, To_All+Omit_Corners, clock=id_clock_pass, halo=1)
   endif
 
   ! Replace the old grid with new one.  All remapping must be done by this point in the code.
-  !$OMP parallel do default(shared)
-  do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
-    h(i,j,k) = h_new(i,j,k)
-  enddo ; enddo ; enddo
+  if (use_dev_regrid .and. (.not.h_new_on_host)) then
+    ! There is no host copy of h_new, so h is replaced on the device and then brought to the host.
+    do concurrent (k=1:nz, j=js-1:je+1, i=is-1:ie+1)
+      h(i,j,k) = h_new(i,j,k)
+    enddo
+    !$omp target update from(h)
+  else
+    !$OMP parallel do default(shared)
+    do k=1,nz ; do j=js-1,je+1 ; do i=is-1,ie+1
+      h(i,j,k) = h_new(i,j,k)
+    enddo ; enddo ; enddo
+    !$omp target update to(h)
+  endif
+  if (.not.use_dev_vel) then
+    !$omp target update to(u, v)
+  endif
+  if (use_dev_regrid) then
+    !$omp target exit data map(delete: h_new, dzRegrid)
+  endif
 
   if (showCallTree) call callTree_waypoint("finished ALE_regrid (ALE_regridding_and_remapping)")
   call cpu_clock_end(id_clock_ALE)

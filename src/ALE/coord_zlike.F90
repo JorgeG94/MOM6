@@ -24,6 +24,7 @@ type, public :: zlike_CS ; private
 end type zlike_CS
 
 public init_coord_zlike, set_zlike_params, build_zstar_column, end_coord_zlike
+public get_zlike_params, build_zstar_column_blk
 
 contains
 
@@ -144,5 +145,70 @@ subroutine build_zstar_column(CS, depth, total_thickness, zInterface, &
   endif
 
 end subroutine build_zstar_column
+
+!> Returns the parameters of a z-like coordinate that are needed to build columns on the device
+subroutine get_zlike_params(CS, nk, min_thickness, coordinateResolution)
+  type(zlike_CS),       pointer     :: CS !< Coordinate control structure
+  integer,              intent(out) :: nk !< Number of levels to be generated
+  real,                 intent(out) :: min_thickness !< Minimum allowed thickness, in the units that are
+                                          !! used in calls to build_zstar_column_blk [H ~> m or kg m-2]
+  real, dimension(:),   intent(out) :: coordinateResolution !< Target coordinate resolution [Z ~> m]
+
+  if (.not. associated(CS)) call MOM_error(FATAL, "get_zlike_params: CS not associated")
+  nk = CS%nk
+  min_thickness = CS%min_thickness
+  coordinateResolution(1:CS%nk) = CS%coordinateResolution(1:CS%nk)
+end subroutine get_zlike_params
+
+!> Builds a z* coordinate with a minimum thickness in one column of blocked workspace arrays, without
+!! the optional arguments (so no rigid top) and without any use of derived types, so that it can be
+!! called from an offloaded kernel.  The arithmetic is identical to that of build_zstar_column.
+pure subroutine build_zstar_column_blk(nk, cs_min_thickness, coordRes, depth, total_thickness, z_scale, &
+                                  nib, njb, ii, jj, zInterface)
+  !$omp declare target
+  integer, intent(in) :: nk  !< Number of levels to be generated
+  real,    intent(in) :: cs_min_thickness !< Configured minimum thickness of layers [H ~> m or kg m-2]
+  real, dimension(nk), intent(in) :: coordRes !< Target coordinate resolution [Z ~> m]
+  real,    intent(in) :: depth !< Depth of ocean bottom (positive downward) [H ~> m or kg m-2]
+  real,    intent(in) :: total_thickness !< Column thickness (positive definite) [H ~> m or kg m-2]
+  real,    intent(in) :: z_scale !< Scaling factor from the target coordinate resolution
+                                 !! to desired units for zInterface [H Z-1 ~> 1 or kg m-3]
+  integer, intent(in) :: nib !< The i-size of the blocked workspace arrays
+  integer, intent(in) :: njb !< The j-size of the blocked workspace arrays
+  integer, intent(in) :: ii  !< The i-index of the column within the block
+  integer, intent(in) :: jj  !< The j-index of the column within the block
+  real, dimension(nib,njb,nk+1), intent(inout) :: zInterface !< Absolute positions of interfaces
+                                 !! in the units of depth [H ~> m or kg m-2]
+  ! Local variables
+  real :: eta   ! Free surface height [H ~> m or kg m-2]
+  real :: stretching ! A stretching factor for the coordinate [nondim]
+  real :: dh, min_thickness, z0_top ! Thicknesses or heights [H ~> m or kg m-2]
+  integer :: k
+
+  min_thickness = min( cs_min_thickness, total_thickness/real(nk) )
+  z0_top = 0.
+
+  ! Position of free-surface
+  eta = total_thickness - depth
+
+  stretching = total_thickness / ( depth + z0_top )
+
+  ! Integrate down from the top for a notional new grid, ignoring topography
+  zInterface(ii,jj,1) = eta
+  do k = 1,nk
+    dh = stretching * coordRes(k)*z_scale ! Notional grid spacing
+    zInterface(ii,jj,k+1) = zInterface(ii,jj,k) - dh
+  enddo
+
+  ! Integrating up from the bottom adjusting interface position to accommodate
+  ! inflating layers without disturbing the interface above
+  zInterface(ii,jj,nk+1) = -depth
+  do k = nk,1,-1
+    if ( zInterface(ii,jj,k) < (zInterface(ii,jj,k+1) + min_thickness) ) then
+      zInterface(ii,jj,k) = zInterface(ii,jj,k+1) + min_thickness
+    endif
+  enddo
+
+end subroutine build_zstar_column_blk
 
 end module coord_zlike
