@@ -2095,8 +2095,16 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   endif
 
   if (showCallTree) call callTree_waypoint("new grid generated")
+  if (CS%debug) then  ! Stage checksum: the regridded grid, on the host.
+    call hchksum(h_new, "ALE stage 1 (regrid) h_new", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+    call hchksum(dzRegrid, "ALE stage 1 (regrid) dzRegrid", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+  endif
   ! Remap all variables from the old grid h onto the new grid h_new
   call ALE_remap_tracers(CS%ALE_CSp, G, GV, h, h_new, CS%tracer_Reg, showCallTree, dtdia, PCM_cell)
+  if (CS%debug) then  ! Stage checksum: the remapped tracers, on the host.
+    if (associated(tv%T)) call hchksum(tv%T, "ALE stage 2 (tracer remap) T", G%HI, haloshift=0, unscale=US%C_to_degC)
+    if (associated(tv%S)) call hchksum(tv%S, "ALE stage 2 (tracer remap) S", G%HI, haloshift=0, unscale=US%S_to_ppt)
+  endif
 
   ! Determine the old and new grid thicknesses at velocity points.
   call ALE_remap_set_h_vel(CS%ALE_CSp, G, GV, h, h_old_u, h_old_v, CS%OBC, debug=showCallTree)
@@ -2109,6 +2117,8 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   ! Remap the velocity components.
   call ALE_remap_velocities(CS%ALE_CSp, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u, v, showCallTree, &
                             dtdia, allow_preserve_variance=.true.)
+  if (CS%debug) &  ! Stage checksum: the remapped velocities, on the host.
+    call uvchksum("ALE stage 3 (velocity remap) u, v", u, v, G%HI, haloshift=0, unscale=US%L_T_to_m_s)
 
   if (allocated(tv%SpV_avg)) tv%valid_SpV_halo = -1   ! Record that SpV_avg is no longer valid.
 
