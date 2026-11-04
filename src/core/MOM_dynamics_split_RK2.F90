@@ -1455,7 +1455,7 @@ subroutine remap_dyn_split_RK2_aux_vars(G, GV, CS, h_old_u, h_old_v, h_new_u, h_
                                                               !! blocked routines and have their halos updated
                                                               !! there, and the host copies are not changed.  The
                                                               !! caller must have checked that this is supported
-                                                              !! with ALE_vel_remap_on_device.
+                                                              !! with ALE_on_device.
 
   if (.not.CS%remap_aux) return
 

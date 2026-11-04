@@ -61,8 +61,7 @@ use MOM_ALE,                   only : ALE_updateVerticalGridType, ALE_remap_init
 use MOM_ALE,                   only : ALE_remap_tracers, ALE_remap_velocities
 use MOM_ALE,                   only : ALE_remap_set_h_vel, ALE_remap_set_h_vel_via_dz
 use MOM_ALE,                   only : ALE_update_regrid_weights, pre_ALE_diagnostics, ALE_register_diags
-use MOM_ALE,                   only : ALE_set_extrap_boundaries, ALE_regrid_on_device, ALE_vel_remap_on_device
-use MOM_ALE,                   only : ALE_report_host_fallback
+use MOM_ALE,                   only : ALE_set_extrap_boundaries, ALE_on_device, ALE_check_device_support
 use MOM_ALE,                   only : ALE_preale_uv_diags, ALE_new_grid_needed_on_host
 use MOM_ALE_sponge,            only : rotate_ALE_sponge, update_ALE_sponge_field
 use MOM_barotropic,            only : Barotropic_CS
@@ -1307,7 +1306,11 @@ subroutine step_MOM_dynamics(forces, p_surf_begin, p_surf_end, dt, dt_tr_adv, &
   call cpu_clock_begin(id_clock_dynamics)
 
   call cpu_clock_begin(id_clock_stoch)
-  if (CS%use_stochastic_EOS) call MOM_stoch_eos_run(G, u, v, dt, Time_local, CS%stoch_eos_CS)
+  if (CS%use_stochastic_EOS) then
+    ! MOM_stoch_eos_run reads the host copies of the velocities, which the device updates.
+    !$omp target update from(u, v)
+    call MOM_stoch_eos_run(G, u, v, dt, Time_local, CS%stoch_eos_CS)
+  endif
   call cpu_clock_end(id_clock_stoch)
 
   call cpu_clock_begin(id_clock_varT)
@@ -2053,26 +2056,26 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
 
   ! Data ownership in this routine:
   !   - u, v and h are device-resident between the phases of the time step.  h is brought to the host here
-  !     and the other copy is updated once h has been replaced by the new grid.  Where the configuration
-  !     allows it (use_dev_vel), u and v are remapped on the device, and their host copies are only made
-  !     current for the debugging checksums and the pre-ALE diagnostics.  Otherwise u and v are brought to
-  !     the host, remapped there, and sent back.
+  !     and the other copy is updated once h has been replaced by the new grid.  On GPU builds (use_dev_vel),
+  !     u and v are remapped on the device, and their host copies are only made current for the debugging
+  !     checksums and the pre-ALE diagnostics.  Otherwise u and v are brought to the host, remapped there,
+  !     and sent back.
   !   - tv%T, tv%S and the other registered tracers are host-owned between the phases of the time step:
   !     each user maps them only for the duration of its own call.  When the tracers are remapped on the
   !     device they are moved there and back with explicit updates, and they are not left mapped, as a
   !     later map(to:) of a mapped array would not copy the current host values.
-  !   - Where the configuration allows it (use_dev_regrid), the new grid h_new and dzRegrid are made on
-  !     the device, and their host copies are only made if something on the host reads them.
+  !   - On GPU builds (use_dev_regrid), the new grid h_new and dzRegrid are made on the device, and their
+  !     host copies are only made if something on the host reads them.
   !   - The thicknesses at velocity points are device arrays when the velocities are remapped there.
   !   - With REMAP_AUXILIARY_VARS, the auxiliary velocities of the split RK2 dynamics are remapped wherever
-  !     u and v are, those of the alternate split dynamics are remapped on the host, and the shear
-  !     diffusivities and viscosities are remapped on the host, where they are current.
-  call ALE_report_host_fallback(CS%ALE_CSp, CS%OBC, use_ice_shelf, allocated(tv%SpV_avg), &
+  !     u and v are, those of the alternate split dynamics are remapped on the host (not supported on GPU
+  !     builds), and the shear diffusivities and viscosities are remapped on the host, where they are current.
+  ! On GPU builds the regridding and remapping are done on the device, and ALE_check_device_support stops
+  ! the model if this configuration is not supported there.  Host-only builds use the host code.
+  call ALE_check_device_support(CS%ALE_CSp, GV, CS%OBC, use_ice_shelf, allocated(tv%SpV_avg), &
                                 CS%remap_aux_vars .and. CS%split .and. CS%use_alt_split, CS%tracer_Reg)
-  use_dev_regrid = ALE_regrid_on_device(CS%ALE_CSp) .and. (.not.use_ice_shelf) .and. (.not.allocated(tv%SpV_avg))
-  use_dev_vel = use_dev_regrid .and. ALE_vel_remap_on_device(CS%ALE_CSp, CS%OBC)
-  ! The auxiliary variables of the alternate split dynamics are not on the device.
-  if (CS%remap_aux_vars .and. CS%split .and. CS%use_alt_split) use_dev_vel = .false.
+  use_dev_regrid = ALE_on_device(CS%ALE_CSp)
+  use_dev_vel = use_dev_regrid
   !$omp target update from(h)
   ! The velocities are needed on the host unless they are remapped on the device, and then only by the
   ! diagnostics and checks that precede the remapping.

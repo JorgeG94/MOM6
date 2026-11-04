@@ -111,14 +111,14 @@ type, public :: ALE_CS ; private
   logical :: debug   !< If true, write verbose checksums for debugging purposes.
   logical :: show_call_tree !< For debugging
 
-  logical :: fallback_reported = .false. !< If true, the run-time reasons that the ALE is done on the
-                            !! host have been reported.
-  logical :: regrid_on_device = .false. !< If true, the regridding in this configuration is done by the
-                            !! blocked routines that can run on the device.  This is set at initialization.
-  logical :: remap_on_device = .false. !< If true, the tracer remapping in this configuration is done by the
-                            !! blocked routines that can run on the device.  This is set at initialization.
-  logical :: vel_remap_on_device = .false. !< If true, the velocity remapping in this configuration is done by
-                            !! the blocked routines that can run on the device.  This is set at initialization.
+  logical :: device_checked = .false. !< If true, ALE_check_device_support has checked this configuration.
+  logical :: regrid_on_device = .false. !< If true, the regridding in the time stepping is done by the blocked
+                            !! routines on the device.  This is only true on GPU builds, which stop with a
+                            !! fatal error if the configuration is not supported there.
+  logical :: remap_on_device = .false. !< If true, the tracer remapping in the time stepping is done by the
+                            !! blocked routines on the device.  This is only true on GPU builds.
+  logical :: vel_remap_on_device = .false. !< If true, the velocity remapping in the time stepping is done by
+                            !! the blocked routines on the device.  This is only true on GPU builds.
   integer :: niblock = 0    !< The i-direction block size used to hold the per-column working arrays in
                             !! the ALE calculations that can run on the device [nondim]
   integer :: njblock = 0    !< The j-direction block size used to hold the per-column working arrays in
@@ -152,7 +152,7 @@ end type
 public ALE_init
 public ALE_end
 public ALE_regrid
-public ALE_regrid_on_device, ALE_vel_remap_on_device, ALE_preale_uv_diags, ALE_report_host_fallback
+public ALE_on_device, ALE_preale_uv_diags, ALE_check_device_support
 public ALE_new_grid_needed_on_host
 public ALE_offline_inputs
 public ALE_regrid_accelerated
@@ -202,14 +202,12 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
   ! Local variables
   character(len=40) :: mdl = "MOM_ALE" ! This module's name.
   character(len=80) :: string, vel_string ! Temporary strings
-  character(len=160) :: reason ! The reason that a calculation cannot be done on the device
   real              :: filter_shallow_depth, filter_deep_depth ! Depth ranges of filtering [H ~> m or kg m-2]
   integer :: default_answer_date  ! The default setting for the various ANSWER_DATE flags.
   logical           :: check_reconstruction
   logical           :: check_remapping
   logical           :: force_bounds_in_subcell
   logical           :: local_logical
-  integer           :: default_niblock, default_njblock ! Default block sizes [nondim]
   logical           :: remap_boundary_extrap
   logical           :: init_boundary_extrap
   logical           :: om4_remap_via_sub_cells
@@ -374,45 +372,33 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
                  "If true, write out verbose debugging data.", &
                  default=.false., debuggingParam=.true.)
 
+  ! On GPU builds, the regridding and remapping in the time stepping are done on the device by the
+  ! blocked routines, and ALE_check_device_support stops the model if the configuration needs anything that
+  ! they do not support.  Host-only builds use the host code throughout.  The flags set here record whether
+  ! the blocked routines support this configuration, so that their workspaces are only made when usable.
 #ifdef __NVCOMPILER_OPENMP_GPU
-  default_niblock = 0 ; default_njblock = 0
-#else
-  default_niblock = 0 ; default_njblock = 1
+  CS%regrid_on_device = regridding_device_ok(CS%regridCS, GV)
+  CS%remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%remapCS)
+  CS%vel_remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%vel_remapCS)
 #endif
+
   call get_param(param_file, mdl, "ALE_NIBLOCK", CS%niblock, &
                  "The i-direction block size used to hold the per-column working arrays in the "//&
-                 "ALE regridding and remapping calculations that can run on the device.  The "//&
-                 "default 0 setting dynamically uses the full computational domain width.", &
-                 default=default_niblock, layoutParam=.true.)
+                 "ALE regridding and remapping on the device.  The default 0 setting dynamically "//&
+                 "uses the full computational domain width plus one halo point on each side.", &
+                 default=0, layoutParam=.true., do_not_log=.not.CS%regrid_on_device)
   call get_param(param_file, mdl, "ALE_NJBLOCK", CS%njblock, &
                  "The j-direction block size used to hold the per-column working arrays in the "//&
-                 "ALE regridding and remapping calculations that can run on the device.  The "//&
-                 "default 0 setting dynamically uses the full computational domain width.", &
-                 default=default_njblock, layoutParam=.true.)
-  if (CS%niblock < 0) call MOM_error(FATAL, "ALE_NIBLOCK must be nonnegative; "//&
+                 "ALE regridding and remapping on the device.  The default 0 setting dynamically "//&
+                 "uses the full computational domain width plus one halo point on each side.", &
+                 default=0, layoutParam=.true., do_not_log=.not.CS%regrid_on_device)
+  if (CS%niblock < 0) call MOM_error(FATAL, "ALE_init: ALE_NIBLOCK must be nonnegative; "//&
                                      "use 0 to select the full computational domain.")
-  if (CS%njblock < 0) call MOM_error(FATAL, "ALE_NJBLOCK must be nonnegative; "//&
+  if (CS%njblock < 0) call MOM_error(FATAL, "ALE_init: ALE_NJBLOCK must be nonnegative; "//&
                                      "use 0 to select the full computational domain.")
 
-  ! The blocked routines that can run on the device support only some regridding and remapping
-  ! configurations, and the others use the host code.  The tracers and velocities are only remapped by the
-  ! blocked routines if the new grid is made by them, and both share the remapping workspace.
-  CS%regrid_on_device = regridding_device_ok(CS%regridCS, GV, reason)
-#ifdef __NVCOMPILER_OPENMP_GPU
-  if (.not.CS%regrid_on_device) call MOM_error(WARNING, "ALE_init: The ALE regridding, and so all of the "//&
-                    "ALE remapping, will run on the host, not the device: "//trim(reason)//".")
-#endif
+  ! The tracers and velocities share the remapping workspace.
   if (CS%regrid_on_device) call regrid_work_init(CS%regrid_ws, G, GV, CS%niblock, CS%njblock)
-  CS%remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%remapCS, reason)
-#ifdef __NVCOMPILER_OPENMP_GPU
-  if (CS%regrid_on_device .and. (.not.CS%remap_on_device)) call MOM_error(WARNING, &
-                    "ALE_init: The ALE tracer remapping will run on the host, not the device: "//trim(reason)//".")
-#endif
-  CS%vel_remap_on_device = CS%regrid_on_device .and. remapping_device_ok(CS%vel_remapCS, reason)
-#ifdef __NVCOMPILER_OPENMP_GPU
-  if (CS%regrid_on_device .and. (.not.CS%vel_remap_on_device)) call MOM_error(WARNING, &
-                    "ALE_init: The ALE velocity remapping will run on the host, not the device: "//trim(reason)//".")
-#endif
   if (CS%remap_on_device .or. CS%vel_remap_on_device) &
     call remap_work_init(CS%remap_ws, GV%ke, merge(G%iec-G%isc+3, CS%niblock, CS%niblock==0), &
                          merge(G%jec-G%jsc+3, CS%njblock, CS%njblock==0), G%isd, G%ied, G%jsd, G%jed)
@@ -423,13 +409,16 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
   if (CS%show_call_tree) call callTree_leave("ALE_init()")
 end subroutine ALE_init
 
-!> Returns true if the regridding is to be done on the device by the blocked routines.
-logical function ALE_regrid_on_device(CS)
+!> Returns true if the regridding and remapping in the time stepping are done on the device by the
+!! blocked routines.  This is true on GPU builds, after ALE_check_device_support has confirmed that the
+!! configuration is supported there, and false on host-only builds.
+logical function ALE_on_device(CS)
   type(ALE_CS), pointer :: CS !< Module control structure
 
-  ALE_regrid_on_device = .false.
-  if (associated(CS)) ALE_regrid_on_device = CS%regrid_on_device
-end function ALE_regrid_on_device
+  ALE_on_device = .false.
+  if (associated(CS)) ALE_on_device = CS%regrid_on_device .and. CS%remap_on_device .and. &
+                                      CS%vel_remap_on_device
+end function ALE_on_device
 
 !> Returns true if the tracers can be remapped on the device by the blocked routines in the current
 !! configuration, given that the new grid was made there.  The tracer tendency diagnostics, which are only
@@ -465,10 +454,12 @@ logical function ALE_new_grid_needed_on_host(CS, Reg)
   endif
 end function ALE_new_grid_needed_on_host
 
-!> Reports once, with a warning, each run-time reason that the ALE regridding or remapping that would otherwise
-!! be done on the device is being done on the host instead.  This does nothing on the host-only builds.
-subroutine ALE_report_host_fallback(CS, OBC, use_ice_shelf, SpV_present, alt_split_aux, Reg)
+!> On GPU builds, the regridding and remapping in the time stepping are done on the device by the blocked
+!! routines, and this stops the model with a fatal error that names the first feature in use that they do
+!! not support.  The checks are done once.  This does nothing on host-only builds.
+subroutine ALE_check_device_support(CS, GV, OBC, use_ice_shelf, SpV_present, alt_split_aux, Reg)
   type(ALE_CS),               pointer    :: CS            !< Module control structure
+  type(verticalGrid_type),    intent(in) :: GV            !< Ocean vertical grid structure
   type(ocean_OBC_type),       pointer    :: OBC           !< Open boundary structure
   logical,                    intent(in) :: use_ice_shelf !< If true, there are ice shelves
   logical,                    intent(in) :: SpV_present   !< If true, the specific volume is in use
@@ -477,61 +468,36 @@ subroutine ALE_report_host_fallback(CS, OBC, use_ice_shelf, SpV_present, alt_spl
   type(tracer_registry_type), pointer    :: Reg           !< Tracer registry structure
 
 #ifdef __NVCOMPILER_OPENMP_GPU
-  character(len=*), parameter :: pre = "ALE: Running on the host, not the device: "
+  character(len=*), parameter :: pre = "ALE_check_device_support: On GPU builds the ALE regridding and "//&
+                                       "remapping run on the device, which does not support "
+  character(len=160) :: reason ! The reason that a calculation cannot be done on the device
   integer :: m
-  logical :: tr_diags
 
   if (.not.associated(CS)) return
-  if (CS%fallback_reported) return
-  CS%fallback_reported = .true.
+  if (CS%device_checked) return
+  CS%device_checked = .true.
 
-  if (CS%regrid_on_device) then
-    if (use_ice_shelf) call MOM_error(WARNING, pre//"the regridding and all of the remapping, "//&
-                                      "because ice shelves are in use.")
-    if (SpV_present) call MOM_error(WARNING, pre//"the regridding and all of the remapping, "//&
-                                    "because the specific volume is in use (non-Boussinesq).")
-    if (CS%remap_on_device) then
-      tr_diags = .false.
-      if (associated(Reg)) then ; do m=1,Reg%ntr
-        if ((Reg%Tr(m)%id_remap_conc > 0) .or. (Reg%Tr(m)%id_remap_cont > 0) .or. &
-            (Reg%Tr(m)%id_remap_cont_2d > 0)) tr_diags = .true.
-      enddo ; endif
-      if (tr_diags) call MOM_error(WARNING, pre//"the tracer remapping, because the tracer "//&
-                                   "remapping tendency diagnostics are enabled.")
-    endif
-    if (CS%vel_remap_on_device) then
-      if (associated(OBC)) call MOM_error(WARNING, pre//"the velocity remapping, "//&
-                                          "because open boundary conditions are in use.")
-      if (CS%conserve_ke) call MOM_error(WARNING, pre//"the velocity remapping, "//&
-                                         "because REMAP_VEL_CONSERVE_KE is true.")
-      if ((CS%id_remap_delta_integ_u2 > 0) .or. (CS%id_remap_delta_integ_v2 > 0)) &
-        call MOM_error(WARNING, pre//"the velocity remapping, because the remapping KE diagnostics "//&
-                       "are enabled.")
-      if (alt_split_aux) call MOM_error(WARNING, pre//"the velocity remapping, because "//&
-                                        "REMAP_AUXILIARY_VARS is used with the alternate split dynamics.")
-    endif
-  endif
+  if (.not.regridding_device_ok(CS%regridCS, GV, reason)) &
+    call MOM_error(FATAL, pre//"this regridding: "//trim(reason)//".")
+  if (.not.remapping_device_ok(CS%remapCS, reason)) &
+    call MOM_error(FATAL, pre//"this tracer remapping: "//trim(reason)//".")
+  if (.not.remapping_device_ok(CS%vel_remapCS, reason)) &
+    call MOM_error(FATAL, pre//"this velocity remapping: "//trim(reason)//".")
+  if (use_ice_shelf) call MOM_error(FATAL, pre//"ice shelves.")
+  if (SpV_present) call MOM_error(FATAL, pre//"the specific volume (non-Boussinesq mode).")
+  if (associated(OBC)) call MOM_error(FATAL, pre//"open boundary conditions.")
+  if (CS%conserve_ke) call MOM_error(FATAL, pre//"REMAP_VEL_CONSERVE_KE = True.")
+  if ((CS%id_remap_delta_integ_u2 > 0) .or. (CS%id_remap_delta_integ_v2 > 0)) &
+    call MOM_error(FATAL, pre//"the remapping KE diagnostics.")
+  if (alt_split_aux) call MOM_error(FATAL, pre//"REMAP_AUXILIARY_VARS with the alternate split dynamics.")
+  if (associated(Reg)) then ; do m=1,Reg%ntr
+    if ((Reg%Tr(m)%id_remap_conc > 0) .or. (Reg%Tr(m)%id_remap_cont > 0) .or. &
+        (Reg%Tr(m)%id_remap_cont_2d > 0)) &
+      call MOM_error(FATAL, pre//"the tracer remapping tendency diagnostics, requested for "//&
+                     trim(Reg%Tr(m)%name)//".")
+  enddo ; endif
 #endif
-end subroutine ALE_report_host_fallback
-
-!> Returns true if the velocities are to be remapped on the device by the blocked routines in the current
-!! configuration.  The new grid must also have been made on the device.  Open boundary conditions, the
-!! KE-conserving correction and the remapping KE diagnostics are only supported by the host code.
-logical function ALE_vel_remap_on_device(CS, OBC)
-  type(ALE_CS),         pointer :: CS  !< Module control structure
-  type(ocean_OBC_type), pointer :: OBC !< Open boundary structure
-
-  ALE_vel_remap_on_device = .false.
-  if (associated(CS)) then
-    ALE_vel_remap_on_device = CS%vel_remap_on_device
-    if (ALE_vel_remap_on_device) then
-      if (associated(OBC)) ALE_vel_remap_on_device = .false.
-      if (CS%conserve_ke) ALE_vel_remap_on_device = .false.
-      if ((CS%id_remap_delta_integ_u2 > 0) .or. (CS%id_remap_delta_integ_v2 > 0)) &
-        ALE_vel_remap_on_device = .false.
-    endif
-  endif
-end function ALE_vel_remap_on_device
+end subroutine ALE_check_device_support
 
 !> Returns true if the velocities are posted as diagnostics before the ALE remapping, in which case the
 !! host copies of the velocities must be current when pre_ALE_diagnostics is called.
@@ -738,7 +704,7 @@ subroutine ALE_regrid( G, GV, US, h, h_new, dzRegrid, tv, CS, frac_shelf_h, PCM_
   logical,                          optional, intent(in)    :: do_offload !< If true, h, h_new and dzRegrid are
                                                                    !! on the device, and the new grid is
                                                                    !! built there.  This is only valid if
-                                                                   !! ALE_regrid_on_device(CS) is true, and
+                                                                   !! ALE_on_device(CS) is true, and
                                                                    !! for a column without ice shelves.
                                                                    !! The default is false.
 
@@ -752,7 +718,7 @@ subroutine ALE_regrid( G, GV, US, h, h_new, dzRegrid, tv, CS, frac_shelf_h, PCM_
 
   use_device = .false. ; if (present(do_offload)) use_device = do_offload
   if (use_device) then
-    if (.not.ALE_regrid_on_device(CS)) call MOM_error(FATAL, "ALE_regrid: "//&
+    if (.not.ALE_on_device(CS)) call MOM_error(FATAL, "ALE_regrid: "//&
                  "The regridding was requested on the device but this configuration does not support it.")
     if (present(frac_shelf_h) .or. allocated(tv%SpV_avg)) call MOM_error(FATAL, "ALE_regrid: "//&
                  "The regridding was requested on the device but ice shelves and fully non-Boussinesq "//&
@@ -1004,14 +970,13 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell, 
   logical, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
                                    optional, intent(in)    :: PCM_cell !< Use PCM remapping in cells where true
   logical,                         optional, intent(in)    :: do_offload !< If true, h_old and h_new are current on
-                                                         !! the device, and the tracers are remapped there with
-                                                         !! the blocked routines if this configuration supports
-                                                         !! it and no tracer tendency diagnostics are requested.
-                                                         !! The host copies of the tracers are current on return.
-                                                         !! Otherwise the tracers are remapped on the host, which
-                                                         !! uses the host copies of h_old and h_new.  This is only
-                                                         !! valid if the new grid was built on the device.  The
-                                                         !! default is false.
+                                                         !! the device and the tracers are remapped there with
+                                                         !! the blocked routines, which is only valid if
+                                                         !! ALE_on_device(CS) is true and no tracer remapping
+                                                         !! tendency diagnostics are requested.  The host copies
+                                                         !! of the tracers are current on return.  By default the
+                                                         !! tracers are remapped on the host, using the host
+                                                         !! copies of h_old and h_new.
 
   ! Local variables
   real :: tr_column(GV%ke)  ! A column of updated tracer concentrations [CU ~> Conc]
@@ -1037,7 +1002,6 @@ subroutine ALE_remap_tracers(CS, G, GV, h_old, h_new, Reg, debug, dt, PCM_cell, 
 
   use_device = .false.
   if (present(do_offload)) use_device = do_offload
-  if (use_device) use_device = tracer_remap_device_ok(CS, Reg, present(dt))
 
   nz = GV%ke
 
@@ -1300,7 +1264,7 @@ subroutine ALE_remap_set_h_vel(CS, G, GV, h_new, h_u, h_v, OBC, debug, do_offloa
   logical,                         optional, intent(in)    :: do_offload !< If true, h_new, h_u and h_v are on the
                                                                       !! device and h_u and h_v are set there.  The
                                                                       !! caller must have checked that this is
-                                                                      !! supported with ALE_vel_remap_on_device.
+                                                                      !! supported with ALE_on_device.
 
   ! Local variables
   logical :: show_call_tree
@@ -1368,7 +1332,7 @@ subroutine ALE_remap_set_h_vel_via_dz(CS, G, GV, h_new, h_u, h_v, OBC, h_old, dz
                                                                            !! the device and h_u and h_v are set
                                                                            !! there.  The caller must have checked
                                                                            !! that this is supported with
-                                                                           !! ALE_vel_remap_on_device.
+                                                                           !! ALE_on_device.
 
   ! Local variables
   logical :: show_call_tree
@@ -1651,7 +1615,7 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
                                                                         !! with the blocked routines, and the host
                                                                         !! copies are not changed.  The caller must
                                                                         !! have checked that this is supported with
-                                                                        !! ALE_vel_remap_on_device.
+                                                                        !! ALE_on_device.
 
   ! Local variables
   real :: h_mask_vel ! A depth below which the thicknesses at a velocity point are masked out [H ~> m or kg m-2]
