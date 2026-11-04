@@ -878,7 +878,7 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
   !$omp       Cor_ref_u, Cor_ref_v, DCor_u, DCor_v, &
   !$omp       Datu, Datv, f_4_u, f_4_v, eta, eta_sum, eta_wtd, eta_IC, eta_PF, eta_PF_1, &
   !$omp       d_eta_PF, gtot_E, gtot_W, gtot_N, gtot_S, eta_src, dyn_coef_eta, BTCL_u, BTCL_v, &
-  !$omp       PFu_avg, PFv_avg)
+  !$omp       PFu_avg, PFv_avg, Iwt_u_tot, Iwt_v_tot)
 
 !   Calculate the constant coefficients for the Coriolis force terms in the
 ! barotropic momentum equations.  This has to be done quite early to start
@@ -2366,7 +2366,7 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
   !$omp       Cor_ref_u, Cor_ref_v, DCor_u, DCor_v, &
   !$omp       Datu, Datv, f_4_u, f_4_v, eta, eta_sum, eta_wtd, eta_IC, eta_PF, eta_PF_1, &
   !$omp       d_eta_PF, gtot_E, gtot_W, gtot_N, gtot_S, eta_src, dyn_coef_eta, BTCL_u, BTCL_v, &
-  !$omp       PFu_avg, PFv_avg)
+  !$omp       PFu_avg, PFv_avg, Iwt_u_tot, Iwt_v_tot)
 
   deallocate(wt_vel, wt_eta, wt_trans, wt_accel, wt_accel2)
 
@@ -2999,7 +2999,7 @@ subroutine btstep_timeloop(eta, ubt, vbt, uhbt0, Datu, BTCL_u, vhbt0, Datv, BTCL
       enddo
 
       if (eta_is_submerged) then
-        !$omp target update from(submerged)
+        !$omp target update from(submerged, eta)
         do j=jsv,jev ; do i=isv,iev ; if (submerged(i,j)) then
           write(mesg,'(ES24.16, " vs. ", ES24.16, " at ", ES12.4, ES12.4, i7, i7)') &
               GV%H_to_m*eta(i,j), -US%Z_to_m*G%bathyT(i,j), G%geoLonT(i,j), G%geoLatT(i,j), &
@@ -3035,7 +3035,7 @@ subroutine btstep_timeloop(eta, ubt, vbt, uhbt0, Datu, BTCL_u, vhbt0, Datv, BTCL
       enddo
 
       if (eta_is_submerged) then
-        !$omp target update from(submerged)
+        !$omp target update from(submerged, eta)
         do j=js,je ; do i=is,ie ; if (submerged(i,j)) then
           write(mesg,'(ES24.16, " vs. ", ES24.16, " at ", ES12.4, ES12.4, i7, i7)') &
               GV%H_to_m*eta(i,j), -US%Z_to_m*G%bathyT(i,j), G%geoLonT(i,j), G%geoLatT(i,j), &

@@ -389,11 +389,17 @@ subroutine diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, &
       enddo ; enddo ; enddo
     endif
 
+    !$omp target enter data map(to: tv, tv%T, tv%frazil, tv%S)
+    !$omp target update to( h )
     if (associated(fluxes%p_surf_full)) then
+      !$omp target enter data map(to: fluxes%p_surf_full )
       call make_frazil(h, tv, G, GV, US, CS%diabatic_aux_CSp, fluxes%p_surf_full, halo=CS%halo_TS_diff)
+      !$omp target exit data map(release: fluxes%p_surf_full)
     else
       call make_frazil(h, tv, G, GV, US, CS%diabatic_aux_CSp, halo=CS%halo_TS_diff)
     endif
+    !$omp target update from( tv%frazil, tv%T )
+    !$omp target exit data map(release: tv%T, tv%S, tv%frazil, tv)
     if (showCallTree) call callTree_waypoint("done with 1st make_frazil (diabatic)")
 
     if (CS%frazil_tendency_diag) then
@@ -449,11 +455,17 @@ subroutine diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, &
       enddo ; enddo ; enddo
     endif
 
+    !$omp target enter data map(to: tv, tv%T, tv%frazil, tv%S)
+    !$omp target update to( h )
     if (associated(fluxes%p_surf_full)) then
+      !$omp target enter data map(to: fluxes%p_surf_full)
       call make_frazil(h, tv, G, GV, US, CS%diabatic_aux_CSp, fluxes%p_surf_full)
+      !$omp target exit data map(release: fluxes%p_surf_full)
     else
       call make_frazil(h, tv, G, GV, US, CS%diabatic_aux_CSp)
     endif
+    !$omp target update from( tv%frazil, tv%T )
+    !$omp target exit data map(release: tv, tv%T, tv%frazil, tv%S)
 
     if (CS%frazil_tendency_diag) then
       call diagnose_frazil_tendency(tv, h, temp_diag, 0.5*dt, G, GV, US, CS)
@@ -714,6 +726,7 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
 
   if (CS%debug) call MOM_state_chksum("before find_uv_at_h", u, v, h, G, GV, US, haloshift=0)
 
+  !$omp target enter data map(alloc: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
   if (CS%use_kappa_shear .or. CS%use_CVMix_shear) then
     if (CS%use_geothermal) then
       call find_uv_at_h(u, v, h, u_h, v_h, G, GV, US, zero_mix=.true.)
@@ -728,6 +741,11 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
   ! Also changes: visc%Kd_shear, visc%Kv_shear and visc%Kv_slow
   if (CS%debug) &
     call MOM_state_chksum("before set_diffusivity", u, v, h, G, GV, US, haloshift=CS%halo_TS_diff)
+  ! Mapping tv%eqn_of_state alone with an if clause crashes gfortran 16.2, so map it with tv.
+  !$omp target enter data map(to: tv, tv%eqn_of_state) if (associated(tv%eqn_of_state))
+  !$omp target enter data map(to: tv%T, tv%S) if (associated(tv%T))
+  !$omp target enter data map(to: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target enter data map(to: tv%SpV_avg) if (allocated(tv%SpV_avg))
   if (CS%double_diffuse) then
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_int, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF, Kd_extra_T=Kd_extra_T, Kd_extra_S=Kd_extra_S)
@@ -735,6 +753,11 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_int, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF)
   endif
+  !$omp target exit data map(release: tv%SpV_avg) if (allocated(tv%SpV_avg))
+  !$omp target exit data map(release: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target exit data map(release: tv%T, tv%S) if (associated(tv%T))
+  !$omp target exit data map(release: tv%eqn_of_state, tv) if (associated(tv%eqn_of_state))
+  !$omp target exit data map(delete: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
   call cpu_clock_end(id_clock_set_diffusivity)
   if (showCallTree) call callTree_waypoint("done with set_diffusivity (diabatic)")
 
@@ -927,13 +950,34 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
   ! Changes made to following fields:  h, tv%T and tv%S.
   call cpu_clock_begin(id_clock_remap)
 
+  !   The state and the forcing fields that applyBoundaryFluxesInOut works with are moved onto
+  ! the device here, rather than inside that routine, so that the transfers that remain are
+  ! visible at the call site.  Each pointer or allocatable component is mapped under the same
+  ! test that gates its use, because an unassociated pointer component can not be mapped.
+  !$omp target update to(h)
+  !$omp target enter data map(to: tv, tv%T, tv%S)
+  !$omp target enter data map(to: tv%p_surf) if(associated(tv%p_surf))
+  !$omp target enter data map(to: tv%SpV_avg) if(allocated(tv%SpV_avg))
+  !$omp target enter data map(to: tv%TempxPmE) if(associated(tv%TempxPmE))
+  call extract_fluxes_enter_data(fluxes)
+  !$omp target enter data map(to: fluxes%netMassOut, fluxes%netMassIn)
+  !$omp target enter data map(to: fluxes%salt_left_behind) if(associated(fluxes%salt_left_behind))
+  !$omp target enter data map(to: visc%h_ML_param) if(associated(visc%h_ML_param))
   if (CS%use_energetic_PBL) then
 
     skinbuoyflux(:,:) = 0.0
+    !   cTKE, dSV_dT, dSV_dS and SkinBuoyFlux are outputs of applyBoundaryFluxesInOut, which
+    ! sets them all on the device, so they only need device storage here.
+    !$omp target enter data map(alloc: SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
     call applyBoundaryFluxesInOut(CS%diabatic_aux_CSp, G, GV, US, dt, fluxes, CS%optics, &
             optics_nbands(CS%optics), h, tv, CS%aggregate_FW_forcing, CS%evap_CFL_limit, &
             CS%minimum_forcing_depth, cTKE, dSV_dT, dSV_dS, SkinBuoyFlux=SkinBuoyFlux, MLD_h=visc%h_ML_param)
-
+    !$omp target update from(SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
+    !$omp target update from(tv%T, tv%S, h)
+    !$omp target update from(fluxes%netMassIn, fluxes%netMassOut)
+    !$omp target update from(tv%TempxPmE) if(associated(tv%TempxPmE))
+    call extract_fluxes_update_host(fluxes)
+    !$omp target exit data map(delete: SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
     if (CS%debug) then
       call hchksum(ent_t, "after applyBoundaryFluxes ent_t", G%HI, haloshift=0, unscale=GV%H_to_mks)
       call hchksum(ent_s, "after applyBoundaryFluxes ent_s", G%HI, haloshift=0, unscale=GV%H_to_mks)
@@ -994,11 +1038,26 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
     call applyBoundaryFluxesInOut(CS%diabatic_aux_CSp, G, GV, US, dt, fluxes, CS%optics, &
                                   optics_nbands(CS%optics), h, tv, CS%aggregate_FW_forcing, &
                                   CS%evap_CFL_limit, CS%minimum_forcing_depth, MLD_h=visc%h_ML_param)
+    !$omp target update from(tv%T, tv%S, h)
+    !$omp target update from(fluxes%netMassIn, fluxes%netMassOut)
+    !$omp target update from(tv%TempxPmE) if(associated(tv%TempxPmE))
+    call extract_fluxes_update_host(fluxes)
 
     ! Find the vertical distances across layers, which may have been modified by the net surface flux
     call thickness_to_dz(h, tv, dz, G, GV, US)
 
   endif   ! endif for CS%use_energetic_PBL
+  !   Release the state and the forcing, in the reverse of the order in which they were mapped.
+  ! Nothing is copied back here, because everything that the device wrote has already been
+  ! brought back with a target update above.
+  !$omp target exit data map(release: visc%h_ML_param) if(associated(visc%h_ML_param))
+  !$omp target exit data map(release: fluxes%salt_left_behind) if(associated(fluxes%salt_left_behind))
+  !$omp target exit data map(release: fluxes%netMassOut, fluxes%netMassIn)
+  call extract_fluxes_exit_data(fluxes)
+  !$omp target exit data map(release: tv%TempxPmE) if(associated(tv%TempxPmE))
+  !$omp target exit data map(release: tv%SpV_avg) if(allocated(tv%SpV_avg))
+  !$omp target exit data map(release: tv%p_surf) if(associated(tv%p_surf))
+  !$omp target exit data map(release: tv%S, tv%T, tv)
 
   ! diagnose the tendencies due to boundary forcing
   ! At this point, the diagnostic grids have not been updated since the call to the boundary layer scheme
@@ -1059,7 +1118,11 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Tim
       call tracer_vertdiff_Eulerian(h, ent_t, dt, tv%T, G, GV)
       call tracer_vertdiff_Eulerian(h, ent_s, dt, tv%S, G, GV)
     else
-      call triDiagTS_Eulerian(G, GV, is, ie, js, je, h, ent_s, tv%T, tv%S)
+      !$omp target update to( h )
+      !$omp target enter data map(to: ent_s, tv, tv%T, tv%S)
+      call triDiagTS_Eulerian(G, GV, CS%diabatic_aux_CSp, is, ie, js, je, h, ent_s, tv%T, tv%S)
+      !$omp target update from( tv%T, tv%S )
+      !$omp target exit data map(release: ent_s, tv, tv%T, tv%S)
     endif
 
     ! diagnose temperature, salinity, heat, and salt tendencies
@@ -1452,6 +1515,7 @@ subroutine diabatic_ALE(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, 
 
   if (CS%debug) call MOM_state_chksum("before find_uv_at_h", u, v, h, G, GV, US, haloshift=0)
 
+  !$omp target enter data map(alloc: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
   if (CS%use_kappa_shear .or. CS%use_CVMix_shear) then
     if (CS%use_geothermal) then
       call find_uv_at_h(u, v, h, u_h, v_h, G, GV, US, zero_mix=.true.)
@@ -1466,6 +1530,11 @@ subroutine diabatic_ALE(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, 
   ! Also changes: visc%Kd_shear, visc%Kv_shear and visc%Kv_slow
   if (CS%debug) &
     call MOM_state_chksum("before set_diffusivity", u, v, h, G, GV, US, haloshift=CS%halo_TS_diff)
+  ! Mapping tv%eqn_of_state alone with an if clause crashes gfortran 16.2, so map it with tv.
+  !$omp target enter data map(to: tv, tv%eqn_of_state) if (associated(tv%eqn_of_state))
+  !$omp target enter data map(to: tv%T, tv%S) if (associated(tv%T))
+  !$omp target enter data map(to: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target enter data map(to: tv%SpV_avg) if (allocated(tv%SpV_avg))
   if (CS%double_diffuse) then
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_heat, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF, Kd_extra_T=Kd_extra_T, Kd_extra_S=Kd_extra_S)
@@ -1473,6 +1542,11 @@ subroutine diabatic_ALE(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, 
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_heat, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF)
   endif
+  !$omp target exit data map(release: tv%SpV_avg) if (allocated(tv%SpV_avg))
+  !$omp target exit data map(release: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target exit data map(release: tv%T, tv%S) if (associated(tv%T))
+  !$omp target exit data map(release: tv%eqn_of_state, tv) if (associated(tv%eqn_of_state))
+  !$omp target exit data map(delete: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
   call cpu_clock_end(id_clock_set_diffusivity)
   if (showCallTree) call callTree_waypoint("done with set_diffusivity (diabatic)")
 
@@ -1607,12 +1681,34 @@ subroutine diabatic_ALE(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, 
   ! Changes made to following fields:  h, tv%T and tv%S.
   call cpu_clock_begin(id_clock_remap)
 
+  !   The state and the forcing fields that applyBoundaryFluxesInOut works with are moved onto
+  ! the device here, rather than inside that routine, so that the transfers that remain are
+  ! visible at the call site.  Each pointer or allocatable component is mapped under the same
+  ! test that gates its use, because an unassociated pointer component can not be mapped.
+  !$omp target update to(h)
+  !$omp target enter data map(to: tv, tv%T, tv%S)
+  !$omp target enter data map(to: tv%p_surf) if(associated(tv%p_surf))
+  !$omp target enter data map(to: tv%SpV_avg) if(allocated(tv%SpV_avg))
+  !$omp target enter data map(to: tv%TempxPmE) if(associated(tv%TempxPmE))
+  call extract_fluxes_enter_data(fluxes)
+  !$omp target enter data map(to: fluxes%netMassOut, fluxes%netMassIn)
+  !$omp target enter data map(to: fluxes%salt_left_behind) if(associated(fluxes%salt_left_behind))
+  !$omp target enter data map(to: visc%h_ML_param) if(associated(visc%h_ML_param))
   if (CS%use_energetic_PBL) then
 
     skinbuoyflux(:,:) = 0.0
+    !   cTKE, dSV_dT, dSV_dS and SkinBuoyFlux are outputs of applyBoundaryFluxesInOut, which
+    ! sets them all on the device, so they only need device storage here.
+    !$omp target enter data map(alloc: SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
     call applyBoundaryFluxesInOut(CS%diabatic_aux_CSp, G, GV, US, dt, fluxes, CS%optics, &
             optics_nbands(CS%optics), h, tv, CS%aggregate_FW_forcing, CS%evap_CFL_limit, &
             CS%minimum_forcing_depth, cTKE, dSV_dT, dSV_dS, SkinBuoyFlux=SkinBuoyFlux, MLD_h=visc%h_ML_param)
+    !$omp target update from(SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
+    !$omp target update from(tv%T, tv%S, h)
+    !$omp target update from(fluxes%netMassIn, fluxes%netMassOut)
+    !$omp target update from(tv%TempxPmE) if(associated(tv%TempxPmE))
+    call extract_fluxes_update_host(fluxes)
+    !$omp target exit data map(delete: SkinBuoyFlux, cTKE, dSV_dT, dSV_dS)
 
     if (CS%debug) then
       call hchksum(ent_t, "after applyBoundaryFluxes ent_t", G%HI, haloshift=0, unscale=GV%H_to_MKS)
@@ -1660,8 +1756,23 @@ subroutine diabatic_ALE(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_end, 
     call applyBoundaryFluxesInOut(CS%diabatic_aux_CSp, G, GV, US, dt, fluxes, CS%optics, &
                                   optics_nbands(CS%optics), h, tv, CS%aggregate_FW_forcing, &
                                   CS%evap_CFL_limit, CS%minimum_forcing_depth, MLD_h=visc%h_ML_param)
+    !$omp target update from(tv%T, tv%S, h)
+    !$omp target update from(fluxes%netMassIn, fluxes%netMassOut)
+    !$omp target update from(tv%TempxPmE) if(associated(tv%TempxPmE))
+    call extract_fluxes_update_host(fluxes)
 
   endif   ! endif for CS%use_energetic_PBL
+  !   Release the state and the forcing, in the reverse of the order in which they were mapped.
+  ! Nothing is copied back here, because everything that the device wrote has already been
+  ! brought back with a target update above.
+  !$omp target exit data map(release: visc%h_ML_param) if(associated(visc%h_ML_param))
+  !$omp target exit data map(release: fluxes%salt_left_behind) if(associated(fluxes%salt_left_behind))
+  !$omp target exit data map(release: fluxes%netMassOut, fluxes%netMassIn)
+  call extract_fluxes_exit_data(fluxes)
+  !$omp target exit data map(release: tv%TempxPmE) if(associated(tv%TempxPmE))
+  !$omp target exit data map(release: tv%SpV_avg) if(allocated(tv%SpV_avg))
+  !$omp target exit data map(release: tv%p_surf) if(associated(tv%p_surf))
+  !$omp target exit data map(release: tv%S, tv%T, tv)
 
   ! diagnose the tendencies due to boundary forcing
   ! At this point, the diagnostic grids have not been updated since the call to the boundary layer scheme
@@ -2065,6 +2176,8 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
   dz_neglect = GV%dZ_subroundoff ; dz_neglect2 = dz_neglect*dz_neglect
   Kd_heat(:,:,:) = 0.0 ; Kd_salt(:,:,:) = 0.0
 
+  !$omp target enter data map(alloc: Kd_lay)
+
   showCallTree = callTree_showQuery()
   if (showCallTree) call callTree_enter("layered_diabatic(), MOM_diabatic_driver.F90")
 
@@ -2148,6 +2261,7 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
 
   if (CS%debug) &
     call MOM_state_chksum("before find_uv_at_h", u, v, h, G, GV, US, haloshift=0)
+  !$omp target enter data map(alloc: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
   if (CS%use_kappa_shear .or. CS%use_CVMix_shear) then
     if ((CS%ML_mix_first > 0.0) .or. CS%use_geothermal) then
       call find_uv_at_h(u, v, h_orig, u_h, v_h, G, GV, US, eaml, ebml)
@@ -2177,6 +2291,11 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
 
   if (CS%debug) &
     call MOM_state_chksum("before set_diffusivity", u, v, h, G, GV, US, haloshift=CS%halo_TS_diff)
+  ! Mapping tv%eqn_of_state alone with an if clause crashes gfortran 16.2, so map it with tv.
+  !$omp target enter data map(to: tv, tv%eqn_of_state) if (associated(tv%eqn_of_state))
+  !$omp target enter data map(to: tv%T, tv%S) if (associated(tv%T))
+  !$omp target enter data map(to: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target enter data map(to: tv%SpV_avg) if (allocated(tv%SpV_avg))
   if (CS%double_diffuse) then
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_int, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF, Kd_lay=Kd_lay, Kd_extra_T=Kd_extra_T, Kd_extra_S=Kd_extra_S)
@@ -2184,6 +2303,13 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
     call set_diffusivity(u, v, h, u_h, v_h, tv, fluxes, CS%optics, visc, dt, Kd_int, G, GV, US, &
                          CS%set_diff_CSp, CS%VBF, Kd_lay=Kd_lay)
   endif
+  !$omp target exit data map(release: tv%SpV_avg) if (allocated(tv%SpV_avg))
+  !$omp target exit data map(release: tv%p_surf) if (associated(tv%p_surf))
+  !$omp target exit data map(release: tv%T, tv%S) if (associated(tv%T))
+  !$omp target exit data map(release: tv%eqn_of_state, tv) if (associated(tv%eqn_of_state))
+  !$omp target exit data map(delete: u_h, v_h) if (CS%use_kappa_shear .or. CS%use_CVMix_shear)
+  !$omp target update from(Kd_lay)
+
   call cpu_clock_end(id_clock_set_diffusivity)
   if (showCallTree) call callTree_waypoint("done with set_diffusivity (diabatic)")
 
@@ -2487,7 +2613,12 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
           call tracer_vertdiff(hold, ea, eb, dt, tv%T, G, GV)
           call tracer_vertdiff(hold, ea, eb, dt, tv%S, G, GV)
         else
-          call triDiagTS(G, GV, is, ie, js, je, hold, ea, eb, tv%T, tv%S)
+          !$omp target enter data map(to: hold, ea, eb)
+          !$omp target enter data map(to: tv, tv%T, tv%S)
+          call triDiagTS(G, GV, CS%diabatic_aux_CSp, is, ie, js, je, hold, ea, eb, tv%T, tv%S)
+          !$omp target exit data map(delete: hold, ea, eb)
+          !$omp target update from(tv%T, tv%S)
+          !$omp target exit data map(release: tv%T, tv%S, tv)
         endif
       endif ! massless_match_targets
       call cpu_clock_end(id_clock_tridiag)
@@ -2577,7 +2708,12 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
         call tracer_vertdiff(hold, ea, eb, dt, tv%T, G, GV)
         call tracer_vertdiff(hold, ea, eb, dt, tv%S, G, GV)
       else
-        call triDiagTS(G, GV, is, ie, js, je, hold, ea, eb, tv%T, tv%S)
+        !$omp target enter data map(to: hold, ea, eb)
+        !$omp target enter data map(to: tv, tv%T, tv%S)
+        call triDiagTS(G, GV, CS%diabatic_aux_CSp, is, ie, js, je, hold, ea, eb, tv%T, tv%S)
+        !$omp target exit data map(delete: hold, ea, eb)
+        !$omp target update from(tv%T, tv%S)
+        !$omp target exit data map(release: tv%T, tv%S, tv)
       endif
 
       ! diagnose temperature, salinity, heat, and salt tendencies
@@ -2933,7 +3069,90 @@ subroutine layered_diabatic(u, v, h, tv, BLD, fluxes, visc, ADp, CDp, dt, Time_e
 
   if (showCallTree) call callTree_leave("layered_diabatic()")
 
+  !$omp target exit data map(delete: Kd_lay)
+
 end subroutine layered_diabatic
+
+!> Map onto the device the forcing fields that extractFluxes_3d reads or writes, each under the same
+!! test that gates its use, because an unassociated pointer component can not be mapped.
+!! extractFluxes_3d does no transfers of these itself, so any region of code that calls it with its
+!! loop on the device must be bracketed by this routine and extract_fluxes_exit_data, with a call
+!! to extract_fluxes_update_host in between if the host needs the fields that it writes.
+!! tv and tv%TempxPmE are not mapped here, because the callers already map them for other reasons.
+subroutine extract_fluxes_enter_data(fluxes)
+  type(forcing), intent(in) :: fluxes !< Structure containing pointers to the forcing fields
+
+  !$omp target enter data map(to: fluxes, fluxes%sw, fluxes%lw, fluxes%latent, fluxes%sens, &
+  !$omp                           fluxes%evap, fluxes%lprec, fluxes%fprec, fluxes%vprec)
+  !$omp target enter data map(to: fluxes%lrunoff) if(associated(fluxes%lrunoff))
+  !$omp target enter data map(to: fluxes%frunoff) if(associated(fluxes%frunoff))
+  !$omp target enter data map(to: fluxes%lrunoff_glc) if(associated(fluxes%lrunoff_glc))
+  !$omp target enter data map(to: fluxes%frunoff_glc) if(associated(fluxes%frunoff_glc))
+  !$omp target enter data map(to: fluxes%seaice_melt) if(associated(fluxes%seaice_melt))
+  !$omp target enter data map(to: fluxes%seaice_melt_heat) if(associated(fluxes%seaice_melt_heat))
+  !$omp target enter data map(to: fluxes%salt_flux) if(associated(fluxes%salt_flux))
+  !$omp target enter data map(to: fluxes%heat_added) if(associated(fluxes%heat_added))
+  !$omp target enter data map(to: fluxes%heat_content_evap) if(associated(fluxes%heat_content_evap))
+  !$omp target enter data map(to: fluxes%heat_content_massin) if(associated(fluxes%heat_content_massin))
+  !$omp target enter data map(to: fluxes%heat_content_massout) if(associated(fluxes%heat_content_massout))
+  !$omp target enter data map(to: fluxes%heat_content_lprec) if(associated(fluxes%heat_content_lprec))
+  !$omp target enter data map(to: fluxes%heat_content_fprec) if(associated(fluxes%heat_content_fprec))
+  !$omp target enter data map(to: fluxes%heat_content_vprec) if(associated(fluxes%heat_content_vprec))
+  !$omp target enter data map(to: fluxes%heat_content_cond) if(associated(fluxes%heat_content_cond))
+  !$omp target enter data map(to: fluxes%heat_content_lrunoff) if(associated(fluxes%heat_content_lrunoff))
+  !$omp target enter data map(to: fluxes%heat_content_lrunoff_glc) if(associated(fluxes%heat_content_lrunoff_glc))
+  !$omp target enter data map(to: fluxes%heat_content_frunoff) if(associated(fluxes%heat_content_frunoff))
+  !$omp target enter data map(to: fluxes%heat_content_frunoff_glc) if(associated(fluxes%heat_content_frunoff_glc))
+
+end subroutine extract_fluxes_enter_data
+
+!> Copy back to the host the forcing fields that extractFluxes_3d writes on the device.  These are
+!! all of the heat content fields, but not tv%TempxPmE, which is not mapped by
+!! extract_fluxes_enter_data.
+subroutine extract_fluxes_update_host(fluxes)
+  type(forcing), intent(in) :: fluxes !< Structure containing pointers to the forcing fields
+
+  !$omp target update from(fluxes%heat_content_massin) if(associated(fluxes%heat_content_massin))
+  !$omp target update from(fluxes%heat_content_massout) if(associated(fluxes%heat_content_massout))
+  !$omp target update from(fluxes%heat_content_lprec) if(associated(fluxes%heat_content_lprec))
+  !$omp target update from(fluxes%heat_content_fprec) if(associated(fluxes%heat_content_fprec))
+  !$omp target update from(fluxes%heat_content_vprec) if(associated(fluxes%heat_content_vprec))
+  !$omp target update from(fluxes%heat_content_cond) if(associated(fluxes%heat_content_cond))
+  !$omp target update from(fluxes%heat_content_lrunoff) if(associated(fluxes%heat_content_lrunoff))
+  !$omp target update from(fluxes%heat_content_lrunoff_glc) if(associated(fluxes%heat_content_lrunoff_glc))
+  !$omp target update from(fluxes%heat_content_frunoff) if(associated(fluxes%heat_content_frunoff))
+  !$omp target update from(fluxes%heat_content_frunoff_glc) if(associated(fluxes%heat_content_frunoff_glc))
+
+end subroutine extract_fluxes_update_host
+
+!> Release the forcing fields that extract_fluxes_enter_data mapped, in the reverse of the order in
+!! which they were mapped.  Nothing is copied back here.
+subroutine extract_fluxes_exit_data(fluxes)
+  type(forcing), intent(in) :: fluxes !< Structure containing pointers to the forcing fields
+
+  !$omp target exit data map(release: fluxes%heat_content_frunoff_glc) if(associated(fluxes%heat_content_frunoff_glc))
+  !$omp target exit data map(release: fluxes%heat_content_frunoff) if(associated(fluxes%heat_content_frunoff))
+  !$omp target exit data map(release: fluxes%heat_content_lrunoff_glc) if(associated(fluxes%heat_content_lrunoff_glc))
+  !$omp target exit data map(release: fluxes%heat_content_lrunoff) if(associated(fluxes%heat_content_lrunoff))
+  !$omp target exit data map(release: fluxes%heat_content_cond) if(associated(fluxes%heat_content_cond))
+  !$omp target exit data map(release: fluxes%heat_content_vprec) if(associated(fluxes%heat_content_vprec))
+  !$omp target exit data map(release: fluxes%heat_content_fprec) if(associated(fluxes%heat_content_fprec))
+  !$omp target exit data map(release: fluxes%heat_content_lprec) if(associated(fluxes%heat_content_lprec))
+  !$omp target exit data map(release: fluxes%heat_content_massout) if(associated(fluxes%heat_content_massout))
+  !$omp target exit data map(release: fluxes%heat_content_massin) if(associated(fluxes%heat_content_massin))
+  !$omp target exit data map(release: fluxes%heat_content_evap) if(associated(fluxes%heat_content_evap))
+  !$omp target exit data map(release: fluxes%heat_added) if(associated(fluxes%heat_added))
+  !$omp target exit data map(release: fluxes%salt_flux) if(associated(fluxes%salt_flux))
+  !$omp target exit data map(release: fluxes%seaice_melt_heat) if(associated(fluxes%seaice_melt_heat))
+  !$omp target exit data map(release: fluxes%seaice_melt) if(associated(fluxes%seaice_melt))
+  !$omp target exit data map(release: fluxes%frunoff_glc) if(associated(fluxes%frunoff_glc))
+  !$omp target exit data map(release: fluxes%lrunoff_glc) if(associated(fluxes%lrunoff_glc))
+  !$omp target exit data map(release: fluxes%frunoff) if(associated(fluxes%frunoff))
+  !$omp target exit data map(release: fluxes%lrunoff) if(associated(fluxes%lrunoff))
+  !$omp target exit data map(release: fluxes%vprec, fluxes%fprec, fluxes%lprec, fluxes%evap, &
+  !$omp                               fluxes%sens, fluxes%latent, fluxes%lw, fluxes%sw, fluxes)
+
+end subroutine extract_fluxes_exit_data
 
 !> Returns pointers or values of members within the diabatic_CS type. For extensibility,
 !! each returned argument is an optional argument

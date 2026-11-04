@@ -2235,7 +2235,7 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
 
   call cpu_clock_begin(CS%id_clock_ML)
 
-  ! NOTE: Requried since this is called by the GPU-enabled dycore, but it could
+  ! NOTE: Required since this is called by the GPU-enabled dycore, but it could
   !   also be implicitly fixing other functions.
 
   Rho0x400_G = 400.0*(GV%H_to_RZ / GV%g_Earth_Z_T2)
@@ -2569,7 +2569,7 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               Shtot(II,jj) = Shtot(II,jj) + hweight * 0.5 * (tv%S(i,j,k) + tv%S(i+1,j,k))
             endif
             if (allocated(tv%SpV_avg)) then
-              Shtot(II,jj) = Shtot(II,jj) + &
+              SpV_htot(II,jj) = SpV_htot(II,jj) + &
                 hweight * 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i+1,j,k))
             endif
           enddo ; endif
@@ -2577,9 +2577,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           if ((hwtot <= 0.0) .or. (CS%linear_drag .and. .not.allocated(tv%SpV_avg))) then
             ustar(II,jj) = cdrag_sqrt_H * CS%drag_bg_vel
           elseif (CS%linear_drag .and. allocated(tv%SpV_avg)) then
-            ustar(II,jj) = cdrag_sqrt_H_RL * CS%drag_bg_vel * (hwtot / Shtot(II,jj))
+            ustar(II,jj) = cdrag_sqrt_H_RL * CS%drag_bg_vel * (hwtot / SpV_htot(II,jj))
           elseif (allocated(tv%SpV_avg)) then ! (.not.CS%linear_drag)
-            ustar(II,jj) = cdrag_sqrt_H_RL * hutot / Shtot(II,jj)
+            ustar(II,jj) = cdrag_sqrt_H_RL * hutot / SpV_htot(II,jj)
           else ! (.not.CS%linear_drag .and. .not.allocated(tv%SpV_avg))
             ustar(II,jj) = cdrag_sqrt_H * hutot / hwtot
           endif
@@ -2946,7 +2946,7 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               Shtot(ii,JJ) = Shtot(ii,JJ) + hweight * 0.5 * (tv%S(i,j,k) + tv%S(i,j+1,k))
             endif
             if (allocated(tv%SpV_avg)) then
-              Shtot(ii,JJ) = Shtot(ii,JJ) + &
+              SpV_htot(ii,JJ) = SpV_htot(ii,JJ) + &
                 hweight * 0.5 * (tv%SpV_avg(i,j,k) + tv%SpV_avg(i,j+1,k))
             endif
           enddo ; endif
@@ -2954,9 +2954,9 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
           if ((hwtot <= 0.0) .or. (CS%linear_drag .and. .not.allocated(tv%SpV_avg))) then
             ustar(ii,JJ) = cdrag_sqrt_H * CS%drag_bg_vel
           elseif (CS%linear_drag .and. allocated(tv%SpV_avg)) then
-            ustar(ii,JJ) = cdrag_sqrt_H_RL * CS%drag_bg_vel * (hwtot / Shtot(ii,JJ))
+            ustar(ii,JJ) = cdrag_sqrt_H_RL * CS%drag_bg_vel * (hwtot / SpV_htot(ii,JJ))
           elseif (allocated(tv%SpV_avg)) then ! (.not.CS%linear_drag)
-            ustar(ii,JJ) = cdrag_sqrt_H_RL * hutot / Shtot(ii,JJ)
+            ustar(ii,JJ) = cdrag_sqrt_H_RL * hutot / SpV_htot(ii,JJ)
           else ! (.not.CS%linear_drag .and. .not.allocated(tv%SpV_avg))
             ustar(ii,JJ) = cdrag_sqrt_H * hutot / hwtot
           endif
@@ -3591,7 +3591,6 @@ subroutine set_visc_init(Time, G, GV, US, param_file, diag, visc, CS, restart_CS
 
   CS%Hbbl = CS%dz_bbl * (US%Z_to_m * GV%m_to_H)  ! Rescaled for use in expressions in thickness units.
 
-  ! Update scalar data to device
   !$omp target update to(visc)
   !$omp target update to(CS)
 
@@ -3600,6 +3599,14 @@ subroutine set_visc_init(Time, G, GV, US, param_file, diag, visc, CS, restart_CS
   !$omp   if (associated(visc%Kv_shear))
   !$omp target enter data map(to: visc%Kv_shear_Bu) &
   !$omp   if (associated(visc%Kv_shear_Bu))
+
+  ! These will be used in set_diffusivity, so map them now at initialization.
+  !$omp target enter data map(alloc: visc%Kd_shear) &
+  !$omp   if (associated(visc%Kd_shear))
+  !$omp target enter data map(alloc: visc%TKE_turb) &
+  !$omp   if (associated(visc%TKE_turb))
+  !$omp target enter data map(alloc: visc%Kv_slow) &
+  !$omp   if (associated(visc%Kv_slow))
 
   if (CS%RiNo_mix .and. kappa_shear_at_vertex(param_file)) then
     ! This is necessary for reproducibility across restarts in non-symmetric mode.
@@ -3616,6 +3623,10 @@ subroutine set_visc_init(Time, G, GV, US, param_file, diag, visc, CS, restart_CS
     allocate(visc%ustar_bbl(isd:ied,jsd:jed), source=0.0)
     allocate(visc%BBL_meanKE_loss(isd:ied,jsd:jed), source=0.0)
     allocate(visc%BBL_meanKE_loss_sqrtCd(isd:ied,jsd:jed), source=0.0)
+    !   Set on the host by set_BBL_TKE and read on the device by add_drag_diffusivity and
+    ! add_LOTW_BBL_diffusivity; set_BBL_TKE refreshes the device copies when it has written them.
+    !$omp target enter data map(to: visc%ustar_BBL, visc%BBL_meanKE_loss, &
+    !$omp   visc%BBL_meanKE_loss_sqrtCd)
 
     CS%id_bbl_thick_u = register_diag_field('ocean_model', 'bbl_thick_u', &
        diag%axesCu1, Time, 'BBL thickness at u points', 'm', conversion=US%Z_to_m)
@@ -3755,6 +3766,8 @@ subroutine set_visc_end(visc, CS)
   if (allocated(visc%tbl_thick_shelf_v)) deallocate(visc%tbl_thick_shelf_v)
   if (allocated(visc%kv_tbl_shelf_u)) deallocate(visc%kv_tbl_shelf_u)
   if (allocated(visc%kv_tbl_shelf_v)) deallocate(visc%kv_tbl_shelf_v)
+
+  !$omp target exit data map(delete: visc)
 end subroutine set_visc_end
 
 !> \namespace mom_set_visc

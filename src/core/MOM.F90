@@ -2,6 +2,8 @@
 ! See the LICENSE file for licensing information.
 ! SPDX-License-Identifier: Apache-2.0
 
+#include "do_concurrent_compat.h"
+
 !> The central module of the MOM6 ocean model
 module MOM
 
@@ -823,7 +825,9 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
     if (CS%VarMix%use_variable_mixing) then
       Time_end_diag = Time_start + real_to_time(cycle_time, unscale=US%T_to_s)
       call enable_averages(cycle_time, Time_end_diag, CS%diag)
+      !$omp target enter data map(to: CS%tv, CS%tv%T, CS%tv%S)
       call calc_resoln_function(h, CS%tv, G, GV, US, CS%VarMix, CS%MEKE, CS%OBC, dt)
+      !$omp target exit data map(release: CS%tv%T, CS%tv%S, CS%tv)
       call calc_depth_function(G, CS%VarMix)
       call disable_averaging(CS%diag)
     endif
@@ -1328,7 +1332,8 @@ subroutine step_MOM_dynamics(forces, p_surf_begin, p_surf_end, dt, dt_tr_adv, &
         call calc_slope_functions(h, CS%tv, dt, G, GV, US, CS%VarMix, OBC=CS%OBC)
       endif
 
-      !$omp target update from(h, CS%uhtr, CS%vhtr)
+      ! keeping this just in case h is read on host in untested cases
+      !$omp target update from(h)
       call thickness_diffuse(h, CS%uhtr, CS%vhtr, CS%tv, dt_tr_adv, G, GV, US, &
                              CS%MEKE, CS%VarMix, CS%CDp, CS%thickness_diffuse_CSp, &
                              CS%stoch_CS, u, v)
@@ -1917,6 +1922,7 @@ subroutine step_MOM_thermo(CS, G, GV, US, u, v, h, tv, fluxes, dtdia, &
     !$omp target update from(CS%visc%Kv_bbl_u) if (allocated(CS%visc%Kv_bbl_u))
     !$omp target update from(CS%visc%Kv_bbl_v) if (allocated(CS%visc%Kv_bbl_v))
     if (CS%debug) then
+      !$omp target update from(CS%uhtr, CS%vhtr)
       call uvchksum("Pre-diabatic [uv]", u, v, G%HI, haloshift=2, unscale=US%L_T_to_m_s)
       call hchksum(h,"Pre-diabatic h", G%HI, haloshift=1, unscale=GV%H_to_MKS)
       call uvchksum("Pre-diabatic [uv]h", CS%uhtr, CS%vhtr, G%HI, &
@@ -1945,6 +1951,7 @@ subroutine step_MOM_thermo(CS, G, GV, US, u, v, h, tv, fluxes, dtdia, &
     if (CS%debug) then
       call uvchksum("Post-diabatic u", u, v, G%HI, haloshift=2, unscale=US%L_T_to_m_s)
       call hchksum(h, "Post-diabatic h", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+      !$omp target update from(CS%uhtr, CS%vhtr)
       call uvchksum("Post-diabatic [uv]h", CS%uhtr, CS%vhtr, G%HI, &
                     haloshift=0, unscale=GV%H_to_MKS*US%L_to_m**2)
     ! call MOM_state_chksum("Post-diabatic ", u, v, &
@@ -2158,6 +2165,7 @@ subroutine ALE_regridding_and_remapping(CS, G, GV, US, u, v, h, tv, dtdia, Time_
   if (CS%debug) then
     call uvchksum("Post-ALE, Post-diabatic u", u, v, G%HI, haloshift=2, unscale=US%L_T_to_m_s)
     call hchksum(h, "Post-ALE, Post-diabatic h", G%HI, haloshift=1, unscale=GV%H_to_MKS)
+    !$omp target update from(CS%uhtr, CS%vhtr)
     call uvchksum("Post-ALE, Post-diabatic [uv]h", CS%uhtr, CS%vhtr, G%HI, &
                   haloshift=0, unscale=GV%H_to_MKS*US%L_to_m**2)
   ! call MOM_state_chksum("Post-diabatic ", u, v, &
@@ -2327,7 +2335,9 @@ subroutine step_offline(forces, fluxes, sfc_state, Time_start, time_interval, CS
         if (.not. skip_diffusion) then
           if (CS%VarMix%use_variable_mixing) then
             call pass_var(CS%h, G%Domain)
+            !$omp target enter data map(to: CS%tv, CS%tv%T, CS%tv%S)
             call calc_resoln_function(CS%h, CS%tv, G, GV, US, CS%VarMix, CS%MEKE, CS%OBC, dt_offline)
+            !$omp target exit data map(release: CS%tv%T, CS%tv%S, CS%tv)
             call calc_depth_function(G, CS%VarMix)
             call calc_slope_functions(CS%h, CS%tv, dt_offline, G, GV, US, CS%VarMix, OBC=CS%OBC)
           endif
@@ -2354,7 +2364,9 @@ subroutine step_offline(forces, fluxes, sfc_state, Time_start, time_interval, CS
         if (.not. skip_diffusion) then
           if (CS%VarMix%use_variable_mixing) then
             call pass_var(CS%h, G%Domain)
+            !$omp target enter data map(to: CS%tv, CS%tv%T, CS%tv%S)
             call calc_resoln_function(CS%h, CS%tv, G, GV, US, CS%VarMix, CS%MEKE, CS%OBC, dt_offline)
+            !$omp target exit data map(release: CS%tv%T, CS%tv%S, CS%tv)
             call calc_depth_function(G, CS%VarMix)
             call calc_slope_functions(CS%h, CS%tv, dt_offline, G, GV, US, CS%VarMix, OBC=CS%OBC)
           endif
@@ -4710,34 +4722,55 @@ subroutine extract_surface_state(CS, sfc_state_in)
   if (allocated(sfc_state%ocean_mass) .and. allocated(sfc_state%ocean_heat) .and. &
       allocated(sfc_state%ocean_salt)) then
     do concurrent (j=js:je, i=is:ie)
-      sfc_state%ocean_mass(i,j) = 0.0
-      sfc_state%ocean_heat(i,j) = 0.0 ; sfc_state%ocean_salt(i,j) = 0.0
+      sfc_state%ocean_mass(i,j) = 0.
+      sfc_state%ocean_heat(i,j) = 0.
+      sfc_state%ocean_salt(i,j) = 0.
     enddo
-    do concurrent (j=js:je, k=1:nz, i=is:ie)
-      mass = GV%H_to_RZ*h(i,j,k)
-      sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + mass
-      sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
-      sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1.0e-3*CS%tv%S(i,j,k))
+
+    do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(k, mass))
+      do k=1,nz
+        mass = GV%H_to_RZ * h(i,j,k)
+        sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + mass
+        sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
+        sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1e-3 * CS%tv%S(i,j,k))
+      enddo
     enddo
   else
     if (allocated(sfc_state%ocean_mass)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_mass(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
-        sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + GV%H_to_RZ*h(i,j,k)
+      do concurrent (j=js:je, i=is:ie)
+        sfc_state%ocean_mass(i,j) = 0.
+      enddo
+
+      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(k))
+        do k=1,nz
+          sfc_state%ocean_mass(i,j) = sfc_state%ocean_mass(i,j) + GV%H_to_RZ * h(i,j,k)
+        enddo
       enddo
     endif
+
     if (allocated(sfc_state%ocean_heat)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_heat(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
-        mass = GV%H_to_RZ*h(i,j,k)
-        sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
+      do concurrent (j=js:je, i=is:ie)
+        sfc_state%ocean_heat(i,j) = 0.
+      enddo
+
+      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(k, mass))
+        do k=1,nz
+          mass = GV%H_to_RZ * h(i,j,k)
+          sfc_state%ocean_heat(i,j) = sfc_state%ocean_heat(i,j) + mass * CS%tv%T(i,j,k)
+        enddo
       enddo
     endif
+
     if (allocated(sfc_state%ocean_salt)) then
-      do concurrent (j=js:je, i=is:ie) ; sfc_state%ocean_salt(i,j) = 0.0 ; enddo
-      do concurrent (j=js:je, k=1:nz, i=is:ie)
-        mass = GV%H_to_RZ*h(i,j,k)
-        sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1.0e-3*CS%tv%S(i,j,k))
+      do concurrent (j=js:je, i=is:ie)
+        sfc_state%ocean_salt(i,j) = 0.
+      enddo
+
+      do concurrent (j=js:je, i=is:ie) DO_LOCALITY(local(k, mass))
+        do k=1,nz
+          mass = GV%H_to_RZ*h(i,j,k)
+          sfc_state%ocean_salt(i,j) = sfc_state%ocean_salt(i,j) + mass * (1e-3 * CS%tv%S(i,j,k))
+        enddo
       enddo
     endif
   endif
