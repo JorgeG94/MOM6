@@ -208,6 +208,17 @@ integer, parameter :: MAX_PARAM_LENGTH = 120
 
 #undef __DO_SAFETY_CHECKS__
 
+!> The fixed declared extent of the column copies in zstar_motion_block_column in GPU builds, where
+!! automatic arrays with a runtime size would be allocated on the device heap.  build_zstar_grid
+!! checks that its columns have no more than this many layers on GPU builds.
+integer, parameter :: fixed_col_extent = 128
+
+#ifdef __NVCOMPILER_OPENMP_GPU
+#define WSZK_(n)  fixed_col_extent
+#else
+#define WSZK_(n)  n
+#endif
+
 contains
 
 !> Initialization and configures a regridding control structure based on customizable run-time parameters
@@ -1646,6 +1657,7 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
   real, allocatable :: mask_blk(:,:) ! A block-sized copy of the tracer point land mask [nondim]
   real, allocatable :: nominalDepth(:,:)   ! The nominal depth of each column [H ~> m or kg m-2]
   real, allocatable :: totalThickness(:,:) ! The total thickness of each column [H ~> m or kg m-2]
+  real, allocatable :: zNew_col(:)  ! A column of new interface heights under ice shelves [H ~> m or kg m-2]
   integer :: err(SZI_(G),SZJ_(G)) ! Error codes from filtered_grid_motion and adjust_interface_motion
   real :: z_scale ! The resolved value of zScale [H Z-1 ~> nondim or kg m-3]
   logical :: ice_shelf, use_filter, use_adjust
@@ -1659,6 +1671,10 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
   integer :: ii, jj     ! Block-local 1-based i and j indices.
 
   nz = GV%ke ; nk = CS%nk
+#ifdef __NVCOMPILER_OPENMP_GPU
+  if (max(nz, nk) > fixed_col_extent) call MOM_error(FATAL, "build_zstar_grid: GPU builds require no more "//&
+      "than fixed_col_extent layers; increase fixed_col_extent in MOM_regridding.F90.")
+#endif
   ice_shelf = present(frac_shelf_h)
   z_scale = 1.0 ; if (present(zScale)) z_scale = zScale
   use_filter = (CS%use_depth_based_time_filter .or. CS%old_grid_weight>0.)
@@ -1668,7 +1684,7 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
   nii = merge(ie-is+1, CS%niblock, CS%niblock==0)
   njj = merge(je-js+1, CS%njblock, CS%njblock==0)
 
-  allocate(h_blk(nz,nii,njj), zOld(nz+1,nii,njj), zNew(nk+1,nii,njj), dz_blk(nk+1,nii,njj))
+  allocate(h_blk(nii,njj,nz), zOld(nii,njj,nz+1), zNew(nii,njj,nk+1), dz_blk(nii,njj,nk+1))
   allocate(mask_blk(nii,njj), nominalDepth(nii,njj), totalThickness(nii,njj))
   !$omp target enter data map(alloc: h_blk, zOld, zNew, dz_blk, mask_blk, nominalDepth, totalThickness, err)
 
@@ -1680,7 +1696,7 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
     do concurrent (jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j, k))
       i = isb + ii - 1 ; j = jsb + jj - 1
       mask_blk(ii,jj) = G%mask2dT(i,j)
-      do K=1,nk+1 ; dz_blk(K,ii,jj) = dzInterface(i,j,K) ; enddo
+      do K=1,nk+1 ; dz_blk(ii,jj,K) = dzInterface(i,j,K) ; enddo
 
       ! Local depth (positive downward)
       nominalDepth(ii,jj) = nom_depth_H(i,j)
@@ -1688,13 +1704,13 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
       ! Determine water column thickness
       totalThickness(ii,jj) = 0.0
       do k = 1,nz
-        h_blk(k,ii,jj) = h(i,j,k)
+        h_blk(ii,jj,k) = h(i,j,k)
         totalThickness(ii,jj) = totalThickness(ii,jj) + h(i,j,k)
       enddo
 
-      zOld(nz+1,ii,jj) = - nominalDepth(ii,jj)
+      zOld(ii,jj,nz+1) = - nominalDepth(ii,jj)
       do k = nz,1,-1
-        zOld(k,ii,jj) = zOld(k+1,ii,jj) + h(i,j,k)
+        zOld(ii,jj,k) = zOld(ii,jj,k+1) + h(i,j,k)
       enddo
     enddo
 
@@ -1704,18 +1720,21 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
 #endif
       ! The rigid top under ice shelves is not supported by build_zstar_columns.
       !$omp target update from(nominalDepth, totalThickness, zOld)
+      allocate(zNew_col(nk+1))
       do jj=1,jje ; do ii=1,iie
         i = isb + ii - 1 ; j = jsb + jj - 1
         if (G%mask2dT(i,j)==0.) cycle
         if (frac_shelf_h(i,j) > 0.) then ! under ice shelf
-          call build_zstar_column(CS%zlike_CS, nominalDepth(ii,jj), totalThickness(ii,jj), zNew(:,ii,jj), &
+          call build_zstar_column(CS%zlike_CS, nominalDepth(ii,jj), totalThickness(ii,jj), zNew_col, &
                                 z_rigid_top=totalThickness(ii,jj)-nominalDepth(ii,jj), &
-                                eta_orig=zOld(1,ii,jj), zScale=z_scale)
+                                eta_orig=zOld(ii,jj,1), zScale=z_scale)
         else
           call build_zstar_column(CS%zlike_CS, nominalDepth(ii,jj), totalThickness(ii,jj), &
-                                zNew(:,ii,jj), zScale=z_scale)
+                                zNew_col, zScale=z_scale)
         endif
+        do K=1,nk+1 ; zNew(ii,jj,K) = zNew_col(K) ; enddo
       enddo ; enddo
+      deallocate(zNew_col)
       !$omp target update to(zNew)
     else
       call build_zstar_columns(CS%zlike_CS, nii, njj, iie, jje, mask_blk, nominalDepth, totalThickness, &
@@ -1726,22 +1745,17 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
       i = isb + ii - 1 ; j = jsb + jj - 1
       err(i,j) = 0
       if (mask_blk(ii,jj)==0.) then
-        do K=1,nk+1 ; dz_blk(K,ii,jj) = 0. ; enddo
-      else
+        do K=1,nk+1 ; dz_blk(ii,jj,K) = 0. ; enddo
+      elseif (use_filter .or. use_adjust) then
         ! Calculate the final change in grid position after blending new and old grids
-        if (use_filter) then
-          call filtered_grid_motion(CS, nz, zOld(:,ii,jj), zNew(:,ii,jj), dz_blk(:,ii,jj), ierr)
-          err(i,j) = ierr
-        endif
-        if (use_adjust .and. (err(i,j) == 0)) then
-          call adjust_interface_motion(CS, nz, h_blk(:,ii,jj), dz_blk(:,ii,jj), ierr)
-          err(i,j) = ierr
-        endif
+        call zstar_motion_block_column(CS, nz, nk, nii, njj, ii, jj, use_filter, use_adjust, h_blk, zOld, zNew, &
+                                       dz_blk, ierr)
+        err(i,j) = ierr
       endif
     enddo
 
     do concurrent (K=1:nk+1, jj=1:jje, ii=1:iie)
-      dzInterface(isb+ii-1,jsb+jj-1,K) = dz_blk(K,ii,jj)
+      dzInterface(isb+ii-1,jsb+jj-1,K) = dz_blk(ii,jj,K)
     enddo
   enddo ; enddo
 
@@ -1764,6 +1778,51 @@ subroutine build_zstar_grid( CS, G, GV, h, nom_depth_H, dzInterface, frac_shelf_
   deallocate(h_blk, zOld, zNew, dz_blk, mask_blk, nominalDepth, totalThickness)
 
 end subroutine build_zstar_grid
+
+!> Finds the change in the interface positions of the column (ii,jj) of the block arrays used by
+!! build_zstar_grid, by filtering the change from the old to the new grid with filtered_grid_motion
+!! if use_filter is true and then adjusting it with adjust_interface_motion if use_adjust is true,
+!! using contiguous copies of the column.
+pure subroutine zstar_motion_block_column(CS, nz, nk, nib, njb, ii, jj, use_filter, use_adjust, h, z_old, z_new, &
+                                          dz_int, ierr)
+  !$omp declare target
+  type(regridding_CS), intent(in) :: CS  !< Regridding control structure
+  integer,             intent(in) :: nz  !< The number of layers in the old grid
+  integer,             intent(in) :: nk  !< The number of layers in the new grid
+  integer,             intent(in) :: nib !< The i-size of the block arrays
+  integer,             intent(in) :: njb !< The j-size of the block arrays
+  integer, value                  :: ii  !< The block-local i index of the column
+  integer, value                  :: jj  !< The block-local j index of the column
+  logical,             intent(in) :: use_filter !< If true, use filtered_grid_motion
+  logical,             intent(in) :: use_adjust !< If true, use adjust_interface_motion
+  real, dimension(nib,njb,nz),   intent(in)    :: h      !< Layer thicknesses on the old grid [H ~> m or kg m-2]
+  real, dimension(nib,njb,nz+1), intent(in)    :: z_old  !< Old grid position [H ~> m or kg m-2]
+  real, dimension(nib,njb,nk+1), intent(in)    :: z_new  !< New grid position before filtering [H ~> m or kg m-2]
+  real, dimension(nib,njb,nk+1), intent(inout) :: dz_int !< The change in interface positions [H ~> m or kg m-2]
+  integer,             intent(out) :: ierr !< An error code from filtered_grid_motion or adjust_interface_motion,
+                                           !! 0 if there is no error
+  ! Local variables
+  ! These have a fixed size on GPU builds; see the note on fixed_col_extent.
+  real :: h_col(WSZK_(nz))       ! A contiguous copy of the column of h [H ~> m or kg m-2]
+  real :: z_old_col(WSZK_(nz)+1) ! A contiguous copy of the column of z_old [H ~> m or kg m-2]
+  real :: z_new_col(WSZK_(nk)+1) ! A contiguous copy of the column of z_new [H ~> m or kg m-2]
+  real :: dz_col(WSZK_(nk)+1)    ! A contiguous copy of the column of dz_int [H ~> m or kg m-2]
+  integer :: k
+
+  do K=1,nk+1 ; dz_col(K) = dz_int(ii,jj,K) ; enddo
+  ierr = 0
+  if (use_filter) then
+    do K=1,nz+1 ; z_old_col(K) = z_old(ii,jj,K) ; enddo
+    do K=1,nk+1 ; z_new_col(K) = z_new(ii,jj,K) ; enddo
+    call filtered_grid_motion(CS, nz, z_old_col, z_new_col, dz_col, ierr)
+  endif
+  if (use_adjust .and. (ierr == 0)) then
+    do k=1,nz ; h_col(k) = h(ii,jj,k) ; enddo
+    call adjust_interface_motion(CS, nz, h_col, dz_col, ierr)
+  endif
+  do K=1,nk+1 ; dz_int(ii,jj,K) = dz_col(K) ; enddo
+
+end subroutine zstar_motion_block_column
 
 !------------------------------------------------------------------------------
 ! Build sigma grid

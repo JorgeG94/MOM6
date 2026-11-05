@@ -45,6 +45,19 @@ implicit none ; private
 
 #include "do_concurrent_compat.h"
 
+!> The fixed declared extent of the column copies in remap_om4_block_column in GPU builds, where
+!! automatic arrays with a runtime size would be allocated on the device heap.  remapping_core_h_columns
+!! checks that its columns have no more than this many cells on GPU builds.
+integer, parameter :: fixed_col_extent = 128
+
+#ifdef __NVCOMPILER_OPENMP_GPU
+#define WSZK_(n)  fixed_col_extent
+#define WSZS_(n0,n1)  (2*fixed_col_extent+1)
+#else
+#define WSZK_(n)  n
+#define WSZS_(n0,n1)  (n0+n1+1)
+#endif
+
 !> Container for remapping parameters
 type, public :: remapping_CS ; private
   !> Determines which reconstruction to use
@@ -343,7 +356,8 @@ end subroutine remapping_core_h
 
 !> Remaps a block of columns of values u0 on grids h0 to grids h1, as remapping_core_h does for each
 !! column.  PCM and PLM reconstructions with the OM4 sub-cell algorithm are done on the whole block,
-!! while any other options are done one column at a time on the host by remapping_core_h.
+!! while any other options are done one column at a time on the host by remapping_core_h.  The block
+!! arrays have the column index last, so that neighboring columns are adjacent in memory.
 !! h0, u0, h1 and u1 must be mapped on the device; h0, u0 and h1 must be current there on entry,
 !! and u1 is current there on return.
 subroutine remapping_core_h_columns(CS, n0, n1, nib, njb, iie, jje, active, h0, u0, h1, u1, PCM_cell)
@@ -354,29 +368,22 @@ subroutine remapping_core_h_columns(CS, n0, n1, nib, njb, iie, jje, active, h0, 
   integer,             intent(in)  :: njb !< The j-size of the block arrays
   integer,             intent(in)  :: iie !< The number of valid columns in the i-direction
   integer,             intent(in)  :: jje !< The number of valid columns in the j-direction
-  logical, dimension(nib,njb), intent(in)    :: active !< True for the columns to remap; the others are
-                                                    !! left unchanged
-  real, dimension(n0,nib,njb), intent(in)    :: h0 !< Cell widths on source grid [H]
-  real, dimension(n0,nib,njb), intent(in)    :: u0 !< Cell averages on source grid [A]
-  real, dimension(n1,nib,njb), intent(in)    :: h1 !< Cell widths on target grid [H]
-  real, dimension(n1,nib,njb), intent(inout) :: u1 !< Cell averages on target grid [A]
-  logical, dimension(n0,nib,njb), optional, intent(in) :: PCM_cell !< If present, use PCM remapping for
+  logical, dimension(nib,njb), intent(in)    :: active !< True for the columns to remap; u1 is not
+                                                    !! set in the others
+  real, dimension(nib,njb,n0), intent(in)    :: h0 !< Cell widths on source grid [H]
+  real, dimension(nib,njb,n0), intent(in)    :: u0 !< Cell averages on source grid [A]
+  real, dimension(nib,njb,n1), intent(in)    :: h1 !< Cell widths on target grid [H]
+  real, dimension(nib,njb,n1), intent(inout) :: u1 !< Cell averages on target grid [A]
+  logical, dimension(nib,njb,n0), optional, intent(in) :: PCM_cell !< If present, use PCM remapping for
                                          !! cells in the source grid where this is true.
   ! Local variables
-  real,    allocatable :: ppoly_E(:,:,:,:)     ! Edge values of the polynomials [A]
-  real,    allocatable :: ppoly_coefs(:,:,:,:) ! Coefficients of the polynomial reconstructions [A]
-  real,    allocatable :: h_sub(:,:,:)  ! Width of each each sub-cell [H]
-  real,    allocatable :: uh_sub(:,:,:) ! Integral of u*h over each sub-cell [A H]
-  real,    allocatable :: u_sub(:,:,:)  ! Average of u over each sub-cell [A]
-  real,    allocatable :: h0_eff(:,:,:) ! Effective thickness of source cells [H]
-  integer, allocatable :: isub_src(:,:,:)   ! Index of source cell for each sub-cell
-  integer, allocatable :: isrc_start(:,:,:) ! Index of first sub-cell within each source cell
-  integer, allocatable :: isrc_end(:,:,:)   ! Index of last sub-cell within each source cell
-  integer, allocatable :: isrc_max(:,:,:)   ! Index of thickest sub-cell within each source cell
-  integer, allocatable :: itgt_start(:,:,:) ! Index of first sub-cell within each target cell
-  integer, allocatable :: itgt_end(:,:,:)   ! Index of last sub-cell within each target cell
-  real :: u02_err      ! Integrated reconstruction error estimates [H A]
-  real :: uh_err       ! A bound on the error in the sum of u*h, as estimated by the remapping code [A H]
+  real, allocatable :: ppoly_E(:,:,:,:)     ! Edge values of the polynomials [A]
+  real, allocatable :: ppoly_coefs(:,:,:,:) ! Coefficients of the polynomial reconstructions [A]
+  real, allocatable :: h0_col(:)  ! A column of source grid cell widths, for the host path [H]
+  real, allocatable :: u0_col(:)  ! A column of source grid cell averages, for the host path [A]
+  real, allocatable :: h1_col(:)  ! A column of target grid cell widths, for the host path [H]
+  real, allocatable :: u1_col(:)  ! A column of target grid cell averages, for the host path [A]
+  logical, allocatable :: PCM_col(:) ! A column of PCM_cell, for the host path
   real :: h_neglect    ! A negligibly small width for the purpose of cell reconstructions [H]
   logical :: on_block  ! If true, this remapping is done on the whole block
   logical :: force_bounds_in_subcell ! If true, force the sub-cell values to be bounded
@@ -385,20 +392,19 @@ subroutine remapping_core_h_columns(CS, n0, n1, nib, njb, iie, jje, active, h0, 
   integer :: local_remapping_scheme ! The reconstruction scheme used, as in build_reconstructions_1d
   integer :: iMethod   ! An integer indicating the integration method used
   integer :: ncoef     ! The number of polynomial coefficients
-  integer :: ii, jj    ! The indices of a column within the block
+  integer :: ii, jj, k ! The indices of a column within the block, and of a cell
 
-  ! This selects the reconstruction as build_reconstructions_1d does.
-  local_remapping_scheme = CS%remapping_scheme
-  if (n0<=1) then
-    local_remapping_scheme = REMAPPING_PCM
-  elseif (n0<=3) then
-    local_remapping_scheme = min( local_remapping_scheme, REMAPPING_PLM )
-  endif
+  local_remapping_scheme = reconstruction_scheme(CS%remapping_scheme, n0)
   on_block = ((local_remapping_scheme == REMAPPING_PCM) .or. (local_remapping_scheme == REMAPPING_PLM)) .and. &
              (CS%remapping_scheme /= REMAPPING_VIA_CLASS) .and. CS%om4_remap_via_sub_cells .and. &
              (.not.CS%check_reconstruction) .and. (.not.CS%check_remapping) .and. (.not.present(PCM_cell))
 
   if (on_block) then
+#ifdef __NVCOMPILER_OPENMP_GPU
+    if (max(n0, n1) > fixed_col_extent) call MOM_error(FATAL, "remapping_core_h_columns: GPU builds "//&
+        "require no more than fixed_col_extent cells in a column; increase fixed_col_extent in "//&
+        "MOM_remapping.F90, PCM_functions.F90 and PLM_functions.F90 (PLM_max_cells).")
+#endif
     ncoef = 1 ; iMethod = INTEGRATION_PCM
     if (local_remapping_scheme == REMAPPING_PLM) then
       ncoef = 2 ; iMethod = INTEGRATION_PLM
@@ -408,12 +414,8 @@ subroutine remapping_core_h_columns(CS, n0, n1, nib, njb, iie, jje, active, h0, 
     force_bounds_in_subcell = CS%force_bounds_in_subcell
     force_bounds_in_target = CS%force_bounds_in_target
 
-    allocate(ppoly_E(n0,2,nib,njb), ppoly_coefs(n0,ncoef,nib,njb), h0_eff(n0,nib,njb))
-    allocate(h_sub(n0+n1+1,nib,njb), uh_sub(n0+n1+1,nib,njb), u_sub(n0+n1+1,nib,njb), isub_src(n0+n1+1,nib,njb))
-    allocate(isrc_start(n0,nib,njb), isrc_end(n0,nib,njb), isrc_max(n0,nib,njb))
-    allocate(itgt_start(n1,nib,njb), itgt_end(n1,nib,njb))
-    !$omp target enter data map(alloc: ppoly_E, ppoly_coefs, h0_eff, h_sub, uh_sub, u_sub, isub_src, &
-    !$omp                              isrc_start, isrc_end, isrc_max, itgt_start, itgt_end)
+    allocate(ppoly_E(nib,njb,n0,2), ppoly_coefs(nib,njb,n0,ncoef))
+    !$omp target enter data map(alloc: ppoly_E, ppoly_coefs)
 
     if (local_remapping_scheme == REMAPPING_PCM) then
       call PCM_reconstruction_columns(n0, nib, njb, iie, jje, active, u0, ppoly_E, ppoly_coefs)
@@ -422,44 +424,122 @@ subroutine remapping_core_h_columns(CS, n0, n1, nib, njb, iie, jje, active, h0, 
                                       boundary_extrapolation)
     endif
 
-    do concurrent (jj=1:jje, ii=1:iie, active(ii,jj)) DO_LOCALITY(local(u02_err, uh_err))
-      ! Calculate sub-layer thicknesses and indices connecting sub-layers to source and target grids
-      call intersect_src_tgt_grids(n0, h0(:,ii,jj), n1, h1(:,ii,jj), h_sub(:,ii,jj), h0_eff(:,ii,jj), &
-                                   isrc_start(:,ii,jj), isrc_end(:,ii,jj), isrc_max(:,ii,jj), &
-                                   itgt_start(:,ii,jj), itgt_end(:,ii,jj), isub_src(:,ii,jj))
-      ! Calculate the average and integral values within each sub-cell.
-      call remap_src_to_sub_grid_om4(n0, h0(:,ii,jj), u0(:,ii,jj), ppoly_E(:,:,ii,jj), ppoly_coefs(:,:,ii,jj), &
-                                     n1, h_sub(:,ii,jj), h0_eff(:,ii,jj), isrc_start(:,ii,jj), isrc_end(:,ii,jj), &
-                                     isrc_max(:,ii,jj), isub_src(:,ii,jj), iMethod, force_bounds_in_subcell, &
-                                     u_sub(:,ii,jj), uh_sub(:,ii,jj), u02_err)
-      ! Sum the integrals from the sub-cells within each target cell.
-      call remap_sub_to_tgt_grid_om4(n0, n1, h1(:,ii,jj), h_sub(:,ii,jj), u_sub(:,ii,jj), uh_sub(:,ii,jj), &
-                                     itgt_start(:,ii,jj), itgt_end(:,ii,jj), force_bounds_in_target, &
-                                     u1(:,ii,jj), uh_err)
+    do concurrent (jj=1:jje, ii=1:iie, active(ii,jj))
+      call remap_om4_block_column(n0, n1, nib, njb, ncoef, ii, jj, h0, u0, ppoly_E, ppoly_coefs, h1, iMethod, &
+                                  force_bounds_in_subcell, force_bounds_in_target, u1)
     enddo
 
-    !$omp target exit data map(delete: ppoly_E, ppoly_coefs, h0_eff, h_sub, uh_sub, u_sub, isub_src, &
-    !$omp                              isrc_start, isrc_end, isrc_max, itgt_start, itgt_end)
-    deallocate(ppoly_E, ppoly_coefs, h0_eff, h_sub, uh_sub, u_sub, isub_src)
-    deallocate(isrc_start, isrc_end, isrc_max, itgt_start, itgt_end)
+    !$omp target exit data map(delete: ppoly_E, ppoly_coefs)
+    deallocate(ppoly_E, ppoly_coefs)
   else
 #ifdef __NVCOMPILER_OPENMP_GPU
     call MOM_error(FATAL, "remapping_core_h_columns: GPU builds only support PCM or PLM remapping with "//&
                    "REMAPPING_USE_OM4_SUBCELLS, without PCM cells or the FATAL_CHECK_ options.")
 #endif
+    allocate(h0_col(n0), u0_col(n0), h1_col(n1), u1_col(n1), PCM_col(n0))
     !$omp target update from(h0, u0, h1, active)
     do jj=1,jje ; do ii=1,iie ; if (active(ii,jj)) then
+      do k=1,n0 ; h0_col(k) = h0(ii,jj,k) ; u0_col(k) = u0(ii,jj,k) ; enddo
+      do k=1,n1 ; h1_col(k) = h1(ii,jj,k) ; enddo
       if (present(PCM_cell)) then
-        call remapping_core_h(CS, n0, h0(:,ii,jj), u0(:,ii,jj), n1, h1(:,ii,jj), u1(:,ii,jj), &
-                              PCM_cell=PCM_cell(:,ii,jj))
+        do k=1,n0 ; PCM_col(k) = PCM_cell(ii,jj,k) ; enddo
+        call remapping_core_h(CS, n0, h0_col, u0_col, n1, h1_col, u1_col, PCM_cell=PCM_col)
       else
-        call remapping_core_h(CS, n0, h0(:,ii,jj), u0(:,ii,jj), n1, h1(:,ii,jj), u1(:,ii,jj))
+        call remapping_core_h(CS, n0, h0_col, u0_col, n1, h1_col, u1_col)
       endif
+      do k=1,n1 ; u1(ii,jj,k) = u1_col(k) ; enddo
     endif ; enddo ; enddo
     !$omp target update to(u1)
+    deallocate(h0_col, u0_col, h1_col, u1_col, PCM_col)
   endif
 
 end subroutine remapping_core_h_columns
+
+!> Remaps the column (ii,jj) of the block arrays used by remapping_core_h_columns with the OM4 sub-cell
+!! algorithm, from reconstructions that have already been built.  This is the sequence of calls that
+!! remapping_core_h makes for each column, applied to contiguous copies of the column.
+pure subroutine remap_om4_block_column(n0, n1, nib, njb, ncoef, ii, jj, h0, u0, ppoly_E, ppoly_coefs, h1, &
+                                       iMethod, force_bounds_in_subcell, force_bounds_in_target, u1)
+  !$omp declare target
+  integer, intent(in) :: n0    !< Number of cells on source grid
+  integer, intent(in) :: n1    !< Number of cells on target grid
+  integer, intent(in) :: nib   !< The i-size of the block arrays
+  integer, intent(in) :: njb   !< The j-size of the block arrays
+  integer, intent(in) :: ncoef !< The number of polynomial coefficients
+  integer, value      :: ii    !< The block-local i index of the column
+  integer, value      :: jj    !< The block-local j index of the column
+  real, dimension(nib,njb,n0),       intent(in)    :: h0 !< Cell widths on source grid [H]
+  real, dimension(nib,njb,n0),       intent(in)    :: u0 !< Cell averages on source grid [A]
+  real, dimension(nib,njb,n0,2),     intent(in)    :: ppoly_E !< Edge values of the polynomials [A]
+  real, dimension(nib,njb,n0,ncoef), intent(in)    :: ppoly_coefs !< Coefficients of the polynomials [A]
+  real, dimension(nib,njb,n1),       intent(in)    :: h1 !< Cell widths on target grid [H]
+  integer, intent(in) :: iMethod !< An integer indicating the integration method used
+  logical, intent(in) :: force_bounds_in_subcell !< If true, force the sub-cell values to be bounded
+  logical, intent(in) :: force_bounds_in_target  !< If true, force the target cell values to be bounded
+  real, dimension(nib,njb,n1),       intent(inout) :: u1 !< Cell averages on target grid [A]
+  ! Local variables
+  ! These have a fixed size on GPU builds; see the note on fixed_col_extent.  The (n0,2) and
+  ! (n0,ncoef) arrays used by remap_src_to_sub_grid_om4 are stored contiguously in E_col and coef_col.
+  real :: h0_col(WSZK_(n0))   ! A contiguous copy of the column of h0 [H]
+  real :: u0_col(WSZK_(n0))   ! A contiguous copy of the column of u0 [A]
+  real :: E_col(2*WSZK_(n0))  ! The edge values of the column [A]
+  real :: coef_col(2*WSZK_(n0)) ! The polynomial coefficients of the column [A]
+  real :: h1_col(WSZK_(n1))   ! A contiguous copy of the column of h1 [H]
+  real :: u1_col(WSZK_(n1))   ! The remapped column [A]
+  real :: h_sub(WSZS_(n0,n1))  ! Width of each each sub-cell [H]
+  real :: uh_sub(WSZS_(n0,n1)) ! Integral of u*h over each sub-cell [A H]
+  real :: u_sub(WSZS_(n0,n1))  ! Average of u over each sub-cell [A]
+  integer :: isub_src(WSZS_(n0,n1)) ! Index of source cell for each sub-cell
+  real :: h0_eff(WSZK_(n0))         ! Effective thickness of source cells [H]
+  integer :: isrc_start(WSZK_(n0))  ! Index of first sub-cell within each source cell
+  integer :: isrc_end(WSZK_(n0))    ! Index of last sub-cell within each source cell
+  integer :: isrc_max(WSZK_(n0))    ! Index of thickest sub-cell within each source cell
+  integer :: itgt_start(WSZK_(n1))  ! Index of first sub-cell within each target cell
+  integer :: itgt_end(WSZK_(n1))    ! Index of last sub-cell within each target cell
+  real :: u02_err      ! Integrated reconstruction error estimates [H A]
+  real :: uh_err       ! A bound on the error in the sum of u*h, as estimated by the remapping code [A H]
+  integer :: k, m
+
+  do k=1,n0
+    h0_col(k) = h0(ii,jj,k) ; u0_col(k) = u0(ii,jj,k)
+    E_col(k) = ppoly_E(ii,jj,k,1) ; E_col(n0+k) = ppoly_E(ii,jj,k,2)
+  enddo
+  do m=1,ncoef ; do k=1,n0
+    coef_col(k + (m-1)*n0) = ppoly_coefs(ii,jj,k,m)
+  enddo ; enddo
+  do k=1,n1 ; h1_col(k) = h1(ii,jj,k) ; enddo
+
+  ! Calculate sub-layer thicknesses and indices connecting sub-layers to source and target grids
+  call intersect_src_tgt_grids(n0, h0_col, n1, h1_col, h_sub, h0_eff, isrc_start, isrc_end, isrc_max, &
+                               itgt_start, itgt_end, isub_src)
+  ! Calculate the average and integral values within each sub-cell.
+  call remap_src_to_sub_grid_om4(n0, h0_col, u0_col, E_col, coef_col, n1, h_sub, h0_eff, isrc_start, &
+                                 isrc_end, isrc_max, isub_src, iMethod, force_bounds_in_subcell, &
+                                 u_sub, uh_sub, u02_err)
+  ! Sum the integrals from the sub-cells within each target cell.
+  call remap_sub_to_tgt_grid_om4(n0, n1, h1_col, h_sub, u_sub, uh_sub, itgt_start, itgt_end, &
+                                 force_bounds_in_target, u1_col, uh_err)
+
+  do k=1,n1 ; u1(ii,jj,k) = u1_col(k) ; enddo
+
+end subroutine remap_om4_block_column
+
+!> Returns the reconstruction scheme that is used for a column with n0 cells, which may be of
+!! lower order than the requested scheme when there are too few cells for it.
+pure integer function reconstruction_scheme(remapping_scheme, n0)
+  integer, intent(in) :: remapping_scheme !< The requested remapping scheme
+  integer, intent(in) :: n0 !< Number of cells on the source grid
+
+  reconstruction_scheme = remapping_scheme
+  if (n0<=1) then
+    reconstruction_scheme = REMAPPING_PCM
+  elseif (n0<=3) then
+    reconstruction_scheme = min( reconstruction_scheme, REMAPPING_PLM )
+  elseif (n0<=4 .and. reconstruction_scheme /= REMAPPING_PPM_CW ) then
+    reconstruction_scheme = min( reconstruction_scheme, REMAPPING_PPM_H4 )
+  endif
+
+end function reconstruction_scheme
 
 !> Remaps column of values u0 on grid h0 to implied grid h1
 !! where the interfaces of h1 differ from those of h0 by dx.
@@ -573,14 +653,7 @@ subroutine build_reconstructions_1d( CS, n0, h0, u0, ppoly_r_coefs, &
   ppoly_r_coefs(:,:) = 0.0
   iMethod = -999
 
-  local_remapping_scheme = CS%remapping_scheme
-  if (n0<=1) then
-    local_remapping_scheme = REMAPPING_PCM
-  elseif (n0<=3) then
-    local_remapping_scheme = min( local_remapping_scheme, REMAPPING_PLM )
-  elseif (n0<=4 .and. local_remapping_scheme /= REMAPPING_PPM_CW ) then
-    local_remapping_scheme = min( local_remapping_scheme, REMAPPING_PPM_H4 )
-  endif
+  local_remapping_scheme = reconstruction_scheme(CS%remapping_scheme, n0)
   select case ( local_remapping_scheme )
     case ( REMAPPING_PCM )
       call PCM_reconstruction( n0, u0, ppoly_r_E, ppoly_r_coefs)

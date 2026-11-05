@@ -168,6 +168,17 @@ public ALE_set_extrap_boundaries
 ! their mks counterparts with notation like "a velocity [Z T-1 ~> m s-1]".  If the units
 ! vary with the Boussinesq approximation, the Boussinesq variant is given first.
 
+!> The fixed declared extent of the column copies in remapped_vel_corrections in GPU builds, where
+!! automatic arrays with a runtime size would be allocated on the device heap.  ALE_init checks
+!! GV%ke against it on GPU builds.
+integer, parameter :: fixed_col_extent = 128
+
+#ifdef __NVCOMPILER_OPENMP_GPU
+#define WSZK_(n)  fixed_col_extent
+#else
+#define WSZK_(n)  n
+#endif
+
 contains
 
 !> This routine is typically called (from initialize_MOM in file MOM.F90)
@@ -389,6 +400,9 @@ subroutine ALE_init( param_file, G, GV, US, max_depth, CS)
   call get_param(param_file, mdl, "OFFLINE_TRACER_MODE", offline, default=.false., do_not_log=.true.)
   call get_param(param_file, mdl, "ICE_SHELF", ice_shelf, default=.false., do_not_log=.true.)
   call get_param(param_file, mdl, "OBC_NUMBER_OF_SEGMENTS", nOBC_segments, default=0, do_not_log=.true.)
+  if (GV%ke > fixed_col_extent) call MOM_error(FATAL, "ALE_init: GPU builds of the ALE require "//&
+      "GV%ke <= fixed_col_extent; increase fixed_col_extent in MOM_ALE.F90, MOM_remapping.F90, "//&
+      "MOM_regridding.F90, coord_zlike.F90, PCM_functions.F90 and PLM_functions.F90 (PLM_max_cells).")
   if (coordinateMode(coord_mode) /= REGRIDDING_ZSTAR) call MOM_error(FATAL, &
       "ALE_init: GPU builds only support REGRIDDING_COORDINATE_MODE = ZSTAR.")
   if (((uppercase(trim(string)) /= "PCM") .and. (uppercase(trim(string)) /= "PLM")) .or. &
@@ -971,6 +985,9 @@ end subroutine ALE_remap_tracers
 !> Remaps one tracer concentration field between the old and the new grids in blocks of
 !! columns, and finds the tendencies for the remapping diagnostics.  h_old, h_new, work_conc
 !! and work_cont must be on the device, while tr is host-owned and is current on the host on return.
+!! This is the body of the tracer loop in ALE_remap_tracers.  It is a separate routine so that each
+!! tracer's concentrations (Reg%Tr(m)%t, a pointer) arrive as a non-pointer array that the kernels
+!! here can use.
 subroutine remap_tracer_field(CS, G, GV, h_old, h_new, tr, conc_underflow, do_conc, do_cont, Idt, &
                               work_conc, work_cont, PCM_cell)
   type(ALE_CS),                              intent(in)    :: CS     !< ALE control structure
@@ -1011,8 +1028,8 @@ subroutine remap_tracer_field(CS, G, GV, h_old, h_new, tr, conc_underflow, do_co
   nii = merge(G%iec-G%isc+1, CS%niblock, CS%niblock==0)
   njj = merge(G%jec-G%jsc+1, CS%njblock, CS%njblock==0)
 
-  allocate(h1(nz,nii,njj), h2(nz,nii,njj), tr_src(nz,nii,njj), tr_column(nz,nii,njj), active(nii,njj))
-  if (present(PCM_cell)) allocate(PCM(nz,nii,njj))
+  allocate(h1(nii,njj,nz), h2(nii,njj,nz), tr_src(nii,njj,nz), tr_column(nii,njj,nz), active(nii,njj))
+  if (present(PCM_cell)) allocate(PCM(nii,njj,nz))
   !$omp target enter data map(alloc: h1, h2, tr_src, tr_column, active)
   ! The tracer may already be mapped by an outer scope, so it is updated explicitly.
   !$omp target enter data map(alloc: tr)
@@ -1030,17 +1047,17 @@ subroutine remap_tracer_field(CS, G, GV, h_old, h_new, tr, conc_underflow, do_co
     do concurrent (k=1:nz, jj=1:jje, ii=1:iie) DO_LOCALITY(local(i, j))
       i = isb + ii - 1 ; j = jsb + jj - 1
       if (G%mask2dT(i,j)>0.) then
-        h1(k,ii,jj) = h_old(i,j,k)
-        h2(k,ii,jj) = h_new(i,j,k)
-        tr_src(k,ii,jj) = tr(i,j,k)
+        h1(ii,jj,k) = h_old(i,j,k)
+        h2(ii,jj,k) = h_new(i,j,k)
+        tr_src(ii,jj,k) = tr(i,j,k)
       else
-        h1(k,ii,jj) = 0.0 ; h2(k,ii,jj) = 0.0 ; tr_src(k,ii,jj) = 0.0
+        h1(ii,jj,k) = 0.0 ; h2(ii,jj,k) = 0.0 ; tr_src(ii,jj,k) = 0.0
       endif
     enddo
 
     if (present(PCM_cell)) then
-      do jj=1,jje ; do ii=1,iie ; do k=1,nz
-        PCM(k,ii,jj) = PCM_cell(isb+ii-1,jsb+jj-1,k)
+      do k=1,nz ; do jj=1,jje ; do ii=1,iie
+        PCM(ii,jj,k) = PCM_cell(isb+ii-1,jsb+jj-1,k)
       enddo ; enddo ; enddo
       call remapping_core_h_columns(CS%remapCS, nz, nz, nii, njj, iie, jje, active, h1, tr_src, h2, tr_column, &
                                     PCM_cell=PCM)
@@ -1053,24 +1070,24 @@ subroutine remap_tracer_field(CS, G, GV, h_old, h_new, tr, conc_underflow, do_co
 
       ! Possibly underflow any very tiny tracer concentrations to 0.  Note that this is not conservative!
       if (conc_underflow > 0.0) then ; do k=1,nz
-        if (abs(tr_column(k,ii,jj)) < conc_underflow) tr_column(k,ii,jj) = 0.0
+        if (abs(tr_column(ii,jj,k)) < conc_underflow) tr_column(ii,jj,k) = 0.0
       enddo ; endif
 
       ! Intermediate steps for tendency of tracer concentration and tracer content.
       if (do_conc) then
         do k=1,nz
-          work_conc(i,j,k) = (tr_column(k,ii,jj) - tr(i,j,k)) * Idt
+          work_conc(i,j,k) = (tr_column(ii,jj,k) - tr(i,j,k)) * Idt
         enddo
       endif
       if (do_cont) then
         do k=1,nz
-          work_cont(i,j,k) = (tr_column(k,ii,jj)*h2(k,ii,jj) - tr(i,j,k)*h1(k,ii,jj)) * Idt
+          work_cont(i,j,k) = (tr_column(ii,jj,k)*h2(ii,jj,k) - tr(i,j,k)*h1(ii,jj,k)) * Idt
         enddo
       endif
 
       ! update tracer concentration
       do k=1,nz
-        tr(i,j,k) = tr_column(k,ii,jj)
+        tr(i,j,k) = tr_column(ii,jj,k)
       enddo
     enddo
   enddo ; enddo
@@ -1220,7 +1237,6 @@ subroutine ALE_remap_set_h_vel_partial(CS, G, GV, h_mask, h_u, h_v)
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! The vertically summed thicknesses [H ~> m or kg m-2]
   real :: h_mask_vel ! A depth below which the thicknesses at a velocity point are masked out [H ~> m or kg m-2]
-  real :: h_rsum     ! The running sum of the thicknesses at a velocity point [H ~> m or kg m-2]
   integer :: i, j, k, nz
 
   nz = GV%ke
@@ -1233,39 +1249,51 @@ subroutine ALE_remap_set_h_vel_partial(CS, G, GV, h_mask, h_u, h_v)
     enddo
   enddo
 
-  do concurrent (j=G%jsc:G%jec, I=G%IscB:G%IecB, G%mask2dCu(I,j)>0.) DO_LOCALITY(local(h_mask_vel, h_rsum, k))
+  do concurrent (j=G%jsc:G%jec, I=G%IscB:G%IecB, G%mask2dCu(I,j)>0.) DO_LOCALITY(local(h_mask_vel))
     h_mask_vel = min(h_tot(i,j), h_tot(i+1,j))
-    ! Mask out thicknesses to 0 when their running sum exceeds h_mask_vel.
-    h_rsum = 0.0
-    do k=1,nz
-      if (h_u(I,j,k) > h_mask_vel - h_rsum) then
-        ! This thickness is reduced because it extends below the shallower neighboring bathymetry.
-        h_u(I,j,k) = max(h_mask_vel - h_rsum, 0.0)
-        h_rsum = h_mask_vel
-      else
-        h_rsum = h_rsum + h_u(I,j,k)
-      endif
-    enddo
+    call apply_partial_cell_mask(G%IsdB, G%IedB, G%jsd, G%jed, nz, I, j, h_u, h_mask_vel)
   enddo
 
-  do concurrent (J=G%JscB:G%JecB, i=G%isc:G%iec, G%mask2dCv(i,J)>0.) DO_LOCALITY(local(h_mask_vel, h_rsum, k))
+  do concurrent (J=G%JscB:G%JecB, i=G%isc:G%iec, G%mask2dCv(i,J)>0.) DO_LOCALITY(local(h_mask_vel))
     h_mask_vel = min(h_tot(i,j), h_tot(i,j+1))
-    ! Mask out thicknesses to 0 when their running sum exceeds h_mask_vel.
-    h_rsum = 0.0
-    do k=1,nz
-      if (h_v(i,J,k) > h_mask_vel - h_rsum) then
-        ! This thickness is reduced because it extends below the shallower neighboring bathymetry.
-        h_v(i,J,k) = max(h_mask_vel - h_rsum, 0.0)
-        h_rsum = h_mask_vel
-      else
-        h_rsum = h_rsum + h_v(i,J,k)
-      endif
-    enddo
+    call apply_partial_cell_mask(G%isd, G%ied, G%JsdB, G%JedB, nz, i, J, h_v, h_mask_vel)
   enddo
 
   !$omp target exit data map(delete: h_tot)
 
 end subroutine ALE_remap_set_h_vel_partial
+
+!> Mask out the thicknesses in the column (i,j) of h1 after their running vertical sum exceeds h_mask.
+!! The bounds of h1 are passed so that this works for thicknesses at either velocity point.
+pure subroutine apply_partial_cell_mask(isd, ied, jsd, jed, nz, i, j, h1, h_mask)
+  !$omp declare target
+  integer, intent(in)    :: isd  !< The lower i-bound of h1
+  integer, intent(in)    :: ied  !< The upper i-bound of h1
+  integer, intent(in)    :: jsd  !< The lower j-bound of h1
+  integer, intent(in)    :: jed  !< The upper j-bound of h1
+  integer, intent(in)    :: nz   !< The number of layers in h1
+  integer, value         :: i    !< The i-index of the column
+  integer, value         :: j    !< The j-index of the column
+  real, dimension(isd:ied,jsd:jed,nz), &
+                 intent(inout) :: h1 !< Thicknesses to be masked out after their running vertical sum
+                                     !! exceeds h_mask [H ~> m or kg m-2]
+  real,          intent(in)    :: h_mask !< The depth after which the thicknesses in h1 are
+                                     !! masked out [H ~> m or kg m-2]
+  ! Local variables
+  real :: h1_rsum  ! The running sum of h1 [H ~> m or kg m-2]
+  integer :: k
+
+  h1_rsum = 0.0
+  do k=1,nz
+    if (h1(i,j,k) > h_mask - h1_rsum) then
+      ! This thickness is reduced because it extends below the shallower neighboring bathymetry.
+      h1(i,j,k) = max(h_mask - h1_rsum, 0.0)
+      h1_rsum = h_mask
+    else
+      h1_rsum = h1_rsum + h1(i,j,k)
+    endif
+  enddo
+end subroutine apply_partial_cell_mask
 
 ! Reset thicknesses at velocity points on open boundary condition segments
 subroutine ALE_remap_set_h_vel_OBC(G, GV, h_new, h_u, h_v, OBC)
@@ -1406,7 +1434,7 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
 
   nIIB = merge(G%IecB-G%IscB+1, CS%niblock, CS%niblock==0)
   njj = merge(G%jec-G%jsc+1, CS%njblock, CS%njblock==0)
-  allocate(h1(nz,nIIB,njj), h2(nz,nIIB,njj), vel_src(nz,nIIB,njj), vel_tgt(nz,nIIB,njj), active(nIIB,njj))
+  allocate(h1(nIIB,njj,nz), h2(nIIB,njj,nz), vel_src(nIIB,njj,nz), vel_tgt(nIIB,njj,nz), active(nIIB,njj))
   !$omp target enter data map(alloc: h1, h2, vel_src, vel_tgt, active, du2h_tot)
 
   if (do_u2) then
@@ -1428,11 +1456,11 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
     do concurrent (k=1:nz, jj=1:jje, II=1:IIe) DO_LOCALITY(local(I, j))
       I = IsbB + II - 1 ; j = jsb + jj - 1
       if (G%mask2dCu(I,j)>0.) then
-        h1(k,II,jj) = h_old_u(I,j,k)
-        h2(k,II,jj) = h_new_u(I,j,k)
-        vel_src(k,II,jj) = u(I,j,k)
+        h1(II,jj,k) = h_old_u(I,j,k)
+        h2(II,jj,k) = h_new_u(I,j,k)
+        vel_src(II,jj,k) = u(I,j,k)
       else
-        h1(k,II,jj) = 0.0 ; h2(k,II,jj) = 0.0 ; vel_src(k,II,jj) = 0.0
+        h1(II,jj,k) = 0.0 ; h2(II,jj,k) = 0.0 ; vel_src(II,jj,k) = 0.0
       endif
     enddo
 
@@ -1441,14 +1469,14 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
     do concurrent (jj=1:jje, II=1:IIe, G%mask2dCu(IsbB+II-1,jsb+jj-1)>0.) DO_LOCALITY(local(I, j, k, u2h_tot))
       I = IsbB + II - 1 ; j = jsb + jj - 1
 
-      call remapped_vel_corrections(nz, h1(:,II,jj), h2(:,II,jj), vel_src(:,II,jj), vel_tgt(:,II,jj), &
+      call remapped_vel_corrections(nz, nIIB, njj, II, jj, h1, h2, vel_src, vel_tgt, &
                                     conserve_ke, H_subroundoff, do_u2, I_dt, mask_vel, BBL_h_vel_mask, &
                                     h_vel_mask, u2h_tot)
       if (do_u2) du2h_tot(I,j) = u2h_tot
 
       ! Copy the column of new velocities back to the 3-d array
       do k=1,nz
-        u(I,j,k) = vel_tgt(k,II,jj)
+        u(I,j,k) = vel_tgt(II,jj,k)
       enddo !k
     enddo
   enddo ; enddo
@@ -1468,7 +1496,7 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
 
   nii = merge(G%iec-G%isc+1, CS%niblock, CS%niblock==0)
   nJJB = merge(G%JecB-G%JscB+1, CS%njblock, CS%njblock==0)
-  allocate(h1(nz,nii,nJJB), h2(nz,nii,nJJB), vel_src(nz,nii,nJJB), vel_tgt(nz,nii,nJJB), active(nii,nJJB))
+  allocate(h1(nii,nJJB,nz), h2(nii,nJJB,nz), vel_src(nii,nJJB,nz), vel_tgt(nii,nJJB,nz), active(nii,nJJB))
   !$omp target enter data map(alloc: h1, h2, vel_src, vel_tgt, active, dv2h_tot)
 
   if (do_v2) then
@@ -1488,11 +1516,11 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
     do concurrent (k=1:nz, JJ=1:JJe, ii=1:iie) DO_LOCALITY(local(i, J))
       i = isb + ii - 1 ; J = JsbB + JJ - 1
       if (G%mask2dCv(i,J)>0.) then
-        h1(k,ii,JJ) = h_old_v(i,J,k)
-        h2(k,ii,JJ) = h_new_v(i,J,k)
-        vel_src(k,ii,JJ) = v(i,J,k)
+        h1(ii,JJ,k) = h_old_v(i,J,k)
+        h2(ii,JJ,k) = h_new_v(i,J,k)
+        vel_src(ii,JJ,k) = v(i,J,k)
       else
-        h1(k,ii,JJ) = 0.0 ; h2(k,ii,JJ) = 0.0 ; vel_src(k,ii,JJ) = 0.0
+        h1(ii,JJ,k) = 0.0 ; h2(ii,JJ,k) = 0.0 ; vel_src(ii,JJ,k) = 0.0
       endif
     enddo
 
@@ -1501,14 +1529,14 @@ subroutine ALE_remap_velocities(CS, G, GV, h_old_u, h_old_v, h_new_u, h_new_v, u
     do concurrent (JJ=1:JJe, ii=1:iie, G%mask2dCv(isb+ii-1,JsbB+JJ-1)>0.) DO_LOCALITY(local(i, J, k, v2h_tot))
       i = isb + ii - 1 ; J = JsbB + JJ - 1
 
-      call remapped_vel_corrections(nz, h1(:,ii,JJ), h2(:,ii,JJ), vel_src(:,ii,JJ), vel_tgt(:,ii,JJ), &
+      call remapped_vel_corrections(nz, nii, nJJB, ii, JJ, h1, h2, vel_src, vel_tgt, &
                                     conserve_ke, H_subroundoff, do_v2, I_dt, mask_vel, BBL_h_vel_mask, &
                                     h_vel_mask, v2h_tot)
       if (do_v2) dv2h_tot(i,J) = v2h_tot
 
       ! Copy the column of new velocities back to the 3-d array
       do k=1,nz
-        v(i,J,k) = vel_tgt(k,ii,JJ)
+        v(i,J,k) = vel_tgt(ii,JJ,k)
       enddo !k
     enddo
   enddo ; enddo
@@ -1613,17 +1641,23 @@ end subroutine ALE_remap_vertex_vals
 
 
 
-!> Applies the corrections to one column of remapped velocities in ALE_remap_velocities: the KE-conserving
-!! correction to the baroclinic velocity, the change in the depth integral of the squared velocity for
-!! the diagnostics, and the zeroing of velocities in thin near-bottom layers.
-pure subroutine remapped_vel_corrections(nz, h1, h2, vel_src, vel_tgt, conserve_ke, H_subroundoff, &
-                                         do_vel2, I_dt, mask_vel, BBL_h_vel_mask, h_vel_mask, dvel2h_tot)
+!> Applies the corrections to the column (ii,jj) of the block of remapped velocities in
+!! ALE_remap_velocities: the KE-conserving correction to the baroclinic velocity, the change in the
+!! depth integral of the squared velocity for the diagnostics, and the zeroing of velocities in thin
+!! near-bottom layers.  The work is done on contiguous copies of the column.
+pure subroutine remapped_vel_corrections(nz, nib, njb, ii, jj, h1_blk, h2_blk, vel_src_blk, vel_tgt_blk, &
+                                         conserve_ke, H_subroundoff, do_vel2, I_dt, mask_vel, BBL_h_vel_mask, &
+                                         h_vel_mask, dvel2h_tot)
   !$omp declare target
-  integer, intent(in)    :: nz          !< The number of layers in this column
-  real,    intent(in)    :: h1(nz)      !< Source grid layer thicknesses [H ~> m or kg m-2]
-  real,    intent(in)    :: h2(nz)      !< Target grid layer thicknesses [H ~> m or kg m-2]
-  real,    intent(in)    :: vel_src(nz) !< Velocities on the source grid [L T-1 ~> m s-1]
-  real,    intent(inout) :: vel_tgt(nz) !< Velocities remapped to the target grid [L T-1 ~> m s-1]
+  integer, intent(in)    :: nz          !< The number of layers in each column
+  integer, intent(in)    :: nib         !< The i-size of the block arrays
+  integer, intent(in)    :: njb         !< The j-size of the block arrays
+  integer, value         :: ii          !< The block-local i index of the column
+  integer, value         :: jj          !< The block-local j index of the column
+  real,    intent(in)    :: h1_blk(nib,njb,nz)  !< Source grid layer thicknesses [H ~> m or kg m-2]
+  real,    intent(in)    :: h2_blk(nib,njb,nz)  !< Target grid layer thicknesses [H ~> m or kg m-2]
+  real,    intent(in)    :: vel_src_blk(nib,njb,nz) !< Velocities on the source grid [L T-1 ~> m s-1]
+  real,    intent(inout) :: vel_tgt_blk(nib,njb,nz) !< Velocities remapped to the target grid [L T-1 ~> m s-1]
   logical, intent(in)    :: conserve_ke !< If true, apply the KE-conserving correction
   real,    intent(in)    :: H_subroundoff !< A negligible thickness [H ~> m or kg m-2]
   logical, intent(in)    :: do_vel2     !< If true, find dvel2h_tot
@@ -1640,7 +1674,17 @@ pure subroutine remapped_vel_corrections(nz, h1, h2, vel_src, vel_tgt, conserve_
   real :: h2_tot        ! The total target grid thickness [H ~> m or kg m-2]
   real :: ke_c_src, ke_c_tgt ! \int [u_c or v_c]^2 dz on src and tgt grids [H L2 T-2 ~> m3 s-2]
   real :: vel2h_tot     ! The vertically integrated velocity squared [H L2 T-2 ~> m3 s-2 or kg s-2]
+  ! These column copies have a fixed size on GPU builds; see the note on fixed_col_extent.
+  real :: h1(WSZK_(nz))      ! Source grid layer thicknesses [H ~> m or kg m-2]
+  real :: h2(WSZK_(nz))      ! Target grid layer thicknesses [H ~> m or kg m-2]
+  real :: vel_src(WSZK_(nz)) ! Velocities on the source grid [L T-1 ~> m s-1]
+  real :: vel_tgt(WSZK_(nz)) ! Velocities remapped to the target grid [L T-1 ~> m s-1]
   integer :: k
+
+  do k=1,nz
+    h1(k) = h1_blk(ii,jj,k) ; h2(k) = h2_blk(ii,jj,k)
+    vel_src(k) = vel_src_blk(ii,jj,k) ; vel_tgt(k) = vel_tgt_blk(ii,jj,k)
+  enddo
 
   dvel2h_tot = 0.0
   if (do_vel2) then
@@ -1694,6 +1738,8 @@ pure subroutine remapped_vel_corrections(nz, h1, h2, vel_src, vel_tgt, conserve_
   endif
 
   if (mask_vel) call mask_near_bottom_vel(vel_tgt, h2, BBL_h_vel_mask, h_vel_mask, nz)
+
+  do k=1,nz ; vel_tgt_blk(ii,jj,k) = vel_tgt(k) ; enddo
 
 end subroutine remapped_vel_corrections
 
