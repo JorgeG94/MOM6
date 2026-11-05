@@ -25,17 +25,6 @@ end type zlike_CS
 
 public init_coord_zlike, set_zlike_params, build_zstar_column, build_zstar_columns, end_coord_zlike
 
-!> The fixed declared extent of the column copies in zstar_block_column in GPU builds, where automatic
-!! arrays with a runtime size would be allocated on the device heap.  build_zstar_columns checks that
-!! its columns have no more than this many layers on GPU builds.
-integer, parameter :: fixed_col_extent = 128
-
-#ifdef __NVCOMPILER_OPENMP_GPU
-#define WSZK_(n)  fixed_col_extent
-#else
-#define WSZK_(n)  n
-#endif
-
 contains
 
 !> Initialise a zlike_CS with pointers to parameters
@@ -107,7 +96,7 @@ subroutine build_zstar_column(CS, depth, total_thickness, zInterface, &
   eta = total_thickness - depth
   if (present(eta_orig)) eta = eta_orig
 
-  call zstar_column(CS%nk, CS%coordinateResolution, CS%min_thickness, depth, total_thickness, &
+  call zstar_column(CS%nk, 1, 1, 1, 1, CS%coordinateResolution, CS%min_thickness, depth, total_thickness, &
                     z0_top, eta, z_scale, new_zstar_def, zInterface)
 
 end subroutine build_zstar_column
@@ -139,62 +128,28 @@ subroutine build_zstar_columns(CS, nib, njb, iie, jje, mask, depth, total_thickn
   integer :: ii, jj  ! The indices of a column within the block
 
   nk = CS%nk ; min_thickness = CS%min_thickness
-#ifdef __NVCOMPILER_OPENMP_GPU
-  if (nk > fixed_col_extent) call MOM_error(FATAL, "build_zstar_columns: GPU builds require no more than "//&
-      "fixed_col_extent layers; increase fixed_col_extent in coord_zlike.F90.")
-#endif
   coord_res(:) = CS%coordinateResolution(:)
 
   !$omp target enter data map(to: coord_res)
   do concurrent (jj=1:jje, ii=1:iie, mask(ii,jj) > 0.0)
-    call zstar_block_column(nk, nib, njb, ii, jj, coord_res, min_thickness, depth, total_thickness, &
-                            zScale, zInterface)
+    call zstar_column(nk, nib, njb, ii, jj, coord_res, min_thickness, depth(ii,jj), total_thickness(ii,jj), &
+                      0., total_thickness(ii,jj) - depth(ii,jj), zScale, .false., zInterface)
   enddo
   !$omp target exit data map(delete: coord_res)
 
 end subroutine build_zstar_columns
 
-!> Builds the z* coordinate without a rigid top for the column (ii,jj) of the block arrays used by
-!! build_zstar_columns, using a contiguous copy of the column.
-pure subroutine zstar_block_column(nk, nib, njb, ii, jj, coordinateResolution, min_thickness, depth, &
-                                   total_thickness, z_scale, zInterface)
-  !$omp declare target
-  integer,                  intent(in)    :: nk  !< Number of levels to be generated
-  integer,                  intent(in)    :: nib !< The i-size of the block arrays
-  integer,                  intent(in)    :: njb !< The j-size of the block arrays
-  integer, value                          :: ii  !< The block-local i index of the column
-  integer, value                          :: jj  !< The block-local j index of the column
-  real, dimension(nk),      intent(in)    :: coordinateResolution !< Target coordinate resolution,
-                                                   !! usually in [Z ~> m]
-  real,                     intent(in)    :: min_thickness !< Minimum allowed thickness, in the same units
-                                                   !! as depth [Z ~> m] or [H ~> m or kg m-2]
-  real, dimension(nib,njb), intent(in)    :: depth !< Depth of ocean bottom (positive downward in the
-                                                   !! output units), units may be [Z ~> m] or [H ~> m or kg m-2]
-  real, dimension(nib,njb), intent(in)    :: total_thickness !< Column thickness (positive definite in the same
-                                                   !! units as depth) [Z ~> m] or [H ~> m or kg m-2]
-  real,                     intent(in)    :: z_scale !< Scaling factor from the target coordinate resolution
-                                                    !! in Z to desired units for zInterface, perhaps Z_to_H,
-                                                    !! often [nondim] or [H Z-1 ~> 1 or kg m-3]
-  real, dimension(nib,njb,nk+1), &
-                            intent(inout) :: zInterface !< Absolute positions of interfaces (in the same
-                                                   !! units as depth) [Z ~> m] or [H ~> m or kg m-2]
-  ! Local variables
-  ! This has a fixed size on GPU builds; see the note on fixed_col_extent.
-  real :: z_col(WSZK_(nk)+1) ! The interface positions in this column [Z ~> m] or [H ~> m or kg m-2]
-  integer :: K
-
-  call zstar_column(nk, coordinateResolution, min_thickness, depth(ii,jj), total_thickness(ii,jj), &
-                    0., total_thickness(ii,jj) - depth(ii,jj), z_scale, .false., z_col)
-  do K=1,nk+1 ; zInterface(ii,jj,K) = z_col(K) ; enddo
-
-end subroutine zstar_block_column
-
-!> Builds a z* coordinate with a minimum thickness in one column.  This is the column code
-!! shared by build_zstar_column and build_zstar_columns.
-pure subroutine zstar_column(nk, coordinateResolution, CS_min_thickness, depth, total_thickness, &
-                             z0_top, eta, z_scale, new_zstar_def, zInterface)
+!> Builds a z* coordinate with a minimum thickness in the column (ii,jj) of a block of columns.
+!! This is the column code shared by build_zstar_column, which passes a single column as a
+!! 1x1 block, and build_zstar_columns.
+pure subroutine zstar_column(nk, nib, njb, ii, jj, coordinateResolution, CS_min_thickness, depth, &
+                             total_thickness, z0_top, eta, z_scale, new_zstar_def, zInterface)
   !$omp declare target
   integer,               intent(in)    :: nk !< Number of levels to be generated
+  integer,               intent(in)    :: nib !< The i-size of the block of columns
+  integer,               intent(in)    :: njb !< The j-size of the block of columns
+  integer, value                       :: ii  !< The block-local i index of the column
+  integer, value                       :: jj  !< The block-local j index of the column
   real, dimension(nk),   intent(in)    :: coordinateResolution !< Target coordinate resolution, usually in [Z ~> m]
   real,                  intent(in)    :: CS_min_thickness !< Minimum allowed thickness, in the same units
                                                    !! as depth [Z ~> m] or [H ~> m or kg m-2]
@@ -210,7 +165,8 @@ pure subroutine zstar_column(nk, coordinateResolution, CS_min_thickness, depth, 
                                                     !! in Z to desired units for zInterface, perhaps Z_to_H,
                                                     !! often [nondim] or [H Z-1 ~> 1 or kg m-3]
   logical,               intent(in)    :: new_zstar_def !< If true, use the definition with a rigid top
-  real, dimension(nk+1), intent(inout) :: zInterface !< Absolute positions of interfaces (in the same
+  real, dimension(nib,njb,nk+1), &
+                         intent(inout) :: zInterface !< Absolute positions of interfaces (in the same
                                                    !! units as depth) [Z ~> m] or [H ~> m or kg m-2]
   ! Local variables
   real :: stretching ! A stretching factor for the coordinate [nondim]
@@ -231,34 +187,34 @@ pure subroutine zstar_column(nk, coordinateResolution, CS_min_thickness, depth, 
   if (new_zstar_def) then
     ! z_star is the notional z* coordinate in absence of upper/lower topography
     z_star = 0. ! z*=0 at the free-surface
-    zInterface(1) = eta ! The actual position of the top of the column
+    zInterface(ii,jj,1) = eta ! The actual position of the top of the column
     do k = 2,nk
       z_star = z_star - coordinateResolution(k-1)*z_scale
       ! This ensures that z is below a rigid upper surface (ice shelf bottom)
-      zInterface(k) = min( eta + stretching * ( z_star - z0_top ), z0_top )
+      zInterface(ii,jj,k) = min( eta + stretching * ( z_star - z0_top ), z0_top )
       ! This ensures that the layer in inflated
-      zInterface(k) = min( zInterface(k), zInterface(k-1) - min_thickness )
+      zInterface(ii,jj,k) = min( zInterface(ii,jj,k), zInterface(ii,jj,k-1) - min_thickness )
       ! This ensures that z is above or at the topography
-      zInterface(k) = max( zInterface(k), -depth + real(nk+1-k) * min_thickness )
+      zInterface(ii,jj,k) = max( zInterface(ii,jj,k), -depth + real(nk+1-k) * min_thickness )
     enddo
-    zInterface(nk+1) = -depth
+    zInterface(ii,jj,nk+1) = -depth
 
   else
     ! Integrate down from the top for a notional new grid, ignoring topography
     ! The starting position is offset by z0_top which, if z0_top<0, will place
     ! interfaces above the rigid boundary.
-    zInterface(1) = eta
+    zInterface(ii,jj,1) = eta
     do k = 1,nk
       dh = stretching * coordinateResolution(k)*z_scale ! Notional grid spacing
-      zInterface(k+1) = zInterface(k) - dh
+      zInterface(ii,jj,k+1) = zInterface(ii,jj,k) - dh
     enddo
 
     ! Integrating up from the bottom adjusting interface position to accommodate
     ! inflating layers without disturbing the interface above
-    zInterface(nk+1) = -depth
+    zInterface(ii,jj,nk+1) = -depth
     do k = nk,1,-1
-      if ( zInterface(k) < (zInterface(k+1) + min_thickness) ) then
-        zInterface(k) = zInterface(k+1) + min_thickness
+      if ( zInterface(ii,jj,k) < (zInterface(ii,jj,k+1) + min_thickness) ) then
+        zInterface(ii,jj,k) = zInterface(ii,jj,k+1) + min_thickness
       endif
     enddo
   endif
