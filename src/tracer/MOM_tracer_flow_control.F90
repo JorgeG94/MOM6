@@ -83,7 +83,7 @@ implicit none ; private
 public call_tracer_register, tracer_flow_control_init, call_tracer_set_forcing
 public call_tracer_column_fns, call_tracer_surface_state, call_tracer_stocks
 public call_tracer_flux_init, get_chl_from_model, tracer_flow_control_end
-public call_tracer_register_obc_segments
+public call_tracer_register_obc_segments, extract_tracer_flow_member
 
 !> The control structure for orchestrating the calling of tracer packages
 type, public :: tracer_flow_control_CS ; private
@@ -203,7 +203,7 @@ subroutine call_tracer_register(G, GV, US, param_file, CS, tr_Reg, restart_CS)
   call get_param(param_file, mdl, "USE_IDEAL_AGE_TRACER", CS%use_ideal_age, &
                  "If true, use the ideal_age_example tracer package.", &
                  default=.false.)
-  call get_param(param_file, mdl, "USE_MARBL_TRACERS", CS%use_marbl_tracers, &
+  call get_param(param_file, mdl, "USE_MARBL_TRACERS", CS%use_MARBL_tracers, &
                  "If true, use the MARBL tracer package.", &
                  default=.false.)
   call get_param(param_file, mdl, "USE_REGIONAL_DYES", CS%use_regional_dyes, &
@@ -347,7 +347,7 @@ subroutine tracer_flow_control_init(restart, day, G, GV, US, h, param_file, diag
     call initialize_MARBL_tracers(restart, day, G, GV, US, h, param_file, diag, OBC, CS%MARBL_tracers_CSp, &
                                 sponge_CSp)
   if (CS%use_regional_dyes) &
-    call initialize_dye_tracer(restart, day, G, GV, h, diag, OBC, CS%dye_tracer_CSp, sponge_CSp, tv)
+    call initialize_dye_tracer(restart, day, G, GV, US, h, diag, OBC, CS%dye_tracer_CSp, sponge_CSp, tv)
   if (CS%use_oil) &
     call initialize_oil_tracer(restart, day, G, GV, US, h, diag, OBC, CS%oil_tracer_CSp, sponge_CSp)
   if (CS%use_advection_test_tracer) &
@@ -417,6 +417,17 @@ subroutine get_chl_from_model(Chl_array, G, GV, CS)
 
 end subroutine get_chl_from_model
 
+!> Returns pointers or values of members within the tracer_flow_control_CS type. For extensibility,
+!! each returned argument is an optional argument
+subroutine extract_tracer_flow_member(CS, use_MARBL_tracers)
+  type(tracer_flow_control_CS), target, intent(in)  :: CS !< module control structure
+  ! All output arguments are optional
+  logical,                    optional, intent(out) :: use_MARBL_tracers  !< If true, MARBL tracers are active
+
+  ! Constants within tracer_flow_control_CS
+  if (present(use_MARBL_tracers)) use_MARBL_tracers = CS%use_MARBL_tracers
+end subroutine extract_tracer_flow_member
+
 !> This subroutine calls the individual tracer modules' subroutines to
 !! specify or read quantities related to their surface forcing.
 subroutine call_tracer_set_forcing(sfc_state, fluxes, day_start, day_interval, G, US, Rho0, CS)
@@ -436,7 +447,7 @@ subroutine call_tracer_set_forcing(sfc_state, fluxes, day_start, day_interval, G
   type(tracer_flow_control_CS), pointer       :: CS        !< The control structure returned by a
                                                            !! previous call to call_tracer_register.
 
-  if (.not. associated(CS)) call MOM_error(FATAL, "call_tracer_set_forcing"// &
+  if (.not. associated(CS)) call MOM_error(FATAL, "call_tracer_set_forcing: "// &
          "Module must be initialized via call_tracer_register before it is used.")
 !  if (CS%use_ideal_age) &
 !    call ideal_age_tracer_set_forcing(sfc_state, fluxes, day_start, day_interval, &
@@ -452,7 +463,8 @@ end subroutine call_tracer_set_forcing
 
 !> This subroutine calls all registered tracer column physics subroutines.
 subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, US, tv, optics, CS, &
-                                  debug, KPP_CSp, nonLocalTrans, evap_CFL_limit, minimum_forcing_depth, h_BL)
+                                  debug, KPP_CSp, nonLocalTrans, evap_CFL_limit, minimum_forcing_depth, &
+                                  h_BL, prediabatic_T, prediabatic_S)
   type(ocean_grid_type),                 intent(in) :: G      !< The ocean's grid structure.
   type(verticalGrid_type),               intent(in) :: GV     !< The ocean's vertical grid structure.
   real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), intent(in) :: h_old !< Layer thickness before entrainment
@@ -488,6 +500,10 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
   real,                        optional, intent(in) :: minimum_forcing_depth !< The smallest depth over
                                                               !! which fluxes can be applied [H ~> m or kg m-2]
   real, dimension(:,:),        optional, pointer    :: h_BL   !< Thickness of active mixing layer [H ~> m or kg m-2]
+  real, dimension(:,:,:),      optional, intent(in) :: prediabatic_T   !< Temperature prior to calling
+                                                                       !! diabatic driver [C ~> degC]
+  real, dimension(:,:,:),      optional, intent(in) :: prediabatic_S   !< Salinity prior to calling
+                                                                       !! diabatic driver [S ~> ppt]
 
   ! Local variables
   real :: Hbl(SZI_(G),SZJ_(G))    !< Boundary layer thickness [H ~> m or kg m-2]
@@ -529,13 +545,17 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
                                            evap_CFL_limit=evap_CFL_limit, &
                                            minimum_forcing_depth=minimum_forcing_depth, Hbl=Hbl)
     endif
-    if (CS%use_MARBL_tracers) &
-      call MARBL_tracers_column_physics(h_old, h_new, ea, eb, fluxes, dt, &
-                                        G, GV, US, CS%MARBL_tracers_CSp, tv, &
+    if (CS%use_MARBL_tracers) then
+      if ((.not. present(prediabatic_T)) .or. (.not. present(prediabatic_S))) &
+        call MOM_error(FATAL, 'Must pass prediabatic_T and prediabatic_S when using MARBL')
+      call MARBL_tracers_column_physics(h_old, ea, eb, fluxes, dt, &
+                                        G, GV, US, CS%MARBL_tracers_CSp, &
+                                        prediabatic_T, prediabatic_S, &
                                         KPP_CSp=KPP_CSp, &
                                         nonLocalTrans=nonLocalTrans, &
                                         evap_CFL_limit=evap_CFL_limit, &
                                         minimum_forcing_depth=minimum_forcing_depth)
+    endif
     if (CS%use_regional_dyes) &
       call dye_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, &
                                      G, GV, US, tv, CS%dye_tracer_CSp, &
@@ -619,11 +639,15 @@ subroutine call_tracer_column_fns(h_old, h_new, ea, eb, fluxes, mld, dt, G, GV, 
       call ideal_age_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, &
                                            G, GV, US, CS%ideal_age_tracer_CSp, Hbl=Hbl)
     endif
-    if (CS%use_MARBL_tracers) &
-      call MARBL_tracers_column_physics(h_old, h_new, ea, eb, fluxes, dt, &
-                                        G, GV, US, CS%MARBL_tracers_CSp, tv, &
+    if (CS%use_MARBL_tracers) then
+      if ((.not. present(prediabatic_T)) .or. (.not. present(prediabatic_S))) &
+        call MOM_error(FATAL, 'Must pass prediabatic_T and prediabatic_S when using MARBL')
+      call MARBL_tracers_column_physics(h_old, ea, eb, fluxes, dt, &
+                                        G, GV, US, CS%MARBL_tracers_CSp, &
+                                        prediabatic_T, prediabatic_S, &
                                         KPP_CSp=KPP_CSp, &
                                         nonLocalTrans=nonLocalTrans)
+    endif
     if (CS%use_regional_dyes) &
       call dye_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, &
                                            G, GV, US, tv, CS%dye_tracer_CSp)
@@ -850,24 +874,24 @@ subroutine store_stocks(pkg_name, ns, names, units, values, index, stock_values,
   integer :: n
 
   if ((index > 0) .and. (ns > 0)) then
-    write(ind_text,'(i8)') index
+    write(ind_text,'(I0)') index
     if (ns > 1) then
       call MOM_error(FATAL,"Tracer package "//trim(pkg_name)//&
-          " is not permitted to return more than one value when queried"//&
-          " for specific stock index "//trim(adjustl(ind_text))//".")
+          " is not permitted to return more than one value when queried "//&
+          "for specific stock index "//trim(ind_text)//".")
     elseif (ns+ns_tot > 1) then
       call MOM_error(FATAL,"Tracer packages "//trim(pkg_name)//" and "//&
-          trim(set_pkg_name)//" both attempted to set values for"//&
-          " specific stock index "//trim(adjustl(ind_text))//".")
+          trim(set_pkg_name)//" both attempted to set values for "//&
+          "specific stock index "//trim(ind_text)//".")
     else
       set_pkg_name = pkg_name
     endif
   endif
 
   if (ns_tot+ns > max_ns) then
-    write(ns_text,'(i8)') ns_tot+ns ; write(max_text,'(i8)') max_ns
+    write(ns_text,'(I0)') ns_tot+ns ; write(max_text,'(I0)') max_ns
     call MOM_error(FATAL,"Attempted to return more tracer stock values (at least "//&
-      trim(adjustl(ns_text))//") than the size "//trim(adjustl(max_text))//&
+      trim(ns_text)//") than the size "//trim(max_text)//&
       "of the smallest value, name, or units array.")
   endif
 
