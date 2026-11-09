@@ -101,8 +101,20 @@ elseif(CMAKE_Fortran_COMPILER_ID STREQUAL "NVHPC")
     -acc=gpu
     -gpu=mem:separate
     -Minline=exclude:${CMAKE_SOURCE_DIR}/src/framework
+    # Currently required by NVIDIA GPU in MOM_continuity_PPM.F90
+    -Minline=name:flux_elem,name:flux_elem_OBC,name:ratio_max
     -r8
   )
+
+  # Optional GPU compute capability, e.g. -DMOM6_GPU_ARCH=cc90
+  if(MOM6_GPU_ARCH)
+    if(NOT MOM6_GPU_ARCH MATCHES "^cc[a-z0-9]+(,cc[a-z0-9]+)*$")
+      message(FATAL_ERROR "MOM6_GPU_ARCH='${MOM6_GPU_ARCH}' is invalid; expected e.g. cc90, cc80,cc90 or ccnative")
+    endif()
+    list(APPEND FLAGS_STANDARD -gpu=${MOM6_GPU_ARCH})
+    add_link_options(-gpu=${MOM6_GPU_ARCH})
+    message(STATUS "MOM6 GPU arch: ${MOM6_GPU_ARCH}")
+  endif()
 
   add_compile_definitions(
     HAVE_MPI=1

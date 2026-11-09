@@ -21,6 +21,7 @@ make -j
 | `FMS_GIT_URL` | JorgeG94/FMS | FMS repository to fetch |
 | `FMS_GIT_TAG` | cmake/nvhpc-2026.03 | FMS branch/tag/commit to fetch |
 | `FMS_OMPOFFLOAD` | ON with NVHPC | Build FMS with GPU offload flags |
+| `MOM6_GPU_ARCH` | (empty) | NVHPC GPU compute capability passed as `-gpu=<value>` to MOM6, FMS and the link, e.g. `cc90`, `cc80,cc90`, `ccnative` |
 
 ## Dependencies
 

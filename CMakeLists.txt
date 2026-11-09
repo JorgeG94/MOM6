@@ -28,6 +28,10 @@ option(MOM6_FMS1              "Use FMS1 I/O infrastructure"        OFF)
 option(MOM6_OPENMP            "Enable OpenMP threading"            OFF)
 option(MOM6_ACCESS            "Use find_package for FMS (spack)"   OFF)
 
+# NVHPC GPU target, e.g. cc90 (Hopper), cc80 (Ampere), cc80,cc90 or ccnative.
+# Empty = nvfortran's default. Applied to MOM6, fetched FMS, and the link.
+set(MOM6_GPU_ARCH "" CACHE STRING "NVHPC GPU compute capability (e.g. cc90)")
+
 # FMS configuration (only used when MOM6_ACCESS=OFF)
 set(FMS_GIT_URL "https://github.com/JorgeG94/FMS.git"
     CACHE STRING "FMS Git repository URL")
