@@ -1,11 +1,13 @@
 target_sources(mom6_core PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_array_transform.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/MOM_ANN.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_checksums.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_coms.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_coupler_types.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_cpu_clock.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_data_override.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_diag_mediator.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/MOM_diag_buffers.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_diag_remap.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_document.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_domains.F90
@@ -18,6 +20,10 @@ target_sources(mom6_core PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_horizontal_regridding.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_interpolate.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_intrinsic_functions.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/intrinsics/MOM_exp.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/intrinsics/MOM_exp_data_n128.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/intrinsics/MOM_log.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/intrinsics/MOM_log_data_n128.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_io.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_io_file.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/MOM_murmur_hash.F90
@@ -33,4 +39,7 @@ target_sources(mom6_core PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/numerical_testing_type.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/posix.F90
   ${CMAKE_CURRENT_SOURCE_DIR}/testing/MOM_file_parser_tests.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/testing/MOM_exp_repro_tests.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/testing/MOM_intrinsic_functions_tests.F90
+  ${CMAKE_CURRENT_SOURCE_DIR}/testing/MOM_log_repro_tests.F90
 )
