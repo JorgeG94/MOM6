@@ -29,13 +29,10 @@ option(MOM6_OPENMP            "Enable OpenMP threading"            OFF)
 option(MOM6_ACCESS            "Use find_package for FMS (spack)"   OFF)
 
 # FMS configuration (only used when MOM6_ACCESS=OFF)
-#    set(FMS_URL "https://github.com/edoyango/FMS.git") 
-set(FMS_GIT_URL "https://github.com/edoyango/FMS.git"
+set(FMS_GIT_URL "https://github.com/JorgeG94/FMS.git"
     CACHE STRING "FMS Git repository URL")
-set(FMS_GIT_TAG "cmake/nvhpc"
+set(FMS_GIT_TAG "cmake/nvhpc-2026.03"
     CACHE STRING "FMS Git tag/branch/commit")
-set(FMS_Fortran_FLAGS "-O2 -Mnovect  -gpu=mem:separate -Mnofma  -mp=gpu -acc=gpu"
-    CACHE STRING "Additional Fortran flags for FMS compilation")
 
 #------------------------------------------------------------------------------
 # CMake modules

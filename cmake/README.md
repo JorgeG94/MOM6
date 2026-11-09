@@ -18,8 +18,9 @@ make -j
 | `MOM6_ASYMMETRIC` | OFF | Use asymmetric memory layout |
 | `MOM6_OPENMP` | OFF | Enable OpenMP |
 | `MOM6_FMS1` | OFF | Use FMS1 I/O (legacy) |
-| `FMS_GIT_TAG` | 2026.01 | FMS version to fetch |
-| `FMS_Fortran_FLAGS` | "" | Extra flags for FMS compilation |
+| `FMS_GIT_URL` | JorgeG94/FMS | FMS repository to fetch |
+| `FMS_GIT_TAG` | cmake/nvhpc-2026.03 | FMS branch/tag/commit to fetch |
+| `FMS_OMPOFFLOAD` | ON with NVHPC | Build FMS with GPU offload flags |
 
 ## Dependencies
 

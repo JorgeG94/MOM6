@@ -2,8 +2,6 @@
 #
 # MOM6_ACCESS=OFF (default): Fetch FMS from git (GFDL workflow)
 # MOM6_ACCESS=ON:            Use find_package (ACCESS-NRI spack workflow)
-#
-# FMS_Fortran_FLAGS can be set to pass additional compiler flags to FMS.
 
 include(FetchContent)
 
@@ -46,10 +44,10 @@ macro(fetch_fms)
     # GFDL workflow: fetch FMS from git
     message(STATUS "Fetching FMS from ${FMS_URL} (tag: ${FMS_TAG})")
 
-    # Apply FMS-specific Fortran flags if provided
-    if(FMS_Fortran_FLAGS)
-      message(STATUS "FMS additional Fortran flags: ${FMS_Fortran_FLAGS}")
-      set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${FMS_Fortran_FLAGS}")
+    # Build FMS with its GPU offload flags, which also propagates the GPU
+    # link options to MOM6 (only supported for NVHPC)
+    if(CMAKE_Fortran_COMPILER_ID STREQUAL "NVHPC")
+      set(FMS_OMPOFFLOAD ON CACHE BOOL "Enable GPU offload in FMS")
     endif()
 
     # Configure FMS build options
