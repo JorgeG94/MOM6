@@ -118,7 +118,7 @@ elseif(CMAKE_Fortran_COMPILER_ID STREQUAL "NVHPC")
 
   add_compile_definitions(
     HAVE_MPI=1
-    HAVE_FC_DO_CONCURRENT_LOCAL=1
+    HAVE_FC_DO_CONCURRENT_LOCALITY=1
   )
 
   set(FLAGS_DEBUG
@@ -162,9 +162,10 @@ list_to_string(FLAGS_STANDARD FLAGS_STANDARD_STR)
 list_to_string(FLAGS_DEBUG FLAGS_DEBUG_STR)
 list_to_string(FLAGS_RELEASE FLAGS_RELEASE_STR)
 
-# Apply flags globally to CMAKE_Fortran_FLAGS
-set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${FLAGS_STANDARD_STR}"
-    CACHE STRING "Fortran compiler flags" FORCE)
+# Apply flags globally to CMAKE_Fortran_FLAGS.  This is a normal (non-cache)
+# variable so that the standard flags are not re-appended to the cached user
+# value on every reconfigure.
+set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${FLAGS_STANDARD_STR}")
 set(CMAKE_Fortran_FLAGS_DEBUG "${FLAGS_DEBUG_STR}"
     CACHE STRING "Fortran compiler flags for Debug builds" FORCE)
 set(CMAKE_Fortran_FLAGS_RELEASE "${FLAGS_RELEASE_STR}"
