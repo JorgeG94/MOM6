@@ -88,6 +88,7 @@ contains
 !!
 !! This is an elemental function that can be applied to any combination of scalar and array inputs.
 real elemental function density_elem_buggy_Wright_loc(T, S, pressure)
+        !$omp declare target
   real, intent(in) :: T        !< potential temperature relative to the surface [degC].
   real, intent(in) :: S        !< salinity [PSU].
   real, intent(in) :: pressure !< pressure [Pa].
@@ -120,6 +121,7 @@ end function density_elem_buggy_Wright
 !!
 !! This is an elemental function that can be applied to any combination of scalar and array inputs.
 real elemental function density_anomaly_elem_buggy_Wright(this, T, S, pressure, rho_ref)
+        !$omp declare target
   class(buggy_Wright_EOS), intent(in) :: this !< This EOS
   real, intent(in) :: T        !< potential temperature relative to the surface [degC].
   real, intent(in) :: S        !< salinity [PSU].
@@ -197,6 +199,7 @@ end function spec_vol_anomaly_elem_buggy_Wright
 !> Calculate the partial derivatives of density with potential temperature and salinity
 !! using the buggy implementation of the equation of state, as fit by Wright, 1997
 elemental subroutine calculate_density_derivs_elem_buggy_Wright_loc( T, S, pressure, drho_dT, drho_dS)
+        !$omp declare target
   real,               intent(in)  :: T        !< Potential temperature relative to the surface [degC]
   real,               intent(in)  :: S        !< Salinity [PSU]
   real,               intent(in)  :: pressure !< Pressure [Pa]
@@ -229,6 +232,7 @@ end subroutine calculate_density_derivs_elem_buggy_Wright_loc
 !! density_elem_buggy_Wright without "this" variable that causes runtime errors on
 !! gpu runs with nvfortran.
 elemental subroutine calculate_density_derivs_elem_buggy_Wright(this, T, S, pressure, drho_dT, drho_dS)
+        !$omp declare target
   class(buggy_Wright_EOS), intent(in) :: this !< This EOS
   real,               intent(in)  :: T        !< Potential temperature relative to the surface [degC]
   real,               intent(in)  :: S        !< Salinity [PSU]
