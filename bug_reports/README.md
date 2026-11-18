@@ -27,3 +27,4 @@ to find every place its workaround is applied.
 |---|---|---|---|
 | [ifx_dc_dtype_bounds_ice](ifx_dc_dtype_bounds_ice/) | ifx 2026.1.0 | ICE #5633 when an offloaded `do concurrent` takes bounds from 2+ components of one derived-type object | 34 loops in 11 files |
 | [ifx_map_extended_type_array_ice](ifx_map_extended_type_array_ice/) | ifx 2026.1.0 | ICE #5623 when OpenMP maps an array of an extended type whose allocatable component is in the extension (also host-only) | `MOM_diag_buffers.F90` (2 types) |
+| [ifx_declare_target_separate_module_procedure](ifx_declare_target_separate_module_procedure/) | ifx 2026.1.0 | error #8682 for `declare target` in both interface and body of a separate module procedure (likely conforming code) | `MOM_exp.F90` (1 directive) |
