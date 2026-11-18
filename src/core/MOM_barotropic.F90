@@ -1011,7 +1011,13 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
   endif
 
   ! Zero out various wide-halo arrays.
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
     gtot_E(i,j) = 0.0 ; gtot_W(i,j) = 0.0
     gtot_N(i,j) = 0.0 ; gtot_S(i,j) = 0.0
     eta(i,j) = 0.0
@@ -1024,17 +1030,38 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
     endif
     if (CS%dynamic_psurf) dyn_coef_eta(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
   !   The halo regions of various arrays need to be initialized to
   ! non-NaNs in case the neighboring domains are not part of the ocean.
   ! Otherwise a halo update later on fills in the correct values.
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw:ifx_jedw, I=ifx_isdw-1:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw:CS%jedw, I=CS%isdw-1:CS%iedw)
+#endif
     Cor_ref_u(I,j) = 0.0 ; BT_force_u(I,j) = 0.0 ; ubt(I,j) = 0.0
     Datu(I,j) = 0.0 ; bt_rem_u(I,j) = 0.0 ; uhbt0(I,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (J=ifx_jsdw-1:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
   do concurrent (J=CS%jsdw-1:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
     Cor_ref_v(i,J) = 0.0 ; BT_force_v(i,J) = 0.0 ; vbt(i,J) = 0.0
     Datv(i,J) = 0.0 ; bt_rem_v(i,J) = 0.0 ; vhbt0(i,J) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   if (apply_OBCs) then
     SpV_col_avg(:,:) = 0.0
@@ -1065,23 +1092,50 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
 
   ! Copy input arrays into their wide-halo counterparts.
   if (interp_eta_PF) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isd=>G%isd, ifx_ied=>G%ied)
+    do concurrent (j=ifx_jsd:ifx_jed, i=ifx_isd:ifx_ied)
+#else
     do concurrent (j=G%jsd:G%jed, i=G%isd:G%ied)
+#endif
       ! Was "do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1" but doing so breaks OBC. Not sure why?
       eta(i,j) = eta_in(i,j)
       eta_PF_1(i,j) = eta_PF_start(i,j)
       d_eta_PF(i,j) = eta_PF_in(i,j) - eta_PF_start(i,j)
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   else
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsd=>G%Jsd, ifx_jed=>G%Jed, ifx_isd=>G%isd, ifx_ied=>G%ied)
+    do concurrent (j=ifx_jsd:ifx_jed, i=ifx_isd:ifx_ied)
+#else
     do concurrent (j=G%Jsd:G%Jed, i=G%isd:G%ied)
+#endif
       ! Was "do j=Jsq,Jeq+1 ; do i=Isq,Ieq+1" but doing so breaks OBC. Not sure why?
       eta(i,j) = eta_in(i,j)
       eta_PF(i,j) = eta_PF_in(i,j)
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
   if (integral_BT_cont) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isd=>G%isd, ifx_ied=>G%ied)
+    do concurrent (j=ifx_jsd:ifx_jed, i=ifx_isd:ifx_ied)
+#else
     do concurrent (j=G%jsd:G%jed, i=G%isd:G%ied)
+#endif
       eta_IC(i,j) = eta_in(i,j)
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
   do concurrent (k=1:nz, j=js:je, I=is-1:ie)
@@ -1333,12 +1387,30 @@ subroutine btstep(U_in, V_in, eta_in, dt, bc_accel_u, bc_accel_v, forces, pbce, 
 ! Calculate the initial barotropic velocities from the layer's velocities.
   call btstep_ubt_from_layer(U_in, V_in, wt_u, wt_v, ubt, vbt, G, GV, CS)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw:ifx_jedw, i=ifx_isdw-1:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw:CS%jedw, i=CS%isdw-1:CS%iedw)
+#endif
     uhbt(i,j) = 0.0 ; u_accel_bt(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw-1:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw-1:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
     vhbt(i,j) = 0.0 ; v_accel_bt(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   if (apply_OBCs .or. (CS%id_ubtdt > 0)) then
     !$omp target update from(ubt)
@@ -2694,24 +2766,60 @@ subroutine btstep_timeloop(eta, ubt, vbt, uhbt0, Datu, BTCL_u, vhbt0, Datv, BTCL
   if (integral_BT_cont) then
     !$omp target enter data map(alloc: ubt_int, uhbt_int, vbt_int, vhbt_int, cfl_ltd_vol)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+    do concurrent (j=ifx_jsdw:ifx_jedw, I=ifx_isdw-1:ifx_iedw)
+#else
     do concurrent (j=CS%jsdw:CS%jedw, I=CS%isdw-1:CS%iedw)
+#endif
       ubt_int(I,j) = 0.
       uhbt_int(I,j) = 0.
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
 
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+    do concurrent (J=ifx_jsdw-1:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
     do concurrent (J=CS%jsdw-1:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
       vbt_int(i,J) = 0.
       vhbt_int(i,J) = 0.
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
 
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+    do concurrent (j=ifx_jsdw:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
     do concurrent (j=CS%jsdw:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
       cfl_ltd_vol(i,j) = huge(GV%Z_to_H)
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
     p_surf_dyn(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   if (CS%bt_limit_integral_transport) then
     !$omp target update from(eta_IC)
@@ -3444,9 +3552,18 @@ subroutine btloop_find_PF(PFu, PFv, isv, iev, jsv, jev, eta_PF_BT, eta_PF, &
   enddo
 
   if (find_etaav .and. (abs(wt_accel2_n) > 0.0)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsc=>G%jsc, ifx_jec=>G%jec, ifx_isc=>G%isc, ifx_iec=>G%iec)
+    do concurrent (j=ifx_jsc:ifx_jec, i=ifx_isc:ifx_iec)
+#else
     do concurrent (j=G%jsc:G%jec, i=G%isc:G%iec)
+#endif
       eta_sum(i,j) = eta_sum(i,j) + wt_accel2_n * eta_PF_BT(i,j)
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
 end subroutine btloop_find_PF
@@ -3688,12 +3805,30 @@ subroutine btstep_ubt_from_layer(U_in, V_in, wt_u, wt_v, ubt, vbt,  G, GV, CS)
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw:ifx_jedw, i=ifx_isdw-1:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw:CS%jedw, i=CS%isdw-1:CS%iedw)
+#endif
     ubt(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdw=>CS%jsdw, ifx_jedw=>CS%jedw, ifx_isdw=>CS%isdw, ifx_iedw=>CS%iedw)
+  do concurrent (j=ifx_jsdw-1:ifx_jedw, i=ifx_isdw:ifx_iedw)
+#else
   do concurrent (j=CS%jsdw-1:CS%jedw, i=CS%isdw:CS%iedw)
+#endif
     vbt(i,j) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   do concurrent (j=js:je)
     do k=1,nz

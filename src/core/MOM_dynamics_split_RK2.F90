@@ -435,15 +435,42 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   !$omp target enter data map(alloc: u_bc_accel, v_bc_accel, eta_pred, uh_in, vh_in)
   !$omp target enter data map(alloc: up, vp, hp, dz, h_tmp)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isdb=>G%IsdB, ifx_iedb=>G%IedB)
+  do concurrent (k=1:nz, j=ifx_jsd:ifx_jed, I=ifx_isdb:ifx_iedb)
+#else
   do concurrent (k=1:nz, j=G%jsd:G%jed, I=G%IsdB:G%IedB)
+#endif
     up(I,j,k) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdb=>G%JsdB, ifx_jedb=>G%JedB, ifx_isd=>G%isd, ifx_ied=>G%ied)
+  do concurrent (k=1:nz, J=ifx_jsdb:ifx_jedb, i=ifx_isd:ifx_ied)
+#else
   do concurrent (k=1:nz, J=G%JsdB:G%JedB, i=G%isd:G%ied)
+#endif
     vp(i,J,k) = 0.0
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isd=>G%isd, ifx_ied=>G%ied)
+  do concurrent (k=1:nz, j=ifx_jsd:ifx_jed, i=ifx_isd:ifx_ied)
+#else
   do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isd:G%ied)
+#endif
     hp(i,j,k) = h(i,j,k)
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
   ! TODO: hp needs accurate +/-2 halos.
 
   ! Update CFL truncation value as function of time
@@ -1140,9 +1167,18 @@ subroutine step_MOM_dyn_split_RK2(u_inst, v_inst, h, tv, visc, Time_local, dt, f
   ! h  = h + dt * div . uh
   ! u_av and v_av adjusted so their mass transports match uhbt and vhbt.
   call cpu_clock_begin(id_clock_continuity)
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isd=>G%isd, ifx_ied=>G%ied)
+  do concurrent (k=1:nz, j=ifx_jsd:ifx_jed, i=ifx_isd:ifx_ied)
+#else
   do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isd:G%ied)
+#endif
     h_tmp(i,j,k) = h(i,j,k)
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   call continuity(u_inst, v_inst, h_tmp, h, uh, vh, dt, G, GV, US, CS%continuity_CSp, CS%OBC, pbv, &
                   uhbt=CS%uhbt, vhbt=CS%vhbt, visc_rem_u=CS%visc_rem_u, visc_rem_v=CS%visc_rem_v, &

@@ -489,21 +489,48 @@ subroutine set_viscous_BBL(u, v, h, tv, visc, G, GV, US, CS, pbv)
   endif
 
   if (.not.use_BBL_EOS) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdb=>G%jsdB, ifx_jedb=>G%Jedb, ifx_isdb=>G%isdB, ifx_iedb=>G%iedB)
+    do concurrent (k=1:nz, j=ifx_jsdb:ifx_jedb, i=ifx_isdb:ifx_iedb)
+#else
     do concurrent (k=1:nz, j=G%jsdB:G%Jedb, i=G%isdB:G%iedB)
+#endif
       Rml_vel(i,j,k) = 0.0
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
   ! Resetting Ray_[uv] is required by body force drag.
   if (allocated(visc%Ray_u)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isdb=>G%isdB, ifx_iedb=>G%iedB)
+    do concurrent (k=1:nz, j=ifx_jsd:ifx_jed, i=ifx_isdb:ifx_iedb)
+#else
     do concurrent (k=1:nz, j=G%jsd:G%jed, i=G%isdB:G%iedB)
+#endif
       visc%Ray_u(i,j,k) = 0.0
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
   if (allocated(visc%Ray_v)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdb=>G%jsdB, ifx_jedb=>G%jedB, ifx_isd=>G%isd, ifx_ied=>G%ied)
+    do concurrent (k=1:nz, j=ifx_jsdb:ifx_jedb, i=ifx_isd:ifx_ied)
+#else
     do concurrent (k=1:nz, j=G%jsdB:G%jedB, i=G%isd:G%ied)
+#endif
       visc%Ray_v(i,j,k) = 0.0
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
   !$omp target enter data map(alloc: S_vel, T_vel, SpV_vel, h_vel, h_at_vel, dz_vel, &

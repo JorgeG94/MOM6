@@ -1783,12 +1783,30 @@ subroutine step_MOM_tracer_dyn(CS, G, GV, US, h, Time_local)
   ! and advective times now agree.
   call cpu_clock_begin(id_clock_thermo) ; call cpu_clock_begin(id_clock_tracer)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isdb=>G%IsdB, ifx_iedb=>G%IedB)
+  do concurrent (k=1:GV%ke, j=ifx_jsd:ifx_jed, I=ifx_isdb:ifx_iedb)
+#else
   do concurrent (k=1:GV%ke, j=G%jsd:G%jed, I=G%IsdB:G%IedB)
+#endif
     CS%uhtr(I,j,k) = 0.
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+  associate(ifx_jsdb=>G%JsdB, ifx_jedb=>G%JedB, ifx_isd=>G%isd, ifx_ied=>G%ied)
+  do concurrent (k=1:GV%ke, J=ifx_jsdb:ifx_jedb, i=ifx_isd:ifx_ied)
+#else
   do concurrent (k=1:GV%ke, J=G%JsdB:G%JedB, i=G%isd:G%ied)
+#endif
     CS%vhtr(i,J,k) = 0.
   enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+  end associate
+#endif
 
   if (CS%accumulate_resolved_flux) then
     CS%uhtr_resolved(:,:,:) = 0.0

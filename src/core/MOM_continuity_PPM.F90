@@ -690,9 +690,18 @@ subroutine zonal_mass_flux(u, h_in, h_W, h_E, uh, dt, G, GV, US, CS, OBC, por_fa
   endif ; endif
 
   if (present(du_cor)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isdb=>G%IsdB, ifx_iedb=>G%IedB)
+    do concurrent (j=ifx_jsd:ifx_jed, I=ifx_isdb:ifx_iedb)
+#else
     do concurrent (j=G%jsd:G%jed, I=G%IsdB:G%IedB)
+#endif
       du_cor(I,j) = 0.0
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
   if (present(LB_in)) then
@@ -1934,9 +1943,18 @@ subroutine meridional_mass_flux(v, h_in, h_S, h_N, vh, dt, G, GV, US, CS, OBC, p
   endif ; endif
 
   if (present(dv_cor)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
+    associate(ifx_jsdb=>G%jsdB, ifx_jedb=>G%jedB, ifx_isd=>G%isd, ifx_ied=>G%ied)
+    do concurrent (J=ifx_jsdb:ifx_jedb, i=ifx_isd:ifx_ied)
+#else
     do concurrent (J=G%jsdB:G%jedB, i=G%isd:G%ied)
+#endif
       dv_cor(i,J) = 0.0
     enddo
+#ifdef IFX_WORKAROUNDS_MOM6
+    end associate
+#endif
   endif
 
   if (present(LB_in)) then
