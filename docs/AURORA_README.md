@@ -1,7 +1,9 @@
 # MOM6 GPU port on Aurora (ifx + OpenMP offload)
 
-How to build and run the MOM6 GPU port (`dev/gpu`, branch `fix/aurora`) on ALCF Aurora with
-Intel `ifx`, and what to watch out for. The current status and history are in
+How to build and run the MOM6 GPU port on ALCF Aurora with Intel `ifx`, and what to watch out
+for. The work is on branch `fix/aurora`, based on `dev/gpu` from
+[MOM6-GPU/MOM6](https://github.com/MOM6-GPU/MOM6) (remote `gpu`; last rebased onto
+`c914fa41f`, 2026-10-31). The current status and history are in
 [`SUMMARY.md`](../SUMMARY.md); compiler bugs and their minimal reproducers are in
 [`bug_reports/`](../bug_reports/README.md).
 
