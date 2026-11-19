@@ -1012,6 +1012,9 @@ subroutine calculate_density_array_2d_buggy_Wright(this, T, S, pressure, rho, &
   real, optional, intent(in) :: rho_ref
     !< A reference density [kg m-3]
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  real :: rho_ref_loc ! A local copy of rho_ref [kg m-3]
+#endif
   integer :: is, ie, js, je
   integer :: i, j
 
@@ -1022,10 +1025,20 @@ subroutine calculate_density_array_2d_buggy_Wright(this, T, S, pressure, rho, &
   !   Possibly because Nvidia cannot associate `this` with `EOS%type`.
 
   if (present(rho_ref)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! ifx makes the optional rho_ref PRIVATE (uninitialized) in the offloaded loop,
+    ! see bug_reports/ifx_optional_scalar_private.
+    rho_ref_loc = rho_ref
+    do concurrent (j=js:je, i=is:ie)
+      rho(i,j) = density_anomaly_elem_buggy_Wright(this, T(i,j), S(i,j), &
+          pressure(i,j), rho_ref_loc)
+    enddo
+#else
     do concurrent (j=js:je, i=is:ie)
       rho(i,j) = density_anomaly_elem_buggy_Wright(this, T(i,j), S(i,j), &
           pressure(i,j), rho_ref)
     enddo
+#endif
   else
     do concurrent (j=js:je, i=is:ie)
       rho(i,j) = density_elem_buggy_Wright_loc( T(i,j), S(i,j), pressure(i,j))
@@ -1051,6 +1064,9 @@ subroutine calculate_density_array_3d_buggy_Wright(this, T, S, pressure, rho, &
   real, optional, intent(in) :: rho_ref
     !< A reference density [kg m-3]
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  real :: rho_ref_loc ! A local copy of rho_ref [kg m-3]
+#endif
   integer :: is, ie, js, je, ks, ke
   integer :: i, j, k
 
@@ -1062,10 +1078,20 @@ subroutine calculate_density_array_3d_buggy_Wright(this, T, S, pressure, rho, &
   !   Possibly because Nvidia cannot associate `this` with `EOS%type`.
 
   if (present(rho_ref)) then
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! ifx makes the optional rho_ref PRIVATE (uninitialized) in the offloaded loop,
+    ! see bug_reports/ifx_optional_scalar_private.
+    rho_ref_loc = rho_ref
+    do concurrent (k=ks:ke, j=js:je, i=is:ie)
+      rho(i,j,k) = density_anomaly_elem_buggy_Wright(this, T(i,j,k), S(i,j,k), &
+          pressure(i,j,k), rho_ref_loc)
+    enddo
+#else
     do concurrent (k=ks:ke, j=js:je, i=is:ie)
       rho(i,j,k) = density_anomaly_elem_buggy_Wright(this, T(i,j,k), S(i,j,k), &
           pressure(i,j,k), rho_ref)
     enddo
+#endif
   else
     do concurrent (k=ks:ke, j=js:je, i=is:ie)
       rho(i,j,k) = density_elem_buggy_Wright_loc( T(i,j,k), S(i,j,k), pressure(i,j,k))
