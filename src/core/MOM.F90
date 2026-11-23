@@ -821,9 +821,18 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
     ! Refer to the (already mapped) array rather than CS%ssh_rint inside the offloaded loop, so
     ! that the whole of CS is not implicitly mapped to and from the device.
     associate(ssh_rint => CS%ssh_rint)
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! ifx 2026.1 workaround: writes to an associate name in an offloaded do concurrent are lost,
+    ! see bug_reports/ifx_associate_write_lost
+    !$omp target teams loop collapse(2)
+    do j=js,je ; do i=is,ie
+      ssh_rint(i,j) = 0.
+    enddo ; enddo
+#else
     do concurrent (j=js:je, i=is:ie)
       ssh_rint(i,j) = 0.
     enddo
+#endif
     end associate
 
     if (CS%VarMix%use_variable_mixing) then
@@ -1097,9 +1106,18 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
       !$omp target exit data map(release: CS%eta_av_bc)
 
       associate(ssh_rint => CS%ssh_rint)  ! Avoid implicitly mapping all of CS
+#ifdef IFX_WORKAROUNDS_MOM6
+      ! ifx 2026.1 workaround: writes to an associate name in an offloaded do concurrent are lost,
+      ! see bug_reports/ifx_associate_write_lost
+      !$omp target teams loop collapse(2)
+      do j=js,je ; do i=is,ie
+        ssh_rint(i,j) = ssh_rint(i,j) + dt * ssh(i,j)
+      enddo ; enddo
+#else
       do concurrent (j=js:je, i=is:ie)
         ssh_rint(i,j) = ssh_rint(i,j) + dt * ssh(i,j)
       enddo
+#endif
       end associate
 
       if (CS%IDs%id_ssh_inst > 0) then
@@ -1152,10 +1170,20 @@ subroutine step_MOM(forces_in, fluxes_in, sfc_state, Time_start, time_int_in, CS
 
     I_wt_ssh = 1.0/CS%time_in_cycle
     associate(ssh_rint => CS%ssh_rint, ave_ssh_ibc => CS%ave_ssh_ibc)  ! Avoid mapping all of CS
+#ifdef IFX_WORKAROUNDS_MOM6
+    ! ifx 2026.1 workaround: writes to an associate name in an offloaded do concurrent are lost,
+    ! see bug_reports/ifx_associate_write_lost
+    !$omp target teams loop collapse(2)
+    do j=js,je ; do i=is,ie
+      ssh(i,j) = ssh_rint(i,j) * I_wt_ssh
+      ave_ssh_ibc(i,j) = ssh(i,j)
+    enddo ; enddo
+#else
     do concurrent (j=js:je, i=is:ie)
       ssh(i,j) = ssh_rint(i,j) * I_wt_ssh
       ave_ssh_ibc(i,j) = ssh(i,j)
     enddo
+#endif
     end associate
 
     if (associated(CS%HA_CSp)) then
@@ -1831,28 +1859,23 @@ subroutine step_MOM_tracer_dyn(CS, G, GV, US, h, Time_local)
   ! loops, so that the whole of CS is not implicitly mapped to and from the device.
   associate(uhtr => CS%uhtr, vhtr => CS%vhtr)
 #ifdef IFX_WORKAROUNDS_MOM6
-  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
-  associate(ifx_jsd=>G%jsd, ifx_jed=>G%jed, ifx_isdb=>G%IsdB, ifx_iedb=>G%IedB)
-  do concurrent (k=1:GV%ke, j=ifx_jsd:ifx_jed, I=ifx_isdb:ifx_iedb)
+  ! ifx 2026.1 workaround: writes to an associate name in an offloaded do concurrent are lost,
+  ! see bug_reports/ifx_associate_write_lost
+  !$omp target teams loop collapse(3)
+  do k=1,GV%ke ; do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
+    uhtr(I,j,k) = 0.
+  enddo ; enddo ; enddo
+  !$omp target teams loop collapse(3)
+  do k=1,GV%ke ; do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
+    vhtr(i,J,k) = 0.
+  enddo ; enddo ; enddo
 #else
   do concurrent (k=1:GV%ke, j=G%jsd:G%jed, I=G%IsdB:G%IedB)
-#endif
     uhtr(I,j,k) = 0.
   enddo
-#ifdef IFX_WORKAROUNDS_MOM6
-  end associate
-#endif
-#ifdef IFX_WORKAROUNDS_MOM6
-  ! Avoid an ifx ICE, see bug_reports/ifx_dc_dtype_bounds_ice
-  associate(ifx_jsdb=>G%JsdB, ifx_jedb=>G%JedB, ifx_isd=>G%isd, ifx_ied=>G%ied)
-  do concurrent (k=1:GV%ke, J=ifx_jsdb:ifx_jedb, i=ifx_isd:ifx_ied)
-#else
   do concurrent (k=1:GV%ke, J=G%JsdB:G%JedB, i=G%isd:G%ied)
-#endif
     vhtr(i,J,k) = 0.
   enddo
-#ifdef IFX_WORKAROUNDS_MOM6
-  end associate
 #endif
   end associate
 
