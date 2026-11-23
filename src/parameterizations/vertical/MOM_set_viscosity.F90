@@ -3790,6 +3790,15 @@ subroutine set_visc_init(Time, G, GV, US, param_file, diag, visc, CS, restart_CS
 
   CS%id_clock_ML = cpu_clock_id('(Ocean set_viscous_ML)', grain=CLOCK_ROUTINE)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! ifx 2026.1 workaround: visc was sent to the device (target update to(visc) above) before
+  ! most of its allocatable components were allocated.  Mapping those components afterwards only
+  ! attaches their device addresses, so the device copy of visc keeps the unallocated descriptors:
+  ! allocated(visc%Kv_bbl_u) is false in kernels and writes to visc%bbl_thick_u are lost.
+  ! Resending visc refreshes the descriptors, see bug_reports/ifx_dt_component_write_lost.
+  !$omp target update to(visc)
+#endif
+
 end subroutine set_visc_init
 
 !> This subroutine dellocates any memory in the set_visc control structure.

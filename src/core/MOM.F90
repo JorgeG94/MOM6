@@ -4201,6 +4201,15 @@ subroutine initialize_MOM(Time, Time_init, param_file, dirs, CS, &
   call callTree_leave("initialize_MOM()")
   call cpu_clock_end(id_clock_init) ; call cpu_clock_end(id_clock_ocean)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! ifx 2026.1 workaround: CS (and CS%ADp, which is only map(alloc)-ed) was sent to the device
+  ! before some of its allocatable components were allocated and mapped; mapping a component only
+  ! attaches its device address, so the device copy keeps stale descriptors.  Resend it now that
+  ! all components exist, see bug_reports/ifx_dt_component_write_lost.
+  !$omp target update to(CS)
+  !$omp target update to(CS%ADp)
+#endif
+
 end subroutine initialize_MOM
 
 !> Finishes initializing MOM and writes out the initial conditions.

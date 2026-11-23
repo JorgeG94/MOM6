@@ -2381,6 +2381,14 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
     enddo ; enddo
   endif
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! ifx 2026.1 workaround: CS was sent to the device before some of its allocatable
+  ! components were allocated and mapped; mapping a component only attaches its device address,
+  ! so the device copy keeps stale descriptors.  Resend it now that all components exist,
+  ! see bug_reports/ifx_dt_component_write_lost.
+  !$omp target update to(CS)
+#endif
+
 end subroutine VarMix_init
 
 !> Destructor for VarMix control structure

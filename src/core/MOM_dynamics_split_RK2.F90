@@ -2272,6 +2272,15 @@ subroutine initialize_dyn_split_RK2(u, v, h, tv, uh, vh, eta, Time, G, GV, US, p
   id_clock_btstep     = cpu_clock_id('(Ocean barotropic mode stepping)', grain=CLOCK_MODULE)
   id_clock_btforce    = cpu_clock_id('(Ocean barotropic forcing calc)',  grain=CLOCK_MODULE)
 
+#ifdef IFX_WORKAROUNDS_MOM6
+  ! ifx 2026.1 workaround: CS was mapped (map(alloc: CS%dyn_split_RK2_CSp) in MOM.F90) before its
+  ! allocatable components were allocated.  Mapping the components afterwards only attaches their
+  ! device addresses, so the device copy of CS keeps stale descriptors and kernels reading
+  ! CS%PFu etc. read the wrong memory.  Resending CS refreshes the descriptors,
+  ! see bug_reports/ifx_dt_component_write_lost.
+  !$omp target update to(CS)
+#endif
+
 end subroutine initialize_dyn_split_RK2
 
 
