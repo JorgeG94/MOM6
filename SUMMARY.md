@@ -12,11 +12,17 @@ replaces the trial-and-error fixes in `~/MOM6-examples/src/MOM6`.
 ## Status
 
 - **Build:** compiles and links (`make -j` in `ocean_only`).
-- **Run:** double_gyre **runs to day 10** (720 steps, exit status 0) in the default async
-  runtime mode, with no special settings. That's job 9103608: 12 min 26 s, about 1.2 min
-  per model day.
-  - **Diagnostics:** energy spins up smoothly (about 14.5 at day 10), max CFL 0.129, no
-    truncations, mass error about 1e-14.
+- **Correctness (2026-11-23): the GPU run matches a CPU reference.** double_gyre to day 10
+  (job 9119849, 1390 s) agrees with a CPU build of the same source to about 12 significant
+  digits on every day:
+  - day-10 energy is 4.6047288874367E-05 on the GPU and 4.6047288874353E-05 on the CPU;
+  - CFL, sea level and mass are identical.
+
+  It isn't bitwise identical yet: the GPU build uses `-O3` with ifx's default fast FP model,
+  and the CPU build uses `-O2`. See "Correctness against a CPU reference".
+- **Earlier runs were wrong.** The day-10 run of 2026-11-19 (energy about 14.5, CFL 0.129)
+  completed but had silently wrong answers. Its energy was over 300,000 times the CPU's.
+  Three more ifx bugs (9–11) caused that.
 - **The two fixes that got it running:**
   - **Bug 8, a staging-buffer overrun in Intel's Level Zero runtime.** `barotropic_init`'s
     `!$omp target update to(CS)` expands into one large transfer plus 52,163 small staged
@@ -26,7 +32,7 @@ replaces the trial-and-error fixes in `~/MOM6-examples/src/MOM6`.
   - **`zonal/meridional_flux_adjust` ran their whole convergence iteration on one GPU
     thread** (`!$omp loop` inside a plain `!$omp target`). Restructured under the macro
     into a host iteration loop with one `target teams loop` per inner loop.
-- **Compiler/runtime issues:** 8 bugs with reproducers in `bug_reports/`, plus 3
+- **Compiler/runtime issues:** 12 bugs with reproducers in `bug_reports/`, plus 4
   "not reproduced" investigations.
 - **MOM6 port bugs fixed:** 4 (not ifx-specific, no macro).
 - **Docs:** `docs/AURORA_README.md` covers how to build and run on Aurora, and the caveats.
@@ -49,6 +55,8 @@ replaces the trial-and-error fixes in `~/MOM6-examples/src/MOM6`.
 | 15 | `sync`: stuck after the first step | `flux_adjust` iteration serialized on one GPU thread | Restructured as `target teams loop` kernels |
 | 16 | Runs with `sync`: day 9 of 10 in 15 minutes, about 2.5 min/day | – | – |
 | 17 | **Default async mode: day 10, exit 0, about 1.2 min/day** (job 9103608) | Bug 8 is a staging-buffer overrun | `barotropic_init` updates `CS` through a byte view |
+| 18 | Day 10 again, but energy 14.5 vs 4.6e-5 in a CPU build | Silent wrong answers (bugs 9–11) | See "Correctness against a CPU reference" |
+| 19 | **Day 10, matches the CPU to about 12 digits** (job 9119849) | – | – |
 
 **Bugs 1 and 2 were compile-time ICEs,** found and fixed before the first run.
 
@@ -96,8 +104,13 @@ and `run.sh`. `bug_reports/README.md` is the index.
 | 6 | `ifx_absent_optional_in_target_region` | Host SIGSEGV | **Not reproduced:** the MRE passes on the GPU |
 | 7 | `ifx_dc_reduce_locality` | Wrong reduction result at `-O3` | Confirmed (GPU run); `-fp-model precise` fixes it |
 | 8 | `ifx_l0_staging_buffer_overrun` | Runtime: wrong data after a `target update` with many small transfers | Confirmed (GPU run, 19/20 wrong); minimal reproducer of about 130 lines |
+| 9 | `ifx_map_noncontiguous_section` | Wrong data: a device loop over a non-contiguous dummy array reads zeros in its trailing columns | Confirmed (GPU run, `-O0` and `-O3`) |
+| 10 | `ifx_dt_component_write_lost` | Wrong data: components mapped after their parent keep stale descriptors on the device | Confirmed (GPU run); `-DWORKAROUND` fixes it |
+| 11 | `ifx_associate_write_lost` | Wrong data: writes to an associate name in an offloaded `do concurrent` are lost | Confirmed on the GPU **and with offload disabled** |
+| 12 | `ifx_dc_array_reduction` | ICE #5633: `do concurrent` with an array `reduce(+)` plus `reduce(max)` | Confirmed (compile) |
 | – | `ifx_implicit_map_struct_pointer_components` | Investigation notes | **Not reproduced:** the MRE passes on the GPU |
 | – | `ifx_optional_scalar_private` | Investigation notes | **Not reproduced:** the MRE passes on the GPU |
+| – | `ifx_associate_component_kernel` | Investigation notes | **Not a bug:** reads through associate names work |
 
 ### 1. ICE when `do concurrent` bounds come from one derived-type object
 
@@ -205,6 +218,108 @@ No placement works for every caller:
   The runtime fallback is `LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=0`, which fixes
   every reproducer variant but hasn't been tested on a full MOM6 run.
 
+### 9. A device loop over a non-contiguous dummy array reads wrong data
+
+- **Trigger:** an assumed-shape dummy that is a section such as `array(isc:iec,jsc:jec)` of
+  an array with halos, read in a device loop. The trailing columns read as zero.
+  - In the reproducer, a 44×40 section of a 52×48 array of ones sums to 1496, not 1760.
+  - That fits the runtime transferring `size(a)` consecutive elements instead of the
+    strided extent.
+- **Symptom in MOM6:** every `reproducing_sum` called on a section came out wrong. That
+  includes every DEBUG checksum mean, and the energy in `ocean.stats` from day 0.
+- **Workaround:** `increment_block_ints` (`MOM_coms.F90`) copies a non-contiguous argument
+  into a contiguous temporary before the device loop.
+
+### 10. Components mapped after their parent keep stale descriptors
+
+- **Trigger:** a derived-type object is sent to the device as a whole (`map(alloc|to: X)`
+  or `update to(X)`) while its allocatable components are still unallocated, and the
+  components are allocated and mapped afterwards.
+  - Mapping `X%a` only attaches its device address. Bounds and allocation status stay as
+    they were.
+  - So on the device `allocated(X%a)` is false, writes land in the wrong place, and reads
+    get the wrong memory.
+- **Symptom in MOM6, in the order the CPU comparison found them:**
+  - `visc%bbl_thick_u` and `visc%Kv_bbl_u` were zero, so there was no bottom drag. This is
+    the main cause of the runaway energy.
+  - The dynamics `CS%PFu`, `CS%CAu_pred` and `CS%diffu` read wrong, so `u_bc_accel` was 0.
+  - `vertvisc_CS%h_u` was zero.
+  - `BT_cont%FA_u_E0` etc. were zero, so the barotropic transport `uhbt` was 0.
+- **Workaround:** `!$omp target update to(<object>)` after the last component is mapped, at
+  the end of:
+  - `set_visc_init`;
+  - `initialize_dyn_split_RK2`;
+  - `VarMix_init`;
+  - `vertvisc_init`;
+  - `alloc_BT_cont_type`;
+  - `initialize_MOM` (for `CS` and `CS%ADp`).
+- **Not yet fixed:** an audit also flagged `thickness_diffuse_CS`, but its late arrays are
+  only used with GME or its slope diagnostics.
+
+### 11. Writes to an associate name in an offloaded `do concurrent` are lost
+
+- **Trigger:** `associate(r => X)` followed by a `do concurrent` that assigns to `r`, built
+  with `-fopenmp-target-do-concurrent`. The writes have no effect, on the GPU and also with
+  `OMP_TARGET_OFFLOAD=DISABLED`.
+  - This applies whatever `X` is: a derived-type component, or a plain allocatable.
+  - Reads through associate names are fine.
+  - An explicit `!$omp target teams loop`, a pointer, or a dummy argument all work.
+- **Symptom in MOM6:** in `step_MOM`, `ssh_rint` and `ave_ssh_ibc` never changed, so
+  `sea_lev` stayed at its initial value, and `uhtr`/`vhtr` were never reset.
+- **Workaround:** those 5 loops in `MOM.F90` use `!$omp target teams loop` and keep their
+  associate names, so `CS` still isn't mapped whole.
+- **Finding new cases:** `ocean_only/jobs/tools/assoc_dc_writes.py` lists `do concurrent`
+  loops that assign to an associate name. It doesn't understand `#ifdef`, so the `#else`
+  copies of the 5 fixed loops still show up.
+
+## Correctness against a CPU reference
+
+**CPU build:** `ocean_only/build_cpu` with FMS in `shared/fms/build_cpu`, configured with
+`-g -O2 -r8 -fprotect-parens`. It has no OpenMP and no `IFX_WORKAROUNDS_MOM6`, and runs
+double_gyre to day 10 in under a minute. Its stats are in `ocean_only/jobs/cpu_dg/`.
+
+**Running `make` with an `FCFLAGS=` override on the command line drops configure's `-r8`
+and breaks the build.** Build with `make -C build_cpu` instead.
+
+**Method:**
+1. Run one step (`DAYMAX = 0.0139`) with `DEBUG = True` on both builds. That's
+   `jobs/dbg_cmp.pbs`, which writes `dbg_cpu.log` and `dbg_gpu.log`.
+2. Line the 732 checksum lines up in order, and find the first that differs by more than
+   roundoff, measured relative to the field's magnitude.
+3. Narrow the cause down with temporary prints, comparing the GPU run against the same
+   binary run with `OMP_TARGET_OFFLOAD=DISABLED`.
+   - If the offload-disabled run also differs from the CPU build, the problem isn't
+     GPU-specific. That's how bug 11 was found.
+4. Fix it, and repeat from step 1.
+
+**Result:** after the fixes for bugs 9–11, all 732 checksums agree to roundoff. The worst
+real difference is 2e-13, apart from four barotropic `PF` fields of about 1e-17, which are
+roundoff noise.
+
+**Bitwise test (2026-11-23):** strict-FP builds of both
+(`ocean_only/build_cpu_strict`, `ocean_only/build_strict`, `-g -O2 -fp-model precise
+-no-fma`):
+- **Result:** the strict GPU run's `ocean.stats` is **byte-for-byte identical to the
+  strict CPU run's for days 0–9** (648 steps). The GPU job hit its 40-minute limit before
+  day 10. The one-step `DEBUG` run matches on all 732 checksums, bit counts included.
+- **One code change was needed, in both builds, as a temporary experiment that has been
+  reverted:** `bt_rem_u = av_rem_u**Instep` in `btstep` (BT_STRONG_DRAG false, which
+  double_gyre uses).
+  - The real power lowers to `exp(Instep*log(...))`, and the host and device math libraries
+    round it differently in the last bit. It was the only difference in the whole step.
+  - Upstream already has a deterministic `nth_root` for this, commented out at that line.
+  - Using it changes answers relative to `pow`, so adopting it needs an answer-changing
+    flag.
+- **The strict GPU image crashes the driver's JIT compiler**
+  (`IGC: Internal Compiler Error: Segmentation violation` at module creation). Workaround:
+  `LIBOMPTARGET_LEVEL_ZERO_COMPILATION_OPTIONS="-cl-opt-disable"`. That is very slow: day 9
+  takes about 40 minutes.
+  - Each object's device code compiles fine offline with `ocloc`, and so does an AOT link,
+    but the AOT binary segfaults at startup.
+  - No reproducer yet.
+- **Default flags:** the `-O3` GPU build agrees with the `-O2` CPU build to about 12
+  digits. The strict and default CPU builds differ by about as much.
+
 ## Resolved investigation: `nstep+nfilter is 0`
 
 **Answer:** bug 8. Earlier theories were all ruled out along the way:
@@ -231,7 +346,11 @@ The investigation was then handed to an agent, which found the 64-transfer thres
 The branch is `fix/aurora`, rebased on 2026-11-19 onto `gpu/dev/gpu` (remote `gpu` =
 `git@github.com:MOM6-GPU/MOM6.git`, `c914fa41f`, 2026-10-31; 82 commits newer than the
 previous base `75b0a161c`). The pre-rebase branch is kept as `fix/aurora-pre-rebase`.
-`fix/aurora` is **not pushed**.
+`fix/aurora` is pushed to `jorge` up to `14233617c`.
+
+**Not yet committed:**
+- the workarounds for bugs 9–11;
+- the five new `bug_reports/` directories.
 
 | Commit | Content |
 |---|---|
@@ -277,6 +396,13 @@ scratchpad under `/tmp` isn't visible from compute nodes. They use
 | `dg_sync.pbs` | double_gyre with `COMMAND_MODE=sync` (no longer needed). |
 | `staging_min.pbs` | Bug 8's minimal reproducer: bug, workaround and no-padding builds × three runtime settings. |
 | `race_mre*.pbs`, `race_min.pbs`, `race_flat.pbs`, `dg_fix.pbs`, `dg_cmp.pbs` | The agent's bug-8 investigation (`dg_cmp.pbs` uses a 2-day copy of the run directory, `jobs/dg_short/`). |
+| `dg_nostage.pbs` | double_gyre to day 10 with `STAGING_BUFFER_SIZE=0`. It prints the wall time per model day, and the model log goes to `jobs/dg_nostage.model.log`. |
+| `cpu_dg.pbs` | The CPU reference run (`build_cpu/MOM6`) in `jobs/cpu_dg/`. |
+| `dbg_cmp.pbs` | One `DEBUG` step on the CPU build and the GPU build, writing `dbg_cpu.log` and `dbg_gpu.log`. |
+| `dbg_sync.pbs` | The GPU half of `dbg_cmp.pbs` only. Despite its name, it now runs in the default async mode. |
+| `dbg_both.pbs` | One `DEBUG` step of the GPU build, on the GPU and with offload disabled (`dbg_host.log`). |
+| `prof.pbs`, `prof_args.pbs` | Profiling runs, with `LIBOMPTARGET_PLUGIN_PROFILE=T` and with `LIBOMPTARGET_INFO=33`. |
+| `*_mre.pbs` | Run one `bug_reports/<name>/run.sh` on a GPU node. |
 
 - **Workflow:** submit with `qsub`, then wait in the background with
   `until [ "$(qstat -xf $J | awk '/job_state/{print $3}')" = F ]; do sleep 20; done`.
@@ -315,6 +441,15 @@ scratchpad under `/tmp` isn't visible from compute nodes. They use
 
 ## Open items
 
+0. **Bitwise check against the CPU:** done (see "Correctness against a CPU reference").
+   It's bitwise with strict FP plus `nth_root` for `bt_rem`. Still to do:
+   - decide whether to adopt `nth_root` behind a flag;
+   - make a reproducer for the IGC crash on the strict-FP image.
+
+   Also audit the remaining whole-object mappings for bug 10 in code paths double_gyre
+     doesn't exercise: `thickness_diffuse_CS`, `set_visc_CS`, and the tracer packages.
+   - Then do the speed work. The profile showed launch and mapping overhead, not kernel
+     time: implicit mapping of all of `G` in hot kernels, and many `flux_adjust` launches.
 1. **Run-to-run differences:** answers differ in the last digit between runs, in both async
    and `sync` mode. That breaks MOM6's bitwise reproducibility; find the source (likely an
    unordered reduction or atomic somewhere).

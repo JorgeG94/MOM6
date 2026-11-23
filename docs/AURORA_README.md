@@ -141,15 +141,44 @@ Submit with `qsub dg.pbs`, and watch progress with `qstat -u $USER` and
 
 - **Run length:** double_gyre runs 10 model days (`DAYMAX = 10`, `DT = 1200`, so 720
   steps; `ocean.stats` gets one line per day).
-- **Sanity check:**
-  - Energy grows smoothly from about 1.4e-13 at day 0 (about 1.6e-3 at day 1, about 10 at
-    day 9, about 14.5 at day 10).
-  - `Maximum CFL` stays small (about 0.13 by day 10).
-  - No truncations.
+- **Recommended runtime setting:** `export LIBOMPTARGET_LEVEL_ZERO_STAGING_BUFFER_SIZE=0`
+  (see caveat 1). All validated runs used it.
+- **Expected answers** (CPU reference, which the GPU matches to about 12 significant
+  digits):
+
+  | Day | Energy | Max CFL |
+  |---|---|---|
+  | 0 | 1.4237e-13 | 0 |
+  | 1 | 4.5804e-06 | 0.00023 |
+  | 10 | 4.6047e-05 | 0.00100 |
+
   - The mass error stays at round-off (≲ 1e-14).
-- **Speed:** about 1.2 minutes of walltime per model day on one GPU, so day 10 takes about
-  12.5 minutes. On this small (44×40) grid the time is mostly kernel-launch and transfer
-  overhead.
+  - **An energy around 1e-3 at day 1, or above 1 by day 10, means wrong answers.** Earlier
+    builds of this port did that while looking smooth and healthy (see caveat 3, bugs 9–11).
+- **Checking against a CPU build:** see "Verifying against a CPU build" below.
+- **Speed:** about 2.3 minutes of walltime per model day on one GPU with
+  `STAGING_BUFFER_SIZE=0`, so day 10 takes about 23 minutes. A CPU build does all 10 days in
+  under a minute. On this small (44×40) grid the GPU time is almost all kernel-launch and
+  data-mapping overhead, not compute.
+
+### Verifying against a CPU build
+
+A GPU run that completes can still be wrong, so compare it with a CPU build of the same
+source.
+
+1. **Build FMS and MOM6 for the CPU** in separate directories: `shared/fms/build_cpu` and
+   `ocean_only/build_cpu`.
+   - Configure with `-g -O2` and no OpenMP; configure adds `-r8 -fprotect-parens`.
+   - Build with `make -C build_cpu`. Don't override `FCFLAGS` on the command line: that
+     drops `-r8`.
+2. **Compare `ocean.stats` day by day.** Expect about 12 matching digits while the GPU build
+   uses `-O3` with ifx's default FP model. Bitwise agreement needs strict FP on both builds.
+3. **To find where a difference starts,** run one step (`#override DAYMAX = 0.0139`) with
+   `#override DEBUG = True` on both builds.
+   - Line up the checksum lines (`mean= min= max=` ... label) in order, and look for the
+     first that differs by more than roundoff relative to the field's magnitude.
+   - Then rerun the GPU binary with `OMP_TARGET_OFFLOAD=DISABLED`. If that also differs
+     from the CPU build, the problem isn't GPU-specific (bug 11 was found this way).
 
 ## Caveats
 
@@ -207,6 +236,10 @@ All are handled under `IFX_WORKAROUNDS_MOM6`, with a reproducer in `bug_reports/
 | `ifx_update_component_copies_parent` | `target update to/from(X%comp)` with a pointer/allocatable `X` transfers all of `X` |
 | `ifx_dc_reduce_locality` | conditional min reduction wrong at `-O3` (fast-math overflow of the `huge()` identity) |
 | `ifx_l0_staging_buffer_overrun` | caveat 1 |
+| `ifx_map_noncontiguous_section` | **Silent wrong data:** a device loop over a non-contiguous dummy array (`a(isc:iec,jsc:jec)`) reads zeros in its trailing columns. Broke every `reproducing_sum`. |
+| `ifx_dt_component_write_lost` | **Silent wrong data:** components allocated and mapped after their parent object was sent to the device keep stale descriptors. Writes are lost and reads come from the wrong memory. Broke the bottom drag, the baroclinic acceleration and the barotropic transport. |
+| `ifx_associate_write_lost` | **Silent wrong data:** writes to an `associate` name inside an offloaded `do concurrent` are lost, even with offload disabled. Broke the sea-level average and the tracer-transport reset. |
+| `ifx_dc_array_reduction` | ICE for `do concurrent` with an array `reduce(+)` plus `reduce(max)` (no MOM6 code has this shape) |
 
 ### 4. Patterns to avoid in new GPU code
 
@@ -216,6 +249,16 @@ All are handled under `IFX_WORKAROUNDS_MOM6`, with a reproducer in `bug_reports/
 - **Referencing `CS%...` in a kernel when `CS` isn't on the device** maps the whole
   structure `tofrom` on every call. That's slow, and copying it back can corrupt host
   pointers. Use `associate` names for the arrays, or keep the structure mapped.
+- **Never assign to an `associate` name inside a `do concurrent`:** ifx drops the writes
+  (`bug_reports/ifx_associate_write_lost`). Reading is fine. To write, use an explicit
+  `!$omp target teams loop`, a pointer, or a dummy argument.
+  `ocean_only/jobs/tools/assoc_dc_writes.py` lists offending loops.
+- **If a structure is sent to the device before its arrays are allocated** (`map(alloc: CS)`
+  or `target update to(CS)` early in an init routine), send it again with
+  `!$omp target update to(CS)` after its last array has been allocated and mapped
+  (`bug_reports/ifx_dt_component_write_lost`).
+- **Don't run device loops over non-contiguous array sections passed as dummy arguments.**
+  Copy them to a contiguous temporary first (`bug_reports/ifx_map_noncontiguous_section`).
 - **Optional arguments inside target regions:** ifx warns with #5590 ("Optional parameters
   will fault if not present"). Copy them into local variables or pointers before the
   region.
@@ -235,6 +278,9 @@ All are handled under `IFX_WORKAROUNDS_MOM6`, with a reproducer in `bug_reports/
 
 ### 5. Code paths known to be unsafe but not exercised by double_gyre
 
+- Structures that may still have the stale-descriptor problem (bug 10) in features
+  double_gyre doesn't use: `thickness_diffuse_CS` (GME and slope diagnostics),
+  `set_visc_CS`, and the tracer packages.
 - `horizontal_viscosity` called without `OBC` (the unsplit solvers), and
   `calc_isoneutral_slopes` called without `OBC` (ML-MEKE features, `meso_sfn_ANN`): these
   touch an absent optional argument inside a target region.
