@@ -46,7 +46,7 @@ MPICC = mpicc
 FC = ifx
 MPIFC = mpifort
 PYTHON = python3
-FCFLAGS = -g -O3 -qopenmp -fopenmp-targets=spir64 -fopenmp-target-do-concurrent -DIFX_WORKAROUNDS_MOM6
+FCFLAGS = -g -O3 -qopenmp -fopenmp-targets=spir64 -fopenmp-target-do-concurrent -DIFX_WORKAROUNDS_MOM6 -DMOM_OPENMP_GPU
 FMS_FCFLAGS = -g -O3 -qopenmp -fopenmp-targets=spir64 -fopenmp-target-do-concurrent
 LDFLAGS = -qopenmp -fopenmp-targets=spir64 -fopenmp-target-do-concurrent
 ```
@@ -57,6 +57,11 @@ LDFLAGS = -qopenmp -fopenmp-targets=spir64 -fopenmp-target-do-concurrent
   regions.
 - `-DIFX_WORKAROUNDS_MOM6` turns on the source workarounds for ifx bugs (see below). **It is
   required**: without it, several files hit internal compiler errors.
+- `-DMOM_OPENMP_GPU` selects the GPU code paths that nvfortran gets from
+  `__NVCOMPILER_OPENMP_GPU`, mainly whole-domain block-size defaults. **Without it the run is
+  about 5x slower**: the block defaults fall back to one row per kernel launch, so the
+  10-day double_gyre run takes 1390 s instead of 262 s. Answers are bitwise identical either
+  way. The nvhpc-only `bind(parallel,teams)` clause in `MOM_ALE.F90` stays nvfortran-only.
 - The OpenMP flags must also be in `LDFLAGS`. `libFMS.a` and the MOM6 objects need the
   offload runtime and device linker.
 

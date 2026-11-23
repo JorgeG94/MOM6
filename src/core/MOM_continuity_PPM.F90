@@ -3488,7 +3488,7 @@ subroutine continuity_PPM_init(Time, G, GV, US, param_file, diag, CS, OBC)
   character(len=40)  :: mdl = "MOM_continuity_PPM" ! This module's name.
   character(len=256) :: mesg
 
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   integer, parameter :: default_niblock = 0
     ! Default i block size for array calculations
   integer, parameter :: default_njblock = 0

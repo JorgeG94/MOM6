@@ -1857,7 +1857,7 @@ subroutine tracer_hor_diff_init(Time, G, GV, US, param_file, diag, EOS, diabatic
 # include "version_variable.h"
   character(len=40)  :: mdl = "MOM_tracer_hor_diff" ! This module's name.
   integer :: default_answer_date
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   integer, parameter :: default_nkblock = 0 ! The default k block size, where 0 is the full column [nondim].
 #else
   integer, parameter :: default_nkblock = 1 ! The default k block size [nondim].

@@ -33,7 +33,7 @@ implicit none ; private
 #include "do_concurrent_compat.h"
 #include "omp_loop_bind_compat.h"
 
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
 integer, parameter :: default_nkblock = 0 !< Default k block size for the mixed layer density integral [nondim]
 integer, parameter :: default_njblock = 0 !< Default j block size for the mixed layer density integral [nondim]
 integer, parameter :: default_niblock = 0 !< Default i block size for the mixed layer density integral [nondim]

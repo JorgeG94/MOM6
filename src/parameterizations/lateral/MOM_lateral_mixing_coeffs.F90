@@ -1718,7 +1718,7 @@ subroutine VarMix_init(Time, G, GV, US, param_file, diag, CS)
   integer :: number_of_OBC_segments
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, i, j
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   integer, parameter :: default_niblock = 0
   integer, parameter :: default_njblock = 0
   integer, parameter :: default_nkblock = 0

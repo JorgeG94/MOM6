@@ -2389,7 +2389,7 @@ subroutine thickness_diffuse_init(Time, G, GV, US, param_file, diag, CDp, CS)
   integer :: default_answer_date ! The default setting for the various ANSWER_DATE flags.
   logical :: stoch_eos           ! Can't use Stanley param here unless stoch_eos is true
   integer :: i, j
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   integer, parameter :: default_niblock = 0 !< Default i block size for array calculations [nondim].
   integer, parameter :: default_njblock = 0 !< Default j block size for array calculations [nondim].
 #else

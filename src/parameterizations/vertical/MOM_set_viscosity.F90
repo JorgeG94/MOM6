@@ -52,7 +52,7 @@ public remap_vertvisc_aux_vars
 ! vary with the Boussinesq approximation, the Boussinesq variant is given first.
 
 integer, parameter :: default_niblock = 0 !< Default i block size for array calculations [nondim].
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
 integer, parameter :: default_njblock = 0  !< Default j block size for array calculations [nondim].
 #else
 integer, parameter :: default_njblock = 1  !< Default j block size for array calculations [nondim].
@@ -2488,7 +2488,7 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
 
         !$omp target teams
         do k=nkml+1,nz
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
           do_any = .false.
 #endif
 
@@ -2536,13 +2536,13 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
                 k_massive(II,jj) = k
               endif ! hlay > h_tiny
 
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
               if (do_ij(II,jj)) do_any = .true.
 #endif
             endif
           enddo ; enddo
 
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
           if (.not.do_any) exit ! All columns are done.
 #endif
 
@@ -2862,7 +2862,7 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
         !$omp target teams
         do k=nkml+1,nz
 ! no tracking of early exit on GPU
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
           do_any = .false.
 #endif
 
@@ -2911,14 +2911,14 @@ subroutine set_viscous_ML(u, v, h, tv, forces, visc, dt, G, GV, US, CS, nIIB, nJ
               endif ! hlay > h_tiny
 
 ! no early exit on GPU
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
               if (do_ij(ii,JJ)) do_any = .true.
 #endif
             endif
           enddo ; enddo
 
 ! on GPU, faster to do all k iterations, instead of exit early.
-#ifndef __NVCOMPILER_OPENMP_GPU
+#if !defined(__NVCOMPILER_OPENMP_GPU) && !defined(MOM_OPENMP_GPU)
           if (.not.do_any) exit ! All columns are done.
 #endif
           !$omp loop LOOP_BIND_TEAMS_PARALLEL collapse(2) private(i,j)

@@ -139,7 +139,7 @@ end type Kappa_shear_CS
 integer, parameter :: fixed_col_extent = 128
 
 ! TODO: Generalize this condition to support other GPU compilers.
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
 #define WSZK_(n)  fixed_col_extent
 #define WSZKI_(n) fixed_col_extent+1
 #else
@@ -2597,7 +2597,7 @@ function kappa_shear_init(Time, G, GV, US, param_file, diag, CS)
   logical :: enable_bugs  ! If true, the defaults for recently added bug-fix flags are set to
                           ! recreate the bugs, or if false bugs are only used if actively selected.
   logical :: just_read ! If true, this module is not used, so only read the parameters.
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   !   On the device the whole domain is taken as a single block, so that every column is an
   ! independent task in one kernel launch.
   integer, parameter :: default_niblock = 0 !< Default i block size, 0 being the full domain [nondim].
@@ -2881,7 +2881,7 @@ function kappa_shear_init(Time, G, GV, US, param_file, diag, CS)
 
   ! !$omp target enter data map(to: CS)
 
-#ifdef __NVCOMPILER_OPENMP_GPU
+#if defined(__NVCOMPILER_OPENMP_GPU) || defined(MOM_OPENMP_GPU)
   if (kappa_shear_init .and. (GV%ke > fixed_col_extent)) call MOM_error(FATAL, &
     "kappa_shear_init: GPU builds of kappa_shear require GV%ke <= fixed_col_extent because the "//&
     "column routines use fixed-size local arrays on the device (this applies to the "//&
